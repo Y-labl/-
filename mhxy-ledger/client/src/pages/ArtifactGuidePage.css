@@ -119,8 +119,8 @@
 }
 
 .artifact-guide-lock-btn {
-  width: 42px;
-  height: 34px;
+  width: 52px;
+  height: 40px;
   padding: 0;
   display: inline-flex;
   align-items: center;
@@ -134,8 +134,8 @@
 
 .artifact-guide-lock-ic {
   display: block;
-  width: 26px;
-  height: 26px;
+  width: 32px;
+  height: 32px;
   filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.25));
 }
 

@@ -92,8 +92,9 @@ artifactsRouter.put('/day-selected', async (req, res) => {
   const uid = req.user.id;
   const bizDate = parseBizDate(req);
   const selected = normalizeSelected(req.body?.selected);
-  if (selected.length !== 2) {
-    return res.status(400).json({ error: 'selected 需为 2 个神器名称' });
+  // 允许 0/1/2 个：解锁、只锁起/转、同时锁起+转
+  if (selected.length > 2) {
+    return res.status(400).json({ error: 'selected 最多 2 个神器名称' });
   }
   try {
     await pool.query(

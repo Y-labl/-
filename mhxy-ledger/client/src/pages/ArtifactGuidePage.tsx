@@ -552,7 +552,7 @@ export function ArtifactGuidePage() {
         const raw = Array.isArray(r.selected) ? r.selected.slice(0, 2) : [];
         const sel = raw.length === 2 ? normalizeArtifactDayPair(raw) : raw;
         setTodaySelected(sel);
-        setViewMode(sel.length === 2 ? 'today' : 'all');
+        setViewMode(sel.length ? 'today' : 'all');
       })
       .catch(() => {
         setTodaySelected([]);
@@ -829,24 +829,16 @@ export function ArtifactGuidePage() {
 
   const stars: Star[] = [1, 2, 3, 4, 5];
 
-  const lockAsToday = useCallback(
-    async (it: ArtifactLine) => {
-      const ph = artifactPhaseOf(it.name);
-      if (!ph) return;
+  const setTodayLock = useCallback(
+    async (phase: Phase, nameOrNull: string | null) => {
       const cur = splitSelectedArtifactsByPhase(todaySelected);
-      const nextQi =
-        ph === '起' ? it.name : cur.qi ?? artifactQiOfZhuan(it.name);
-      const nextZhuan =
-        ph === '转' ? it.name : cur.zhuan ?? artifactZhuanOfQi(it.name);
-      if (!nextQi || !nextZhuan) {
-        setUploadErr('无法自动凑齐「起/转」两条神器，请先通过截图识别设置今日神器。');
-        return;
-      }
-      const picked = normalizeArtifactDayPair([nextQi, nextZhuan]);
+      const nextQi = phase === '起' ? nameOrNull : cur.qi;
+      const nextZhuan = phase === '转' ? nameOrNull : cur.zhuan;
+      const picked = [nextQi, nextZhuan].filter(Boolean) as string[];
       try {
         await api.artifactDaySelectedPut({ bizDate, selected: picked });
-        setTodaySelected(picked);
-        setViewMode('today');
+        setTodaySelected(picked.length === 2 ? normalizeArtifactDayPair(picked) : picked);
+        setViewMode(picked.length ? 'today' : 'all');
         setUploadErr('');
       } catch (e) {
         setUploadErr(e instanceof Error ? e.message : '写入失败');
@@ -855,10 +847,15 @@ export function ArtifactGuidePage() {
     [bizDate, todaySelected],
   );
 
+  const locked = useMemo(() => splitSelectedArtifactsByPhase(todaySelected), [todaySelected]);
+
   const renderCard = (it: ArtifactLine, opts?: { showLock?: boolean }) => {
     const list = it.materialsByStar?.[viewStar] || [];
     const guide = guideContentByName[it.name] || null;
     const bossUrl = bossImageByName[it.name] || guide?.bossImageUrl || '';
+    const ph = artifactPhaseOf(it.name);
+    const isLocked =
+      ph === '起' ? locked.qi === it.name : ph === '转' ? locked.zhuan === it.name : false;
     return (
       <div key={it.id} className="card artifact-guide-card">
         <div className="artifact-guide-card-head">
@@ -872,33 +869,65 @@ export function ArtifactGuidePage() {
                 type="button"
                 className="btn btn-ghost btn-sm artifact-guide-lock-btn"
                 aria-label="锁定为今日神器"
-                onClick={() => void lockAsToday(it)}
+                title={isLocked ? '解除今日神器锁定' : '锁定为今日神器'}
+                onClick={() => {
+                  if (!ph) return;
+                  void setTodayLock(ph, isLocked ? null : it.name);
+                }}
               >
-                <svg
-                  className="artifact-guide-lock-ic"
-                  width="26"
-                  height="26"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  aria-hidden
-                >
-                  <path
-                    d="M7 11V8a5 5 0 0 1 10 0v3"
-                    stroke="#ffffff"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <rect
-                    x="6"
-                    y="11"
-                    width="12"
-                    height="10"
-                    rx="2"
-                    stroke="#ffffff"
-                    strokeWidth="3"
-                  />
-                </svg>
+                {isLocked ? (
+                  <svg
+                    className="artifact-guide-lock-ic"
+                    width="32"
+                    height="32"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-hidden
+                  >
+                    <path
+                      d="M16.5 11V8.4a4.5 4.5 0 0 0-9 0"
+                      stroke="#ffffff"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <rect
+                      x="6"
+                      y="11"
+                      width="12"
+                      height="10"
+                      rx="2"
+                      stroke="#ffffff"
+                      strokeWidth="3"
+                    />
+                  </svg>
+                ) : (
+                  <svg
+                    className="artifact-guide-lock-ic"
+                    width="32"
+                    height="32"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-hidden
+                  >
+                    <path
+                      d="M7 11V8a5 5 0 0 1 10 0v3"
+                      stroke="#ffffff"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <rect
+                      x="6"
+                      y="11"
+                      width="12"
+                      height="10"
+                      rx="2"
+                      stroke="#ffffff"
+                      strokeWidth="3"
+                    />
+                  </svg>
+                )}
               </button>
             ) : null}
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => openEdit(it.id, viewStar)}>
@@ -1101,16 +1130,16 @@ export function ArtifactGuidePage() {
       <div className="card" style={{ padding: '0.85rem 1rem', marginBottom: '0.75rem' }}>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
           <strong>当日神器（{bizDate}）</strong>
-          {todaySelected.length === 2 ? (
+          {todaySelected.length ? (
             <span className="muted">
-              {todaySelected[0]}、{todaySelected[1]}
+              起：{locked.qi || '未锁定'}，转：{locked.zhuan || '未锁定'}
             </span>
           ) : (
             <span className="muted">未设置。上传截图后本页将只显示当天 2 种神器。</span>
           )}
         </div>
         <div style={{ display: 'flex', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
-          {todaySelected.length === 2 ? (
+          {todaySelected.length ? (
             <button type="button" className="btn btn-primary" onClick={() => setViewMode('today')}>
               今日神器
             </button>
@@ -1226,9 +1255,89 @@ export function ArtifactGuidePage() {
           ))}
         </div>
       ) : (
-        <div className="artifact-guide-list">
-          {items.map((it) => renderCard(it, { showLock: Boolean(q.trim()) }))}
-        </div>
+        (() => {
+          const kw = q.trim();
+          const hasAnyLock = Boolean(locked.qi || locked.zhuan);
+          const byName = new Map<string, ArtifactLine>();
+          for (const it of stored.items) byName.set(it.name, it);
+          const lockedQi = locked.qi ? byName.get(locked.qi) || null : null;
+          const lockedZhuan = locked.zhuan ? byName.get(locked.zhuan) || null : null;
+
+          const targetPhase: Phase | null =
+            locked.qi && !locked.zhuan ? '转' : locked.zhuan && !locked.qi ? '起' : null;
+          const results =
+            targetPhase && kw
+              ? stored.items
+                  .filter((x) => x.phase === targetPhase)
+                  .filter((x) =>
+                    targetPhase === '起'
+                      ? x.name.includes(kw) || (artifactZhuanOfQi(x.name) || '').includes(kw)
+                      : x.name.includes(kw),
+                  )
+                  .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
+              : [];
+
+          return (
+            <div>
+              {hasAnyLock ? (
+                targetPhase && kw ? (
+                  // 只有一边锁定时：锁定卡片固定在对应列，搜索结果填满另一列（避免上方留白）
+                  <div className="artifact-guide-pair-row" style={{ marginBottom: '0.75rem' }}>
+                    {lockedZhuan && !lockedQi ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        {results.map((it) => renderCard(it, { showLock: true }))}
+                      </div>
+                    ) : (
+                      <div>{lockedQi ? renderCard(lockedQi, { showLock: true }) : null}</div>
+                    )}
+
+                    {lockedZhuan && !lockedQi ? (
+                      <div>{renderCard(lockedZhuan, { showLock: true })}</div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        {results.map((it) => renderCard(it, { showLock: true }))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  // 两边都锁定（或没输入关键字无法搜索）：固定起/转位置展示
+                  <div className="artifact-guide-pair-row" style={{ marginBottom: '0.75rem' }}>
+                    {lockedQi ? (
+                      renderCard(lockedQi, { showLock: true })
+                    ) : (
+                      <div className="card artifact-guide-card artifact-guide-card--empty">
+                        <div className="muted" style={{ fontSize: '0.9rem', fontWeight: 800 }}>
+                          起神器：未锁定
+                        </div>
+                        <div className="muted" style={{ marginTop: 6, fontSize: '0.82rem' }}>
+                          在下方搜索结果里点击“锁”即可锁定起神器（位置固定在左侧）。
+                        </div>
+                      </div>
+                    )}
+                    {lockedZhuan ? (
+                      renderCard(lockedZhuan, { showLock: true })
+                    ) : (
+                      <div className="card artifact-guide-card artifact-guide-card--empty">
+                        <div className="muted" style={{ fontSize: '0.9rem', fontWeight: 800 }}>
+                          转神器：未锁定
+                        </div>
+                        <div className="muted" style={{ marginTop: 6, fontSize: '0.82rem' }}>
+                          在下方搜索结果里点击“锁”即可锁定转神器（位置固定在右侧）。
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              ) : null}
+
+              {!hasAnyLock ? (
+                <div className="artifact-guide-list">
+                  {items.map((it) => renderCard(it, { showLock: Boolean(kw) }))}
+                </div>
+              ) : null}
+            </div>
+          );
+        })()
       )}
 
       <input
