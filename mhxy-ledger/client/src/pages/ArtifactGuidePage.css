@@ -118,6 +118,33 @@
   flex-shrink: 0;
 }
 
+.artifact-guide-lock-btn {
+  width: 42px;
+  height: 34px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.95);
+  line-height: 1;
+  clip-path: none;
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.artifact-guide-lock-ic {
+  display: block;
+  width: 26px;
+  height: 26px;
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.25));
+}
+
+.artifact-guide-lock-btn:hover {
+  border-color: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 0 14px rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 1);
+}
+
 .artifact-guide-mats {
   margin: 0;
   padding-left: 1.15rem;

@@ -5,9 +5,11 @@ import { BIZ_DATE_PAGE } from '../utils/pageBizDate';
 import { usePageBizDate } from '../utils/usePageBizDate';
 import {
   artifactPhaseOf,
+  artifactQiOfZhuan,
   artifactZhuanOfQi,
   normalizeArtifactDayPair,
   pickOneQiOneZhuanFromHits,
+  splitSelectedArtifactsByPhase,
 } from '../utils/artifacts';
 
 type Phase = '起' | '转';
@@ -827,7 +829,33 @@ export function ArtifactGuidePage() {
 
   const stars: Star[] = [1, 2, 3, 4, 5];
 
-  const renderCard = (it: ArtifactLine) => {
+  const lockAsToday = useCallback(
+    async (it: ArtifactLine) => {
+      const ph = artifactPhaseOf(it.name);
+      if (!ph) return;
+      const cur = splitSelectedArtifactsByPhase(todaySelected);
+      const nextQi =
+        ph === '起' ? it.name : cur.qi ?? artifactQiOfZhuan(it.name);
+      const nextZhuan =
+        ph === '转' ? it.name : cur.zhuan ?? artifactZhuanOfQi(it.name);
+      if (!nextQi || !nextZhuan) {
+        setUploadErr('无法自动凑齐「起/转」两条神器，请先通过截图识别设置今日神器。');
+        return;
+      }
+      const picked = normalizeArtifactDayPair([nextQi, nextZhuan]);
+      try {
+        await api.artifactDaySelectedPut({ bizDate, selected: picked });
+        setTodaySelected(picked);
+        setViewMode('today');
+        setUploadErr('');
+      } catch (e) {
+        setUploadErr(e instanceof Error ? e.message : '写入失败');
+      }
+    },
+    [bizDate, todaySelected],
+  );
+
+  const renderCard = (it: ArtifactLine, opts?: { showLock?: boolean }) => {
     const list = it.materialsByStar?.[viewStar] || [];
     const guide = guideContentByName[it.name] || null;
     const bossUrl = bossImageByName[it.name] || guide?.bossImageUrl || '';
@@ -839,6 +867,40 @@ export function ArtifactGuidePage() {
             {it.name}
           </div>
           <div className="artifact-guide-card-actions">
+            {opts?.showLock ? (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm artifact-guide-lock-btn"
+                aria-label="锁定为今日神器"
+                onClick={() => void lockAsToday(it)}
+              >
+                <svg
+                  className="artifact-guide-lock-ic"
+                  width="26"
+                  height="26"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  aria-hidden
+                >
+                  <path
+                    d="M7 11V8a5 5 0 0 1 10 0v3"
+                    stroke="#ffffff"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <rect
+                    x="6"
+                    y="11"
+                    width="12"
+                    height="10"
+                    rx="2"
+                    stroke="#ffffff"
+                    strokeWidth="3"
+                  />
+                </svg>
+              </button>
+            ) : null}
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => openEdit(it.id, viewStar)}>
               编辑 {viewStar}★
             </button>
@@ -1158,13 +1220,15 @@ export function ArtifactGuidePage() {
         <div className="artifact-guide-pair-list">
           {allModePairs.map((p) => (
             <div key={p.qi.id} className="artifact-guide-pair-row">
-              {renderCard(p.qi)}
-              {p.zhuan ? renderCard(p.zhuan) : renderEmptyZhuan(p.qi.name)}
+              {renderCard(p.qi, { showLock: Boolean(q.trim()) })}
+              {p.zhuan ? renderCard(p.zhuan, { showLock: Boolean(q.trim()) }) : renderEmptyZhuan(p.qi.name)}
             </div>
           ))}
         </div>
       ) : (
-        <div className="artifact-guide-list">{items.map((it) => renderCard(it))}</div>
+        <div className="artifact-guide-list">
+          {items.map((it) => renderCard(it, { showLock: Boolean(q.trim()) }))}
+        </div>
       )}
 
       <input
