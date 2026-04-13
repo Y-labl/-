@@ -985,7 +985,7 @@ export function TasksPage() {
                   </td>
                   <td className="tasks-wukai-task" title={t.description}>
                     <span className="tasks-wukai-name">{t.name}</span>
-                    {/神器/.test(String(t.name || '')) ? (
+                    {/神器任务/.test(String(t.name || '')) ? (
                       artifactSelected.length === 2 ? (
                         /（\s*起\s*）/.test(String(t.name || '')) && artifactByPhase.qi ? (
                           <span className="tasks-wukai-subline">神器：{artifactByPhase.qi}</span>

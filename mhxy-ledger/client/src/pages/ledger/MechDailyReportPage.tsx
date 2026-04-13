@@ -285,14 +285,7 @@ export default function MechDailyReportPage() {
                   </td>
                   <td className="num mech-daily-team-cells">
                     {data.pointCardPoints > 0 || data.savedAt ? (
-                      <>
-                        <div>{formatWanAmount(data.cashGameGoldW)}</div>
-                        {data.teamCashGameGoldW && data.teamCashGameGoldW.some((x) => Number(x) > 0) ? (
-                          <div className="muted mech-daily-team-sub">
-                            各队明细：{formatTeamWanBreakdown(data.teamCashGameGoldW)}
-                          </div>
-                        ) : null}
-                      </>
+                      <div>{formatWanAmount(data.cashGameGoldW)}</div>
                     ) : (
                       '—'
                     )}

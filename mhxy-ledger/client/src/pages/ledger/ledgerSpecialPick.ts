@@ -1,6 +1,7 @@
-/** 记账台：点击特定物品时需先选等级 / 灵饰书另选种类 / 兽决另选种类 */
+/** 记账台：点击特定物品时需先选等级 / 灵饰书另选种类 / 兽决另选种类 / 如意丹选五行 */
 
 import { BEAST_SCROLL_ITEM_NAME } from './beastScrollCatalog';
+import { RUYI_DAN_ITEM_NAME } from './ruyiDanCatalog';
 import { getTieredLevelsForItem } from './tieredItemCatalog';
 
 export const LEDGER_PICK_LEVEL_ITEM_NAMES = ['晶石', '附魔宝珠', '珍珠', '炼妖石', '种子'] as const;
@@ -20,10 +21,11 @@ export function getLedgerPickLevelOptions(itemName: string): readonly string[] {
 /** 灵饰书 · 种类 */
 export const LEDGER_LINGSHI_TYPES = ['戒指', '耳饰', '手镯', '配饰'] as const;
 
-export type LedgerPickKind = 'level' | 'book' | 'beast';
+export type LedgerPickKind = 'level' | 'book' | 'beast' | 'ruyi';
 
 export function getLedgerPickKind(rawName: string): LedgerPickKind | null {
   const name = rawName.trim();
+  if (name === RUYI_DAN_ITEM_NAME) return 'ruyi';
   if (name === LEDGER_PICK_BOOK_ITEM_NAME) return 'book';
   if (name === LEDGER_PICK_BEAST_ITEM_NAME) return 'beast';
   if ((LEDGER_PICK_LEVEL_ITEM_NAMES as readonly string[]).includes(name)) return 'level';

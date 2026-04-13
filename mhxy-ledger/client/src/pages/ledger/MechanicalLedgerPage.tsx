@@ -24,6 +24,13 @@ import {
   getLedgerPickLevelOptions,
 } from './ledgerSpecialPick';
 import {
+  RUYI_ELEMENTS,
+  buildRuyiDanDisplayName,
+  getRuyiDanPrice,
+  loadRuyiDanPrices,
+  type RuyiElement,
+} from './ruyiDanCatalog';
+import {
   buildBeastScrollDisplayName,
   loadBeastScrollRows,
 } from './beastScrollCatalog';
@@ -43,7 +50,6 @@ import {
   BIZ_DATE_PAGE,
   getLedgerBizDate,
   lockLedgerBizDate,
-  unlockLedgerBizDateAndAdvanceToToday,
 } from '../../utils/pageBizDate';
 import { usePageBizDate } from '../../utils/usePageBizDate';
 import { TablePaginationBar } from '../../components/TablePaginationBar';
@@ -152,6 +158,32 @@ function emptyTeamPrincipalStrs(): [string, string, string, string] {
 
 /** 库内「万」转「两」展示时，若单格数值极大则视为历史误存（按两原样显示） */
 const TEAM_MONEY_LIANG_THRESHOLD = 1_000_000;
+
+/** 点「清除计时」后：该业务日再进入记账台不应用 /daily 回填，直至用户录入物品或现金/本金（两） */
+const MECH_LEDGER_SKIP_HYDRATE_BIZ_KEY = 'mhxy_mech_ledger_skip_hydrate_biz';
+
+function readSkipHydrateBizFromSession(): string {
+  try {
+    const s = sessionStorage.getItem(MECH_LEDGER_SKIP_HYDRATE_BIZ_KEY);
+    if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return '';
+    return s;
+  } catch {
+    return '';
+  }
+}
+
+function shouldSkipHydrateFromServer(biz: string): boolean {
+  const hold = readSkipHydrateBizFromSession();
+  return Boolean(hold && hold === biz);
+}
+
+function clearLedgerSkipHydrateBizFromSession(): void {
+  try {
+    sessionStorage.removeItem(MECH_LEDGER_SKIP_HYDRATE_BIZ_KEY);
+  } catch {
+    /* ignore */
+  }
+}
 
 /** 库内「万」→ 输入框「两」（×10000）；若单格极大则视为历史误存按两原样显示 */
 function teamWanNumsToInputStrs(nums: number[] | undefined | null): [string, string, string, string] {
@@ -420,11 +452,12 @@ export default function MechanicalLedgerPage() {
   const [pickModal, setPickModal] = useState<{
     item: LedgerItemDef;
     valueW: number;
-    kind: 'level' | 'book' | 'beast';
+    kind: 'level' | 'book' | 'beast' | 'ruyi';
   } | null>(null);
   const [pickLevel, setPickLevel] = useState('120');
   const [pickBookType, setPickBookType] = useState<string>(LEDGER_LINGSHI_TYPES[0]);
   const [pickBeastId, setPickBeastId] = useState('');
+  const [pickRuyiElement, setPickRuyiElement] = useState<RuyiElement>(RUYI_ELEMENTS[0]);
 
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -517,6 +550,7 @@ export default function MechanicalLedgerPage() {
 
   /**
    * 当日物品行 + HUD：仅从 /daily（库）恢复；换机/换浏览器同一账号以数据库为准。
+   * 若本机曾对该业务日点「清除计时」，则同业务日再进页不应用 /daily 回填，直至用户录入物品或现金/本金。
    * ledger_run_start_at_ms 非空 = 上次落库时计时未停（未点停表），刷新后按同一墙钟起点继续计时；为空则停表，仅显示底数（停表后可用 elapsed_sec 兜底总秒数）。
    */
   useEffect(() => {
@@ -529,6 +563,24 @@ export default function MechanicalLedgerPage() {
     lastLoadedBizDateRef.current = biz;
     (async () => {
       try {
+        const skipFromServer = shouldSkipHydrateFromServer(biz);
+        if (skipFromServer) {
+          if (cancelled) return;
+          setOnlinePreset(DEFAULT_ONLINE_PRESET);
+          setOnlineExtra(0);
+          setBaseElapsedSec(0);
+          setRunStartAt(null);
+          setPointCardSeg({ closedSlices: [], segmentStartElapsed: 0 });
+          setPointCardBaseline(0);
+          setTodayLines([]);
+          setTeamPrincipalWanStrs(emptyTeamPrincipalStrs());
+          setTeamCashWanStrs(emptyTeamPrincipalStrs());
+          if (!cancelled) {
+            hudHydratedForBizRef.current = biz;
+            suppressAutoMetaSaveBizRef.current = biz;
+            suppressAutoMetaSaveUntilRef.current = Date.now() + 900;
+          }
+        } else {
         let day: MechLedgerDailyResponse | null = null;
         try {
           day = await api.mechLedgerDaily(biz);
@@ -619,6 +671,7 @@ export default function MechanicalLedgerPage() {
           hudHydratedForBizRef.current = biz;
           suppressAutoMetaSaveBizRef.current = biz;
           suppressAutoMetaSaveUntilRef.current = Date.now() + 900;
+        }
         }
       } catch {
         /* 未登录或表未建 */
@@ -945,6 +998,10 @@ export default function MechanicalLedgerPage() {
       setPickBeastId(br[0]?.id ?? '');
       return;
     }
+    if (pickModal.kind === 'ruyi') {
+      setPickRuyiElement(RUYI_ELEMENTS[0]);
+      return;
+    }
     const opts = getLedgerPickLevelOptions(pickModal.item.name);
     const pick =
       (opts.includes('120') ? '120' : null) ??
@@ -1016,9 +1073,13 @@ export default function MechanicalLedgerPage() {
       const p = row?.priceW;
       return p != null && p > 0 ? p : valueW;
     }
+    if (kind === 'ruyi') {
+      const p = getRuyiDanPrice(loadRuyiDanPrices(), pickRuyiElement);
+      return p > 0 ? p : valueW;
+    }
     const p = getTieredLedgerUnitPrice(item.name, pickLevel);
     return p > 0 ? p : valueW;
-  }, [pickModal, pickLevel, pickBookType, pickBeastId]);
+  }, [pickModal, pickLevel, pickBookType, pickBeastId, pickRuyiElement]);
 
   const itemProfitW = useMemo(
     () => todayLines.reduce((sum, l) => sum + l.valueW * l.count, 0),
@@ -1037,6 +1098,7 @@ export default function MechanicalLedgerPage() {
         window.setTimeout(() => setToast(null), 2200);
         return;
       }
+      clearLedgerSkipHydrateBizFromSession();
       const cid = catalogItemIdFromLedgerDefId(item.id);
       setTodayLines((prev) => {
         const idx = prev.findIndex((p) => p.name === item.name);
@@ -1123,6 +1185,10 @@ export default function MechanicalLedgerPage() {
       }
       name = buildBeastScrollDisplayName(row.label);
       if (row.priceW > 0) w = row.priceW;
+    } else if (kind === 'ruyi') {
+      name = buildRuyiDanDisplayName(pickRuyiElement);
+      const p = getRuyiDanPrice(loadRuyiDanPrices(), pickRuyiElement);
+      if (p > 0) w = p;
     } else {
       name = buildLedgerPickedDisplayName(item.name, pickLevel);
       const p = getTieredLedgerUnitPrice(item.name, pickLevel);
@@ -1130,7 +1196,7 @@ export default function MechanicalLedgerPage() {
     }
     addTodayItem({ ...item, name, valueW: w });
     setPickModal(null);
-  }, [pickModal, pickLevel, pickBookType, pickBeastId, addTodayItem]);
+  }, [pickModal, pickLevel, pickBookType, pickBeastId, pickRuyiElement, addTodayItem]);
 
   const removeLine = useCallback(
     (id: string) => {
@@ -1404,7 +1470,8 @@ export default function MechanicalLedgerPage() {
     return () => window.clearInterval(id);
   }, [sessionReady, bizDate, flushPendingMetaSave]);
 
-  const applyClearLedgerTimer = useCallback(async (snapshotBizDate: string) => {
+  /** 仅重置本页状态：不向服务器写入物品行、meta、client-prefs 等；库中数据不变。刷新或重进页面会从 /daily 恢复。 */
+  const applyClearLedgerTimer = useCallback(() => {
     const resetLocal = (opts?: { baseline?: number; toast?: string }) => {
       if (opts?.baseline != null) setPointCardBaseline(opts.baseline);
       setBaseElapsedSec(0);
@@ -1436,42 +1503,26 @@ export default function MechanicalLedgerPage() {
       }
     }
 
-    try {
-      /**
-       * 补写防抖中的物品行 + 当前 HUD 到当日 meta（save-meta 不更新 point_card_saved_at）。
-       * 不在此调用 save-day、不向库写入空白日或空物品表——避免覆盖「保存收益」快照与 mech_catalog_line_agg。
-       */
-      if (syncTimerRef.current) {
-        clearTimeout(syncTimerRef.current);
-        syncTimerRef.current = null;
-      }
-      await flushSyncTodayLines(todayLines);
-      await api.mechLedgerSaveMeta(buildMechLedgerMetaPayload(snapshotBizDate));
-    } catch (e) {
-      showToast(
-        (e instanceof Error ? e.message : '同步失败') +
-          '。未能把当前界面同步到数据库，已取消清除。可稍后重试，或先点「保存收益」再打快照。',
-      );
-      return;
+    if (syncTimerRef.current) {
+      clearTimeout(syncTimerRef.current);
+      syncTimerRef.current = null;
     }
-
-    unlockLedgerBizDateAndAdvanceToToday();
+    // 避免紧随其后的 HUD effect 用「已清空」状态立刻 save-meta 覆盖库内数据
+    hudMetaEffectSaveEnabledRef.current = false;
     resetLocal({ baseline: 0 });
+    try {
+      sessionStorage.setItem(MECH_LEDGER_SKIP_HYDRATE_BIZ_KEY, getLedgerBizDate());
+    } catch {
+      /* private mode / disabled storage */
+    }
     showToast(
-      `已重置记账台界面（计时、今日收益表、夜叉等）。数据库中已有记录与「保存收益」快照未被删除；每日收益、总览请选对业务日查看。若曾计时锁定，业务日已对齐到自然日「今天」。`,
+      '已重置记账台本页显示（计时、今日收益表、夜叉、本金/现金等）。未改服务器数据；同一业务日离开再进本页也不会自动从库回填，录入物品或现金/本金后即恢复与库同步。',
     );
-  }, [
-    buildMechLedgerMetaPayload,
-    flushSyncTodayLines,
-    showToast,
-    teamCashWanStrs,
-    teamSlotCount,
-    todayLines,
-  ]);
+  }, [showToast, teamCashWanStrs, teamSlotCount]);
 
   const confirmClearLedger = useCallback(() => {
     setClearTimerConfirmOpen(false);
-    void applyClearLedgerTimer(getLedgerBizDate());
+    applyClearLedgerTimer();
   }, [applyClearLedgerTimer]);
 
   const confirmRemoveLineQty = useCallback(() => {
@@ -2086,6 +2137,7 @@ export default function MechanicalLedgerPage() {
                             prev[3],
                           ];
                           next[i] = v;
+                          if (next.some((x) => String(x).trim() !== '')) clearLedgerSkipHydrateBizFromSession();
                           return next;
                         });
                       }}
@@ -2138,6 +2190,7 @@ export default function MechanicalLedgerPage() {
                             prev[3],
                           ];
                           next[i] = v;
+                          if (next.some((x) => String(x).trim() !== '')) clearLedgerSkipHydrateBizFromSession();
                           return next;
                         });
                       }}
@@ -2641,10 +2694,9 @@ export default function MechanicalLedgerPage() {
             >
               <h2 id="mech-clear-timer-title">确认清除？</h2>
               <p style={{ margin: '0 0 1rem', fontSize: '0.85rem', color: '#94a3b8', lineHeight: 1.5 }}>
-                会补写未发出的物品行与 HUD 到库（与平时实时同步一致，<strong style={{ color: '#e2e8f0' }}>不会删除</strong>
-                库里已有历史、物品汇总或「保存收益」正式快照）。随后<strong style={{ color: '#e2e8f0' }}>仅清空本页</strong>
-                ：计时、今日收益表、夜叉、本金/现金等；若曾锁定业务日则对齐到自然日「今天」。
-                <strong style={{ color: '#fbbf24' }}>补写失败则不会重置界面。</strong>
+                <strong style={{ color: '#e2e8f0' }}>不向服务器写入或删除任何数据</strong>
+                （物品汇总、当日 meta、业务日锁定偏好等均不因本操作而变）。随后仅清空本页：计时、今日收益表、夜叉、本金/现金等。
+                同一业务日<strong style={{ color: '#e2e8f0' }}>离开再进本页</strong>也不会用库里的数据自动填满，直至你再次录入物品或现金/本金（两）；之后照常同步到库。
               </p>
               <div className="mech-pick-actions">
                 <button type="button" className="btn btn-primary" onClick={confirmClearLedger}>
@@ -2838,14 +2890,18 @@ export default function MechanicalLedgerPage() {
                   ? '灵饰书：选择等级与种类'
                   : pickModal.kind === 'beast'
                     ? '兽决：选择种类'
-                    : `${pickModal.item.name}：选择等级`}
+                    : pickModal.kind === 'ruyi'
+                      ? '如意丹：选择五行'
+                      : `${pickModal.item.name}：选择等级`}
               </h2>
               <p style={{ margin: '0 0 0.5rem', fontSize: '0.8rem', color: '#94a3b8' }}>
                 {pickModal.kind === 'book'
                   ? `单价优先用物品库灵饰书定价表；未设置时用格子价 ${pickModal.valueW} w。`
                   : pickModal.kind === 'beast'
                     ? `单价优先用物品库兽决种类定价；未设置时用格子价 ${pickModal.valueW} w。`
-                    : `单价优先用物品库各等级定价；未设置时用格子价 ${pickModal.valueW} w。`}
+                    : pickModal.kind === 'ruyi'
+                      ? `单价按物品库「如意丹」金木水火土分别定价；未设置时用格子价 ${pickModal.valueW} w。`
+                      : `单价优先用物品库各等级定价；未设置时用格子价 ${pickModal.valueW} w。`}
               </p>
               {pickModal.kind === 'beast' ? (
                 <fieldset className="mech-pick-radio-group" style={{ margin: '0.75rem 0 1rem' }}>
@@ -2861,6 +2917,24 @@ export default function MechanicalLedgerPage() {
                           onChange={() => setPickBeastId(r.id)}
                         />
                         <span>{r.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              ) : pickModal.kind === 'ruyi' ? (
+                <fieldset className="mech-pick-radio-group" style={{ margin: '0.75rem 0 1rem' }}>
+                  <legend>五行</legend>
+                  <div className="mech-pick-radios">
+                    {RUYI_ELEMENTS.map((el) => (
+                      <label key={el} className="mech-pick-radio-label">
+                        <input
+                          type="radio"
+                          name="ledger-ruyi-element"
+                          value={el}
+                          checked={pickRuyiElement === el}
+                          onChange={() => setPickRuyiElement(el)}
+                        />
+                        <span>{el}</span>
                       </label>
                     ))}
                   </div>
@@ -2909,7 +2983,8 @@ export default function MechanicalLedgerPage() {
                 </div>
               )}
               <p className="mech-pick-preview">
-                将按 <strong>{pickPreviewW.toFixed(2)} w</strong> 计入右侧「今日收益」列表（改等级/种类会即时变化）
+                将按 <strong>{pickPreviewW.toFixed(2)} w</strong> 计入右侧「今日收益」列表
+                {pickModal.kind === 'ruyi' ? '（改五行会即时变化）' : '（改等级/种类会即时变化）'}
               </p>
               <div className="mech-pick-actions">
                 <button type="button" className="btn btn-primary" onClick={confirmPickModal}>
