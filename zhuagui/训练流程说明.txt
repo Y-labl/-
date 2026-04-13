@@ -1,0 +1,39 @@
+抓鬼 YOLO：100 张七类 + 1056 张「钟馗+鼠标」分开训练
+===============================================
+
+一、你仓库里实际有的数据
+  - annotation_100：100 张截图 + labels（7 类：马副将…小怪 + 鼠标指针 id=6）
+  - yolo_dataset：1056 张，原标签只有钟馗(3)与鼠标(6)，已备份为 labels_backup_3_6
+  - raw_screenshots：约 1060 张未标注，可用伪标注脚本生成初稿
+
+二、已自动做好的事（若你已同步本工程）
+  1) 修正 dataset/data.yaml 路径（相对 dataset/annotation_100）
+  2) 为缺失的 0030/0051/0092 写了「占位标签」（从相邻编号复制，务必在 LabelImg 里微调）
+  3) 三图已移回 annotation_100/images/
+  4) yolo_dataset 标签已 remap 为 2 类（0=钟馗 1=鼠标），原标签在 labels_backup_3_6
+
+三、推荐命令顺序（均在「zhuagui」根目录打开终端）
+  A. 二分类（鼠标 + 钟馗）— 单独权重，输出到 trained_separate/mouse_zhongkui_2c/
+       python tools\train_mouse_2c.py
+     （若需恢复 yolo_dataset 为原始 3/6 编号：python tools\restore_yolo_labels.py）
+
+  B. 给 100 张注入鼠标框（class 6，取 2 类模型里 id=1 的最高分框）
+       python tools\inject_mouse_only.py
+
+  C. 七类正式训练（100 张，含 NPC+鼠标）
+       cd dataset
+       python ..\tools\train_local_full.py
+     或双击：开始完整训练.bat
+
+四、raw_screenshots 伪标注（需已有 NPC 与鼠标权重）
+       python tools\auto_label_raw_screenshots.py --npc <七类best.pt> --mouse <二分类best.pt>
+     输出在 dataset/auto_labeled_raw/，请人工抽查后再并入训练集。
+
+五、环境
+  - 已建议安装：pip install "polars[rtcompat]"，减少老 CPU 上 Ultralytics 崩溃概率。
+
+六、运行时 bot 第一版（与训练无关）
+  - 安装：pip install -r requirements_bot.txt
+  - 改 config/bot_default.yaml 里 window.title_substring、roi.task_tracker
+  - 探测截图：python run_bot.py --probe
+  - 试跑状态机（默认 dry_run: true 不会真点鼠标）：python run_bot.py

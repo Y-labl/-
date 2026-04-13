@@ -1,0 +1,14 @@
+# 抓鬼 bot 第一版依赖（与训练 ultralytics 可分开装）
+pyautogui>=0.9.54
+pygetwindow>=0.0.9
+Pillow>=10.0.0
+PyYAML>=6.0
+numpy>=1.24.0
+opencv-python-headless>=4.8.0
+
+# 可选：任务栏 OCR
+# paddlepaddle
+# paddleocr
+
+# 可选：与训练同一套
+# ultralytics>=8.0.0

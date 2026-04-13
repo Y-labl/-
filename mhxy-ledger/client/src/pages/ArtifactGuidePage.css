@@ -1,0 +1,190 @@
+.artifact-guide-tabs {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 0.25rem 0 0;
+}
+
+.artifact-guide-tab {
+  appearance: none;
+  border: 1px solid rgba(0, 229, 255, 0.18);
+  background: rgba(0, 229, 255, 0.06);
+  color: rgba(255, 255, 255, 0.82);
+  padding: 0.55rem 0.75rem;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.artifact-guide-tab.active {
+  background: rgba(0, 229, 255, 0.14);
+  border-color: rgba(0, 229, 255, 0.32);
+  color: var(--gold-bright);
+}
+
+.artifact-guide-controls {
+  margin: 0.65rem 0 0.9rem;
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.artifact-guide-controls .input {
+  flex: 1;
+  min-width: 220px;
+}
+
+.artifact-guide-star-tabs {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.artifact-guide-star-tab {
+  appearance: none;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(148, 163, 184, 0.08);
+  color: rgba(255, 255, 255, 0.78);
+  padding: 0.42rem 0.55rem;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 0.82rem;
+}
+
+.artifact-guide-star-tab.active {
+  border-color: rgba(0, 229, 255, 0.32);
+  background: rgba(0, 229, 255, 0.12);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.artifact-guide-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+@media (max-width: 880px) {
+  .artifact-guide-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+.artifact-guide-pair-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.artifact-guide-pair-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+@media (max-width: 880px) {
+  .artifact-guide-pair-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.artifact-guide-card {
+  padding: 0.85rem 0.9rem;
+}
+
+.artifact-guide-card--empty {
+  opacity: 0.72;
+}
+
+.artifact-guide-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.55rem;
+}
+
+.artifact-guide-card-title {
+  font-weight: 900;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.artifact-guide-card-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.artifact-guide-mats {
+  margin: 0;
+  padding-left: 1.15rem;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.88rem;
+  line-height: 1.42;
+}
+
+.artifact-guide-mats li {
+  margin: 0.15rem 0;
+}
+
+.artifact-guide-modal {
+  width: min(760px, calc(100vw - 2rem));
+}
+
+/** 粘贴截图：紧凑高度，预览图在框内缩放 */
+.artifact-guide-paste-zone {
+  margin-top: 8px;
+  padding: 0.4rem 0.6rem;
+  height: 4.5rem;
+  max-height: 4.5rem;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 8px;
+  color: #94a3b8;
+  font-size: 0.78rem;
+  outline: none;
+  background: rgba(2, 10, 18, 0.35);
+}
+
+.artifact-guide-paste-zone:focus-visible {
+  border-color: rgba(0, 229, 255, 0.35);
+  box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.12);
+}
+
+.artifact-guide-paste-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  line-height: 1.35;
+}
+
+.artifact-guide-paste-preview {
+  flex: 1;
+  min-height: 0;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 6px;
+}
+
+.artifact-guide-paste-preview img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  display: block;
+}
+

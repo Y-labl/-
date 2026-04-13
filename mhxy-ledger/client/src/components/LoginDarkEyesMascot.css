@@ -1,0 +1,78 @@
+.login-dark-eyes-wrap {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  max-width: min(320px, 88vw);
+  margin: 0 auto;
+}
+
+.login-dark-eyes-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  filter: drop-shadow(0 0 24px rgba(0, 229, 255, 0.12));
+}
+
+.login-dark-eye-socket {
+  fill: rgba(6, 10, 16, 0.92);
+  stroke: rgba(0, 229, 255, 0.38);
+  stroke-width: 1.15;
+  animation: login-eye-socket-pulse 3s ease-in-out infinite;
+}
+
+@keyframes login-eye-socket-pulse {
+  0%,
+  100% {
+    stroke-opacity: 0.55;
+  }
+  50% {
+    stroke-opacity: 1;
+  }
+}
+
+.login-dark-eye-sphere {
+  fill: url(#loginEyeBallGrad);
+  filter: url(#loginEyeSoft);
+}
+
+.login-dark-eye-ball {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: login-eye-ball-breathe 2.6s ease-in-out infinite;
+}
+
+@keyframes login-eye-ball-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.04);
+  }
+}
+
+.login-dark-eye-glint {
+  fill: rgba(200, 230, 255, 0.55);
+  pointer-events: none;
+}
+
+.login-dark-eye-glint-sm {
+  fill: rgba(255, 255, 255, 0.22);
+}
+
+.login-dark-eyes-smile {
+  stroke: rgba(0, 229, 255, 0.28);
+  stroke-width: 2;
+  animation: login-smile-glow 4s ease-in-out infinite;
+}
+
+@keyframes login-smile-glow {
+  0%,
+  100% {
+    stroke-opacity: 0.35;
+  }
+  50% {
+    stroke-opacity: 0.85;
+  }
+}

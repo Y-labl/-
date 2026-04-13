@@ -1,0 +1,8 @@
+=== pipeline start 2026-03-22T22:28:17.245775 ===
+[2026-03-22T22:28:17] START mouse_2c: D:\Programs\Python311\python.exe D:\Program Files\mhxy\zhuagui\tools\train_mouse_2c.py
+[2026-03-23T00:40:13] END mouse_2c exit=0
+[2026-03-23T00:40:13] START inject_mouse: D:\Programs\Python311\python.exe D:\Program Files\mhxy\zhuagui\tools\inject_mouse_only.py
+[2026-03-23T00:40:32] END inject_mouse exit=0
+[2026-03-23T00:40:32] START full_7c: D:\Programs\Python311\python.exe D:\Program Files\mhxy\zhuagui\tools\train_local_full.py
+[2026-03-23T01:14:38] END full_7c exit=3221225477
+[2026-03-23T01:14:38] ABORT: step full_7c failed

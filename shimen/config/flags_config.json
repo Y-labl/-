@@ -1,0 +1,142 @@
+{
+  "长安城酒店": {
+    "map": "长安城",
+    "x": 450,
+    "y": 100,
+    "enabled": true,
+    "description": "长安城酒店门口，靠近杂货店"
+  },
+  "长安城驿站": {
+    "map": "长安城",
+    "x": 380,
+    "y": 20,
+    "enabled": true,
+    "description": "长安城驿站，连接各地图"
+  },
+  "长安城商会": {
+    "map": "长安城",
+    "x": 520,
+    "y": 180,
+    "enabled": true,
+    "description": "长安城宠物商会"
+  },
+  "长安城衙门": {
+    "map": "长安城",
+    "x": 200,
+    "y": 150,
+    "enabled": true,
+    "description": "长安城衙门，师门任务常用"
+  },
+  "长安城镖局": {
+    "map": "长安城",
+    "x": 300,
+    "y": 250,
+    "enabled": true,
+    "description": "长安城镖局"
+  },
+  "建邺城衙门": {
+    "map": "建邺城",
+    "x": 120,
+    "y": 80,
+    "enabled": true,
+    "description": "建邺城衙门"
+  },
+  "建邺城驿站": {
+    "map": "建邺城",
+    "x": 180,
+    "y": 200,
+    "enabled": true,
+    "description": "建邺城驿站"
+  },
+  "傲来国驿站": {
+    "map": "傲来国",
+    "x": 200,
+    "y": 150,
+    "enabled": true,
+    "description": "傲来国驿站"
+  },
+  "傲来国酒店": {
+    "map": "傲来国",
+    "x": 350,
+    "y": 100,
+    "enabled": true,
+    "description": "傲来国酒店"
+  },
+  "大唐官府": {
+    "map": "大唐官府",
+    "x": 150,
+    "y": 100,
+    "enabled": true,
+    "description": "大唐官府门派内"
+  },
+  "化生寺": {
+    "map": "化生寺",
+    "x": 100,
+    "y": 120,
+    "enabled": true,
+    "description": "化生寺门派内"
+  },
+  "方寸山": {
+    "map": "方寸山",
+    "x": 80,
+    "y": 150,
+    "enabled": true,
+    "description": "方寸山门派内"
+  },
+  "地府": {
+    "map": "地府",
+    "x": 200,
+    "y": 180,
+    "enabled": true,
+    "description": "地府门派内"
+  },
+  "龙宫": {
+    "map": "龙宫",
+    "x": 150,
+    "y": 200,
+    "enabled": true,
+    "description": "龙宫门派内"
+  },
+  "魔王寨": {
+    "map": "魔王寨",
+    "x": 120,
+    "y": 100,
+    "enabled": true,
+    "description": "魔王寨门派内"
+  },
+  "狮驼岭": {
+    "map": "狮驼岭",
+    "x": 180,
+    "y": 80,
+    "enabled": true,
+    "description": "狮驼岭门派内"
+  },
+  "盘丝洞": {
+    "map": "盘丝洞",
+    "x": 100,
+    "y": 150,
+    "enabled": true,
+    "description": "盘丝洞门派内"
+  },
+  "普陀山": {
+    "map": "普陀山",
+    "x": 200,
+    "y": 120,
+    "enabled": true,
+    "description": "普陀山门派内"
+  },
+  "女儿村": {
+    "map": "女儿村",
+    "x": 150,
+    "y": 100,
+    "enabled": true,
+    "description": "女儿村门派内"
+  },
+  "神木林": {
+    "map": "神木林",
+    "x": 120,
+    "y": 180,
+    "enabled": true,
+    "description": "神木林门派内"
+  }
+}

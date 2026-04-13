@@ -1,0 +1,135 @@
+# 抓鬼自动化 — 显示环境说明
+# - 桌面分辨率: 3840 x 2160（与脚本无关，仅作记录）
+# - 游戏窗口: 逻辑分辨率多为 800x600；Windows 外框（标题栏/边框）下 pygetwindow 常见约 812x663
+# ROI（task_tracker 等）均为「相对窗口客户区比例」0~1，与桌面分辨率无关。
+
+window:
+  title_substring: "梦幻西游"
+  min_width: 780
+  min_height: 580
+  # 用于多开时选最接近的窗口；若与你机器实测不一致，改成 probe 日志里的宽高
+  expected_width: 812
+  expected_height: 663
+
+strategy:
+  assume_party_ready: true
+  # 为 true 时：先跑长安领双→驿站→国境，再地府钟馗领抓鬼，最后才 OCR 任务栏（需 dry_run=false 才真正执行）
+  auto_ghost_prep: true
+  enable_double_exp: true
+  enable_guowang: false
+  enable_tianyan: false
+  max_rounds: 1
+  # false=执行真实键鼠（领双/导标/Alt+G 等）；改回 true 可只做 OCR+截图不调游戏
+  dry_run: false
+
+paths:
+  yolo_npc_weights: "dataset/runs/detect/trained_model/zhuagui_final2/weights/best.pt"
+  # 端游 Alt+G =「给予」，不是坐标寻路；默认 false。仅当你改成真实寻路热键并填 hotkeys.open_goto 时才 true
+  enable_coordinate_hotkey_path: false
+
+delays:
+  action_min_ms: 80
+  action_max_ms: 220
+  after_map_load_s: 1.2
+
+# 任务追踪栏：相对游戏窗口的比例 [x0, y0, x1, y1]
+# 若 OCR 截不到字，请 python run_bot.py --probe 看 bot_probe_task_roi.png 后微调
+roi:
+  # y1 略加大，避免任务正文底部被裁切（改完可再 run_bot.py --probe 看 task_roi）
+  task_tracker: [0.68, 0.06, 0.99, 0.52]
+
+hotkeys:
+  # 勿用 alt+g：梦幻端游为「给予」。若有独立坐标寻路热键再改此处，并设 paths.enable_coordinate_hotkey_path: true
+  open_goto: ["alt", "g"]
+  confirm_keys: ["enter"]
+
+# 游戏内鼠标与系统鼠标不同步：模板匹配 + 迭代对齐后再点击
+# park_in_window_norm：任何游戏操作前先把系统鼠标移到此位置（开背包、按热键、ESC、寻路等）
+# --probe-cursor 也会先 park 再截图
+# 图一「中心点」过糊，未用作模板；主模板 shubiao 28x28 + 备选 sb0；热点为指针左上角尖端
+cursor:
+  enabled: true
+  # 道具栏内指针外观会变，模板对齐易把鼠标拉飞；需要时再设 true
+  align_before_click: false
+  move_to_point_duration_s: 0.18
+  # 开启 align_before_click 时：目标点±padding 小区域匹配 + 分象限 move（见桌面代码备份思路）
+  align_search_padding_px: 120
+  align_nudge_min_px: 3
+  align_nudge_half_threshold_px: 5
+  align_nudge_duration_s: 0.05
+  template_path: "assets/ingame_cursor_template.png"
+  template_path_alt: "assets/ingame_cursor_template_alt.png"
+  hotspot_in_template: [2, 2]
+  match_threshold: 0.55
+  max_align_steps: 12
+  tolerance_px: 3
+  settle_delay_s: 0.07
+  park_in_window_norm: [0.5, 0.55]
+  park_delay_s: 0.2
+
+# 长安导标旗：梦幻西游 Alt+E 打开道具栏 → 右键第 changan_slot_index 格（0=长安红旗）→ 模板匹配地图红点并左键
+# 若点错格子：python run_bot.py --probe-bag 后改 first_slot_center_norm / slot_spacing_x_norm
+guide_flag:
+  # 打开道具栏前鼠标移到窗口比例（建议中心 0.5,0.5，利于游戏内光标同步）
+  park_before_inventory_norm: [0.5, 0.5]
+  max_inventory_open_attempts: 3
+  esc_before_reopen_inventory: 1
+  # 若缓慢移动后仍点偏，可试 true：再跑模板对齐游戏内光标后右键（需背包内指针模板可用）
+  align_after_move_to_flag: true
+  open_inventory: ["alt", "e"]
+  # Alt+E 无效时可改为 true，并校准 inventory_icon_click_norm 点击背包图标
+  open_inventory_use_icon_click: false
+  inventory_icon_click_norm: [0.73, 0.90]
+  pre_fly_esc_presses: 5
+  changan_slot_index: 0
+  first_slot_center_norm: [0.38, 0.58]
+  slot_spacing_x_norm: 0.034
+  # 导标旗图标模板，用于背包内精确定位后右键；空则用比例坐标
+  template_icon: "assets/guide_flag/guide_flag_icon.png"
+  icon_match_threshold: 0.55
+  # 右键导标旗前缓慢移动鼠标时长(秒)，便于游戏内光标同步；0 则瞬时移动
+  move_to_flag_duration_s: 0.35
+  template_mafujiang: "assets/guide_flag/changan_map_mafujiang.png"
+  template_yizhan: "assets/guide_flag/changan_map_yizhan.png"
+  # 界面缩放/色差时略降；仍失败请对照 debug_fly 截图重截地图红点模板
+  match_threshold: 0.48
+  # 建议放置 assets/guide_flag/map_close_btn_marker.png（导标地图角上关闭钮等小图），用于判定传送是否完成；缺失时脚本会假定点击后已传送
+
+# --prep-changan：导标落地后 ALT+G 走到 npc_coords，再点 NPC。
+# 有 YOLO 权重时优先检测；否则用下面比例（窗口内 0~1，需按你画面微调）
+prep_changan:
+  after_fly_sleep_s: 2.5
+  after_altg_walk_s: 5.0
+  between_steps_sleep_s: 1.2
+  yolo_npc_conf: 0.32
+  fallback_click_norm:
+    马副将: [0.50, 0.44]
+    驿站老板: [0.50, 0.44]
+
+# 驿站进国境之后：默认假设你已能 Alt+G 到地府坐标。若需从国境手动跑进地府，增大 manual_travel_to_difu_s（秒）
+prep_ghost:
+  post_guojing_delay_s: 2.0
+  manual_travel_to_difu_s: 0
+  after_altg_heiwuchang_walk_s: 6.0
+  after_altg_zhongkui_walk_s: 6.0
+  dialog_enter_presses: 8
+  yolo_npc_conf: 0.32
+  fallback_click_norm:
+    黑无常: [0.50, 0.44]
+    钟馗: [0.50, 0.44]
+
+npc_coords:
+  马副将: { x: 180, y: 220 }
+  驿站老板: { x: 380, y: 20 }
+  黑无常: { x: 210, y: 190 }
+  钟馗: { x: 200, y: 180 }
+
+logging:
+  level: INFO
+
+# 主程序每步实时截图 + manifest.jsonl（与日志对照看执行情况）；不需要时可 live_observe.enabled: false
+live_observe:
+  enabled: true
+  dir: "debug_run"
+  save_full_window: true
+  save_task_tracker_roi: true

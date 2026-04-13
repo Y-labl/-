@@ -1,0 +1,31 @@
+# 师门任务导航系统 - 依赖包
+
+# 基础依赖
+opencv-python>=4.8.0
+numpy>=1.24.0
+pillow>=10.0.0
+
+# 窗口控制
+pyautogui>=0.9.54
+pygetwindow>=0.0.9
+pywin32>=306
+
+# OCR 服务
+paddlepaddle>=2.5.0  # CPU 版本
+# paddlepaddle-gpu>=2.5.0  # GPU 版本（如果有 NVIDIA 显卡）
+paddleocr>=2.7.0
+
+# YOLO 目标检测
+ultralytics>=8.0.0  # YOLOv8
+onnxruntime-gpu>=1.16.0  # GPU 版本
+# onnxruntime>=1.16.0  # CPU 版本
+
+# 标注工具
+labelImg>=1.8.6
+
+# 数据处理
+pyyaml>=6.0
+tqdm>=4.65.0
+
+# 可选：TensorRT 加速（仅 NVIDIA GPU）
+# tensorrt>=8.6.0

@@ -1,0 +1,21 @@
+{
+  "window_title": "梦幻西游 ONLINE - (福建2区[鼓浪屿] - °紫月べ清风[37279872])",
+  "window_rect_xywh": [
+    511,
+    1370,
+    812,
+    663
+  ],
+  "task_tracker_ocr_excerpt": "5 y ☆ 任务追踪？ 当前追踪列表没有任务",
+  "parsed_location": "",
+  "parsed_xy": [
+    0,
+    0
+  ],
+  "has_target_coords": false,
+  "task_tracker_empty": true,
+  "likely_shimen_blocking": false,
+  "strategy_dry_run": true,
+  "strategy_auto_ghost_prep": true,
+  "hint": "追踪列表无任务（与游戏内一致）：请先领抓鬼，或设 dry_run=false 执行 auto_ghost_prep。"
+}

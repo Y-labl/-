@@ -1,0 +1,77 @@
+.robot-mascot-wrap {
+  display: flex;
+  justify-content: center;
+  margin: 0 auto 1.25rem;
+  max-width: 100%;
+}
+
+.robot-mascot-svg {
+  width: min(260px, 92vw);
+  height: auto;
+  display: block;
+  filter: drop-shadow(0 0 20px rgba(0, 229, 255, 0.15));
+}
+
+.robot-mascot-svg .robo-head-stroke {
+  animation: robo-border-pulse 3.2s ease-in-out infinite;
+}
+
+@keyframes robo-border-pulse {
+  0%,
+  100% {
+    stroke-opacity: 0.55;
+  }
+  50% {
+    stroke-opacity: 1;
+  }
+}
+
+.robot-mascot-svg .robo-eye-ring {
+  animation: robo-eye-glow 2.4s ease-in-out infinite;
+}
+
+@keyframes robo-eye-glow {
+  0%,
+  100% {
+    opacity: 0.75;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.robot-mascot-svg .robo-antenna-ball {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: robo-antenna 2.2s ease-in-out infinite;
+}
+
+@keyframes robo-antenna {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.92;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+}
+
+.robot-mascot-svg .robo-scan {
+  animation: robo-scan-sweep 3.8s linear infinite;
+}
+
+@keyframes robo-scan-sweep {
+  0% {
+    transform: translateX(-36px);
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.95;
+  }
+  100% {
+    transform: translateX(88px);
+    opacity: 0.4;
+  }
+}
