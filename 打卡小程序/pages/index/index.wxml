@@ -1,0 +1,203 @@
+<!-- pages/index/index.wxml -->
+<view class="container">
+  <!-- 顶部软萌插画区 -->
+  <view class="hero-section">
+    <view class="hero-clink">CLINK!</view>
+    <view class="hero-sparkles">✨</view>
+    <view class="hero-row">
+      <image class="hero-cow hero-cow-left" mode="aspectFit" src="/assets/cow.png" />
+      <text class="hero-tea">🧋</text>
+      <image class="hero-cow hero-cow-right" mode="aspectFit" src="/assets/cow.png" />
+    </view>
+    <text class="hero-sub">点数记一记，心情更美丽</text>
+  </view>
+
+  <!-- 连续打卡提示 -->
+  <view class="streak-card" wx:if="{{consecutiveDays > 0}}">
+    <text class="streak-icon">🔥</text>
+    <text class="streak-text">已连续打卡 <text class="streak-num">{{consecutiveDays}}</text> 天</text>
+  </view>
+
+  <!-- 日历主卡片（含月份与汇总） -->
+  <view class="card calendar-card calendar-card-kawaii">
+    <view class="month-header">
+      <view class="month-nav" bindtap="prevMonth">
+        <text class="nav-arrow">‹</text>
+      </view>
+      <view class="month-title">
+        <text class="month-line">{{currentYear}}年{{currentMonth}}月</text>
+      </view>
+      <view class="month-nav" bindtap="nextMonth">
+        <text class="nav-arrow">›</text>
+      </view>
+    </view>
+
+    <view class="month-stats-bar">
+      <view class="stat-chip">
+        <text class="stat-chip-num">{{monthWorkDays}}</text>
+        <text class="stat-chip-label">工作日</text>
+      </view>
+      <view class="stat-chip-divider"></view>
+      <view class="stat-chip">
+        <text class="stat-chip-num">{{monthTotalPoints}}</text>
+        <text class="stat-chip-label">总点数</text>
+      </view>
+      <view class="stat-chip-divider"></view>
+      <view class="stat-chip">
+        <text class="stat-chip-num stat-chip-money">¥{{monthTotalMoney}}</text>
+        <text class="stat-chip-label">金额</text>
+      </view>
+    </view>
+    <view class="month-cycle-hint" wx:if="{{summaryCycleLabel}}">{{summaryCycleLabel}}</view>
+
+    <view class="calendar-header">
+      <text wx:for="{{weekDays}}" wx:key="index" class="calendar-header-cell">{{item}}</text>
+    </view>
+
+    <view class="calendar-grid">
+      <view wx:for="{{firstDayOffset}}" wx:key="index" class="calendar-cell-empty"></view>
+
+      <view
+        wx:for="{{daysInMonth}}"
+        wx:key="index"
+        class="calendar-cell {{item.isToday ? 'calendar-cell-today' : ''}} {{item.status}}"
+        bindtap="onDateTap"
+        data-date="{{item.dateStr}}"
+      >
+        <text class="date-num">{{item.day}}</text>
+        <view class="calendar-cell-footer">
+          <text class="calendar-points" wx:if="{{item.points !== null}}">{{item.points}}点</text>
+          <text class="calendar-vacation" wx:if="{{item.isVacation}}">休假</text>
+          <text class="calendar-subsidy" wx:if="{{!item.isVacation && item.holidayWorkSubsidy > 0}}">节补 ¥{{item.holidayWorkSubsidy}}</text>
+        </view>
+        <text class="calendar-status-icon" wx:if="{{item.isVacation}}">🌴</text>
+      </view>
+    </view>
+  </view>
+</view>
+
+<!-- 可拖动“记录”按钮（位置会记住） -->
+<movable-area class="fab-area">
+  <movable-view
+    class="fab-record"
+    direction="all"
+    x="{{fabX}}"
+    y="{{fabY}}"
+    damping="40"
+    friction="10"
+    inertia
+    out-of-bounds="false"
+    bindchange="onFabChange"
+    bindtouchend="onFabTouchEnd"
+    bindtap="onTodayTap"
+  >
+    <text class="fab-text">记录</text>
+  </movable-view>
+</movable-area>
+
+<!-- 录入弹窗 -->
+<view class="modal-mask" wx:if="{{showModal}}" bindtap="onModalMaskTap">
+  <view class="modal-container" catchtap="stopPropagation">
+    <view class="modal-handle"></view>
+
+    <view class="modal-header">
+      <text class="modal-title">📅 {{modalDateStr}}</text>
+      <view class="modal-close" bindtap="onModalClose">✕</view>
+    </view>
+
+    <scroll-view scroll-y class="modal-body" enhanced show-scrollbar enable-flex>
+      <view class="input-section">
+        <text class="input-label">今日点数</text>
+        <view class="points-input-row">
+          <view class="points-stepper" bindtap="onPointsMinus">−</view>
+          <input
+            class="points-input {{isVacation ? 'points-input-disabled' : ''}}"
+            type="digit"
+            value="{{inputPoints}}"
+            placeholder="0"
+            disabled="{{isVacation}}"
+            bindfocus="onPointsInputFocus"
+            bindblur="onPointsInputBlur"
+            bindinput="onPointsInput"
+          />
+          <view class="points-stepper" bindtap="onPointsPlus">+</view>
+        </view>
+      </view>
+
+      <view class="quick-select" wx:if="{{!isVacation}}">
+        <text class="quick-label">快捷选择</text>
+        <view class="quick-buttons">
+          <view
+            wx:for="{{quickSelectPoints}}"
+            wx:key="index"
+            class="quick-btn {{inputPoints == item ? 'quick-btn-active' : ''}}"
+            bindtap="onQuickSelect"
+            data-points="{{item}}"
+          >
+            {{item}}
+          </view>
+        </view>
+      </view>
+
+      <view class="vacation-toggle" bindtap="onVacationToggle">
+        <view class="toggle-wrapper {{isVacation ? 'toggle-active' : ''}}">
+          <view class="toggle-icon">{{isVacation ? '✓' : '🌴'}}</view>
+          <text class="toggle-text">标记为休假</text>
+          <view class="toggle-switch {{isVacation ? 'switch-on' : ''}}"></view>
+        </view>
+      </view>
+
+      <view class="subsidy-section" wx:if="{{!isVacation}}">
+        <text class="input-label">节假日上班补助（元）</text>
+        <input
+          class="subsidy-input"
+          type="digit"
+          value="{{holidayWorkSubsidy}}"
+          placeholder="无则填 0"
+          cursor-spacing="24"
+          adjust-position="{{true}}"
+          bindinput="onHolidayWorkSubsidyInput"
+        />
+      </view>
+
+      <view class="remark-section">
+        <text class="input-label">备注（可选）</text>
+        <input
+          class="remark-input"
+          type="text"
+          value="{{remark}}"
+          placeholder="如：早退、加班、半天..."
+          cursor-spacing="24"
+          adjust-position="{{true}}"
+          bindinput="onRemarkInput"
+        />
+      </view>
+
+      <view class="tip-section" wx:if="{{!isVacation}}">
+        <text class="input-label">小费（元，可选）</text>
+        <input
+          class="subsidy-input"
+          type="digit"
+          value="{{tipAmount}}"
+          placeholder="无则填 0"
+          cursor-spacing="24"
+          adjust-position="{{true}}"
+          bindinput="onTipAmountInput"
+        />
+      </view>
+
+      <view class="delete-action" wx:if="{{isEditing}}" catchtap="onDeleteRecord">
+        <text>删除此记录</text>
+      </view>
+
+      <view style="height: 40rpx;"></view>
+    </scroll-view>
+
+    <view class="modal-footer">
+      <view class="modal-actions">
+        <button class="btn btn-secondary" catchtap="onModalClose">取消 ✕</button>
+        <button class="btn btn-primary" catchtap="onSaveRecord">保存 ✓</button>
+      </view>
+    </view>
+  </view>
+</view>

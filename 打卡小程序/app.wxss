@@ -1,0 +1,382 @@
+/* app.wxss - 全局样式（软萌粉 × 洋红主色，参考奶茶日记风） */
+
+/* ========== 主题色 ========== */
+page {
+  --primary-color: #E91E63;
+  --primary-light: #F06292;
+  --primary-soft: #FCE4EC;
+  --primary-dark: #C2185B;
+  --accent-purple: #9C27B0;
+  --gradient-start: #FFF5F8;
+  --gradient-end: #FFE8F0;
+  --bg-color: #FFF5F8;
+  --card-bg: #ffffff;
+  --text-primary: #2c2c2c;
+  --text-secondary: #666666;
+  --text-light: #9e9e9e;
+  --border-color: #F8D7E4;
+  --danger-color: #ff4d4f;
+  --warning-color: #faad14;
+  --success-color: #E91E63;
+
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Segoe UI', sans-serif;
+  font-size: 28rpx;
+  color: var(--text-primary);
+  background: linear-gradient(180deg, var(--gradient-start) 0%, #ffffff 55%);
+  min-height: 100vh;
+}
+
+/* ========== 通用容器 ========== */
+.container {
+  padding: 18rpx 24rpx 0;
+  padding-bottom: calc(140rpx + env(safe-area-inset-bottom));
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+/* ========== 卡片样式 ========== */
+.card {
+  background: var(--card-bg);
+  border-radius: 28rpx;
+  padding: 30rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 8rpx 32rpx rgba(233, 30, 99, 0.06);
+  position: relative;
+  overflow: hidden;
+  border: 1rpx solid rgba(248, 215, 228, 0.85);
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6rpx;
+  background: linear-gradient(90deg, var(--primary-color), var(--primary-light));
+}
+
+.card-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 20rpx;
+  display: flex;
+  align-items: center;
+}
+
+.card-title::before {
+  content: '';
+  width: 6rpx;
+  height: 32rpx;
+  background: linear-gradient(180deg, var(--primary-color), var(--primary-light));
+  border-radius: 3rpx;
+  margin-right: 16rpx;
+}
+
+/* ========== 按钮样式 ========== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20rpx 40rpx;
+  border-radius: 50rpx;
+  font-size: 28rpx;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--primary-color), var(--primary-light));
+  color: #ffffff;
+  box-shadow: 0 10rpx 28rpx rgba(233, 30, 99, 0.35);
+}
+
+.btn-primary:active {
+  transform: scale(0.96);
+  box-shadow: 0 6rpx 16rpx rgba(233, 30, 99, 0.25);
+}
+
+.btn-secondary {
+  background: var(--card-bg);
+  color: var(--primary-color);
+  border: 2rpx solid var(--primary-color);
+}
+
+.btn-secondary:active {
+  background: var(--primary-soft);
+}
+
+.btn-small {
+  padding: 12rpx 24rpx;
+  font-size: 24rpx;
+  border-radius: 40rpx;
+}
+
+/* ========== 统计数字样式 ========== */
+.stat-number {
+  font-size: 56rpx;
+  font-weight: 700;
+  color: var(--primary-color);
+  line-height: 1.2;
+}
+
+.stat-label {
+  font-size: 24rpx;
+  color: var(--text-secondary);
+  margin-top: 8rpx;
+}
+
+.stat-unit {
+  font-size: 32rpx;
+  color: var(--text-secondary);
+  margin-left: 8rpx;
+}
+
+/* ========== 输入框样式 ========== */
+.input {
+  background: var(--gradient-start);
+  border: 2rpx solid var(--border-color);
+  border-radius: 20rpx;
+  padding: 20rpx 24rpx;
+  font-size: 32rpx;
+  color: var(--text-primary);
+  transition: all 0.3s ease;
+}
+
+.input:focus {
+  border-color: var(--primary-color);
+  background: #ffffff;
+  box-shadow: 0 0 0 4rpx rgba(233, 30, 99, 0.12);
+}
+
+.input-placeholder {
+  color: var(--text-light);
+}
+
+/* ========== 弹窗遮罩 ========== */
+.modal-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(44, 44, 44, 0.45);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-content {
+  background: var(--card-bg);
+  border-radius: 32rpx;
+  padding: 40rpx;
+  margin: 0 60rpx;
+  width: 630rpx;
+  max-width: 90vw;
+  box-shadow: 0 24rpx 64rpx rgba(233, 30, 99, 0.12);
+  border: 1rpx solid var(--border-color);
+}
+
+/* ========== 标签样式 ========== */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 6rpx 16rpx;
+  border-radius: 20rpx;
+  font-size: 22rpx;
+  font-weight: 500;
+}
+
+.tag-success {
+  background: rgba(233, 30, 99, 0.1);
+  color: var(--success-color);
+}
+
+.tag-warning {
+  background: rgba(250, 173, 20, 0.12);
+  color: var(--warning-color);
+}
+
+.tag-danger {
+  background: rgba(255, 77, 79, 0.1);
+  color: var(--danger-color);
+}
+
+/* ========== 日历相关（全局辅助） ========== */
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8rpx;
+}
+
+.calendar-header-cell {
+  text-align: center;
+  padding: 16rpx 0;
+  font-size: 24rpx;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.calendar-cell {
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 20rpx;
+  background: var(--card-bg);
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.calendar-cell:active {
+  transform: scale(0.92);
+}
+
+.calendar-cell-today {
+  border: 4rpx solid var(--primary-color);
+  box-shadow: 0 0 0 4rpx rgba(233, 30, 99, 0.12);
+}
+
+.calendar-cell-worked {
+  background: linear-gradient(180deg, #FFE4F0 0%, #FFD6E8 100%);
+  color: var(--text-primary);
+}
+
+.calendar-cell-vacation {
+  background: linear-gradient(135deg, #fff8e6 0%, #fff3cc 100%);
+  color: #cc8800;
+}
+
+.calendar-cell-future {
+  opacity: 0.4;
+}
+
+.calendar-cell-missed {
+  background: rgba(255, 77, 79, 0.06);
+}
+
+.calendar-points {
+  font-size: 20rpx;
+  margin-top: 4rpx;
+  font-weight: 600;
+}
+
+/* ========== 列表样式 ========== */
+.list-item {
+  display: flex;
+  align-items: center;
+  padding: 24rpx 0;
+  border-bottom: 1rpx solid var(--border-color);
+}
+
+.list-item:last-child {
+  border-bottom: none;
+}
+
+.list-item-left {
+  flex: 1;
+}
+
+.list-item-title {
+  font-size: 28rpx;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.list-item-desc {
+  font-size: 24rpx;
+  color: var(--text-secondary);
+  margin-top: 6rpx;
+}
+
+.list-item-right {
+  margin-left: 20rpx;
+}
+
+/* ========== 分割线 ========== */
+.divider {
+  height: 1rpx;
+  background: var(--border-color);
+  margin: 20rpx 0;
+}
+
+/* ========== 空状态 ========== */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80rpx 40rpx;
+  color: var(--text-light);
+}
+
+.empty-state-icon {
+  font-size: 120rpx;
+  margin-bottom: 30rpx;
+  opacity: 0.5;
+}
+
+.empty-state-text {
+  font-size: 28rpx;
+  text-align: center;
+}
+
+/* ========== 工具类 ========== */
+.flex {
+  display: flex;
+}
+
+.flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.flex-wrap {
+  flex-wrap: wrap;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.text-right {
+  text-align: right;
+}
+
+.text-primary {
+  color: var(--primary-color);
+}
+
+.text-secondary {
+  color: var(--text-secondary);
+}
+
+.text-danger {
+  color: var(--danger-color);
+}
+
+.text-small {
+  font-size: 24rpx;
+}
+
+.mt-10 { margin-top: 10rpx; }
+.mt-20 { margin-top: 20rpx; }
+.mt-30 { margin-top: 30rpx; }
+.mb-10 { margin-bottom: 10rpx; }
+.mb-20 { margin-bottom: 20rpx; }
+.mb-30 { margin-bottom: 30rpx; }
+.ml-10 { margin-left: 10rpx; }
+.mr-10 { margin-right: 10rpx; }
+.p-20 { padding: 20rpx; }
+.p-30 { padding: 30rpx; }

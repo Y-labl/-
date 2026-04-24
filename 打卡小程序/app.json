@@ -1,0 +1,42 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/stats/stats",
+    "pages/settings/settings"
+  ],
+  "window": {
+    "navigationBarTitleText": "点数打卡日记",
+    "navigationBarBackgroundColor": "#FFF5F8",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#FFF5F8",
+    "backgroundTextStyle": "dark"
+  },
+  "tabBar": {
+    "color": "#888888",
+    "selectedColor": "#E91E63",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "text": "打卡",
+        "iconPath": "assets/tab-cow.png",
+        "selectedIconPath": "assets/tab-cow-selected.png"
+      },
+      {
+        "pagePath": "pages/stats/stats",
+        "text": "统计",
+        "iconPath": "assets/tab-cow.png",
+        "selectedIconPath": "assets/tab-cow-selected.png"
+      },
+      {
+        "pagePath": "pages/settings/settings",
+        "text": "设置",
+        "iconPath": "assets/tab-cow.png",
+        "selectedIconPath": "assets/tab-cow-selected.png"
+      }
+    ]
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

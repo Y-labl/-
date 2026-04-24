@@ -513,8 +513,20 @@ class JingshiGUI:
     def run_jingshi_buyer_fast(self):
         """快速运行晶石购买逻辑（窗口已提前激活）"""
         import time
+        
+        start_time = time.time()
 
         start_time = time.time()
+
+
+
+
+
+
+
+
+
+
         deadline = start_time + 1.8  # 给 UI/点击留出余量，确保整体控制在 2 秒内
 
         def time_left():
@@ -522,43 +534,68 @@ class JingshiGUI:
 
         try:
             self.logger.info("开始购买晶石（快速模式）")
+            
+            # 直接截图找兑换按钮（窗口已激活）
 
             screenshot = self.window_manager.capture_window()
             if not screenshot:
                 self.logger.error("无法截图窗口")
                 return False
+            
+            exchange_pos = self.image_recognizer.find_image_with_retry(screenshot, "EXCHANGE")
 
             exchange_pos = self.image_recognizer.find_image(screenshot, "EXCHANGE")
             if not exchange_pos:
                 self.logger.error("未找到兑换按钮")
                 return False
+            
+
 
             window_rect = self.window_manager.get_window_rect()
             if not window_rect:
                 self.logger.error("无法获取窗口位置")
                 return False
+            
 
             left, top, _, _ = window_rect
             if not self.mouse_controller.click_target(left, top, exchange_pos[0], exchange_pos[1]):
                 self.logger.error("点击兑换按钮失败")
                 return False
+            
+            # 循环查找晶石图标（无等待，纯循环）
 
             # 晶石图标只做短时间密集轮询，避免无限等待拖慢整体耗时
+
             jingshi_pos = None
+            for attempt in range(20):  # 增加到 20 次
             while time_left() > 0.25:
                 screenshot = self.window_manager.capture_window()
+                if not screenshot:
+                    continue
+                
+                jingshi_pos = self.image_recognizer.find_image(screenshot, "JINGSHI")
+                if jingshi_pos:
+                    break
+            
                 if screenshot:
                     jingshi_pos = self.image_recognizer.find_image(screenshot, "JINGSHI")
                     if jingshi_pos:
                         break
 
+
+
             if not jingshi_pos:
                 self.logger.error("未找到晶石")
                 return False
+            
+
 
             if not self.mouse_controller.click_target(left, top, jingshi_pos[0], jingshi_pos[1]):
                 self.logger.error("点击晶石失败")
                 return False
+            
+            # 如果是全部抢模式，直接点击购买，不识别等级
+
 
             # 只抢 120：用一次截图做购买按钮定位 + 120 模板识别，减少重复截图
             screenshot = self.window_manager.capture_window()
@@ -571,23 +608,75 @@ class JingshiGUI:
                 self.mouse_controller.move_to_target(left, top, buy_pos[0], buy_pos[1])
 
             if self.price_mode.get() == "all":
+                buy_pos = self.image_recognizer.find_image_with_retry(screenshot, "BUY", max_attempts=1)
                 if not buy_pos:
                     self.logger.error("未找到购买按钮")
                     return False
+                
                 if not self.mouse_controller.click_target(left, top, buy_pos[0], buy_pos[1]):
                     self.logger.error("点击购买按钮失败")
                     return False
+                
                 total_time = (time.time() - start_time) * 1000
                 self.logger.info(f"晶石购买完成（全部抢模式），总耗时：{total_time:.0f}ms")
                 return True
+            
+            # 只抢 120 模式：点击晶石后预判移动鼠标到购买按钮位置
+            # 先找购买按钮位置（预判）
+            buy_pos = self.image_recognizer.find_image(screenshot, "BUY")
+            if buy_pos:
+                self.mouse_controller.move_to_target(left, top, buy_pos[0], buy_pos[1])
+            
+            # 循环识别 120 级，最多尝试 15 次
+            is_120 = False
+            for attempt in range(15):
 
             # 120 模式：快速识别一次，必要时在极短窗口内重试一轮
             is_120 = self.recognize_price(screenshot)
             if not is_120 and time_left() > 0.15:
+
+
+
+
+
+
+
                 screenshot = self.window_manager.capture_window()
+                if not screenshot:
+                    continue
+                
+                is_120 = self.recognize_price(screenshot)
+                if is_120:
+                    break
+            
+            # 根据模式判断是否购买
+            if self.price_mode.get() == "120":
+                if is_120:
                 if screenshot:
                     is_120 = self.recognize_price(screenshot)
+
+
+
+
+
+
+
+
+
                     if not buy_pos:
+                        buy_pos = self.image_recognizer.find_image_with_retry(screenshot, "BUY", max_attempts=1)
+                    
+                    if buy_pos:
+                        if not self.mouse_controller.click_target(left, top, buy_pos[0], buy_pos[1]):
+                            return False
+                    else:
+                        return False
+                else:
+                    return True
+            else:
+                pass
+            
+
                         buy_pos = self.image_recognizer.find_image(screenshot, "BUY")
 
             if not is_120:
@@ -611,6 +700,7 @@ class JingshiGUI:
             self.logger.info(f"晶石购买流程完成，总耗时：{total_time:.0f}ms")
             self.update_status("购买成功！")
             return True
+            
 
         except Exception as e:
             total_time = (time.time() - start_time) * 1000
