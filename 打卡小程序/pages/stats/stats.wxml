@@ -1,0 +1,231 @@
+<!-- pages/stats/stats.wxml -->
+<view class="container">
+  <!-- 周期选择器 -->
+  <view class="period-selector">
+    <view 
+      wx:for="{{periods}}"
+      wx:key="index"
+      class="period-btn {{currentPeriod === item.value ? 'period-btn-active' : ''}}"
+      bindtap="onPeriodChange"
+      data-period="{{item.value}}"
+    >
+      {{item.label}}
+    </view>
+  </view>
+
+  <!-- 核心统计卡片 -->
+  <view class="card stats-card">
+    <view class="stats-header">
+      <text class="stats-period">{{statsPeriodStr}}</text>
+    </view>
+    
+    <view class="stats-grid">
+      <view class="stats-tile">
+        <text class="stats-tile-num text-primary">{{totalPoints}}</text>
+        <text class="stats-tile-label">总点数</text>
+      </view>
+      <view class="stats-tile">
+        <text class="stats-tile-num">{{totalDays}}</text>
+        <text class="stats-tile-label">工作天数</text>
+      </view>
+      <view class="stats-tile">
+        <text class="stats-tile-num text-money">¥{{totalEstimatedMoney}}</text>
+        <text class="stats-tile-label">总金额</text>
+      </view>
+      <view class="stats-tile">
+        <text class="stats-tile-num">{{vacationDays}}</text>
+        <text class="stats-tile-label">休假天数</text>
+      </view>
+    </view>
+
+    <view class="stats-sub">
+      <view class="stats-sub-item">
+        <text class="stats-sub-label">日均点数</text>
+        <text class="stats-sub-num">{{avgPoints}} 点</text>
+      </view>
+      <view class="stats-sub-item">
+        <text class="stats-sub-label">日均金额</text>
+        <text class="stats-sub-num">¥{{avgMoney}}</text>
+      </view>
+      <view class="stats-sub-item">
+        <text class="stats-sub-label">最高单日</text>
+        <text class="stats-sub-num">{{maxPoints}} 点</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 考勤周期（21日～次月20日）与全勤 -->
+  <view class="card cycle-card">
+    <view class="cycle-header">
+      <text class="cycle-title">考勤周期</text>
+      <text class="cycle-sub">每月21日～次月20日</text>
+    </view>
+    <text class="cycle-range">{{cycleLabel}}</text>
+    <view class="cycle-row">
+      <text class="cycle-label">本周期休假</text>
+      <text class="cycle-strong">{{cycleVacationDays}} 天</text>
+    </view>
+    <view class="cycle-hint">
+      休假不超过 {{fullAttendanceMaxVacation}} 天，可得全勤补助 ¥{{fullAttendanceBonusAmount}}
+    </view>
+    <view class="cycle-row highlight">
+      <text class="cycle-label">本周期全勤补助</text>
+      <text class="cycle-money">¥{{fullAttendanceBonus}}</text>
+    </view>
+    <view class="cycle-row">
+      <text class="cycle-label">本周期节假日上班补助（录入合计）</text>
+      <text class="cycle-strong">¥{{cycleHolidayWorkSubsidyTotal}}</text>
+    </view>
+  </view>
+
+  <!-- 月度目标进度 -->
+  <view class="card goal-card" wx:if="{{monthlyGoal > 0}}">
+    <view class="goal-header">
+      <text class="goal-title">🎯 本月目标</text>
+      <text class="goal-progress-text">{{totalPoints}} / {{monthlyGoal}} 点</text>
+    </view>
+    <view class="goal-progress-bar">
+      <view class="goal-progress-fill" style="width: {{goalProgress}}%"></view>
+    </view>
+    <view class="goal-footer">
+      <text class="goal-remaining">{{goalRemaining > 0 ? '还差 ' + goalRemaining + ' 点' : '已达成！'}}</text>
+      <text class="goal-eta" wx:if="{{goalRemaining > 0}}">预计 {{goalDaysNeeded}} 天后完成</text>
+    </view>
+  </view>
+
+  <!-- 打卡明细：本月/上月按天；本年按月汇总；全部按天（有记录日） -->
+  <view class="card list-card">
+    <view class="list-header {{currentPeriod === 'year' ? 'list-header-year' : ''}}">
+      <view class="list-header-row">
+        <text class="list-title">📋 {{currentPeriod === 'year' ? '月汇总明细' : '打卡明细'}}</text>
+        <text class="list-count">{{recordsList.length}} {{currentPeriod === 'year' ? '个月' : (currentPeriod === 'month' || currentPeriod === 'lastMonth' ? '天' : '条')}}</text>
+      </view>
+      <text class="list-cycle-hint" wx:if="{{currentPeriod === 'year'}}">每月一行对应「当月21日～次月20日」考勤档</text>
+    </view>
+    
+    <view class="records-list">
+      <view 
+        wx:for="{{recordsList}}"
+        wx:key="date"
+        class="record-item {{item.isMonthSummary ? 'record-item-month' : ''}}"
+        bindtap="onRecordTap"
+        data-date="{{item.date}}"
+        data-month-summary="{{item.isMonthSummary ? 1 : 0}}"
+      >
+        <view class="record-date">
+          <text class="record-day">{{item.dayStr}}</text>
+          <text class="record-week" wx:if="{{!item.isMonthSummary}}">{{item.weekStr}}</text>
+        </view>
+        <view class="record-info">
+          <block wx:if="{{item.isMonthSummary}}">
+            <text class="record-points">合计 {{item.points}} 点</text>
+            <text class="record-money record-month-total">¥{{item.money}}</text>
+            <text class="record-subsidy" wx:if="{{item.holidayWorkSubsidy > 0}}">节补 ¥{{item.holidayWorkSubsidy}}</text>
+            <text class="record-subsidy record-tip" wx:if="{{item.tipAmount > 0}}">小费 ¥{{item.tipAmount}}</text>
+          </block>
+          <block wx:else>
+            <text class="record-points {{item.isVacation ? 'record-vacation' : ''}}">
+              {{item.isVacation ? '🌴 休假' : item.points + ' 点'}}
+            </text>
+            <text class="record-money" wx:if="{{!item.isVacation}}">¥{{item.money}}</text>
+            <text class="record-subsidy" wx:if="{{!item.isVacation && item.holidayWorkSubsidy > 0}}">节假日补助 ¥{{item.holidayWorkSubsidy}}</text>
+            <text class="record-subsidy record-tip" wx:if="{{!item.isVacation && item.tipAmount > 0}}">小费 ¥{{item.tipAmount}}</text>
+          </block>
+        </view>
+        <view class="record-remark" wx:if="{{item.remark}}">
+          <text>{{item.remark}}</text>
+        </view>
+        <text class="record-arrow" wx:if="{{!item.isMonthSummary}}">›</text>
+      </view>
+    </view>
+
+    <view class="empty-state" wx:if="{{recordsList.length === 0}}">
+      <text class="empty-icon">📭</text>
+      <text class="empty-text">该周期暂无记录</text>
+    </view>
+  </view>
+
+  <!-- 点数趋势（置于明细下方） -->
+  <view class="card chart-card">
+    <view class="chart-header">
+      <text class="chart-title">📈 点数趋势{{currentPeriod === 'year' || currentPeriod === 'all' ? '（按月）' : (currentPeriod === 'month' || currentPeriod === 'lastMonth' ? '（按日）' : '')}}</text>
+    </view>
+    <view class="chart-container">
+      <canvas canvas-id="lineChart" style="width: 100%; height: 300rpx;"></canvas>
+    </view>
+    <view class="chart-placeholder" wx:if="{{chartData.labels.length === 0}}">
+      <text>暂无数据</text>
+    </view>
+  </view>
+
+  <!-- 薪资计算器快捷入口 -->
+  <view class="card calculator-card" bindtap="showCalculator">
+    <view class="calculator-info">
+      <text class="calculator-icon">🧮</text>
+      <view class="calculator-detail">
+        <text class="calculator-title">薪资计算器</text>
+        <text class="calculator-desc">快速估算月薪/年薪</text>
+      </view>
+    </view>
+    <text class="calculator-arrow">›</text>
+  </view>
+
+  <!-- 月度报告分享入口 -->
+  <view class="card share-card" bindtap="onShareReport">
+    <view class="share-info">
+      <text class="share-icon">📤</text>
+      <view class="share-detail">
+        <text class="share-title">生成本月报告</text>
+        <text class="share-desc">生成精美海报分享给朋友</text>
+      </view>
+    </view>
+    <text class="share-arrow">›</text>
+  </view>
+
+  <!-- 底部留白 -->
+  <view style="height: 120rpx;"></view>
+</view>
+
+<!-- 薪资计算器弹窗 -->
+<view class="modal-mask" wx:if="{{showCalculator}}" bindtap="closeCalculator">
+  <view class="modal-content calculator-modal" catchtap="stopPropagation">
+    <view class="modal-header">
+      <text class="modal-title">🧮 薪资计算器</text>
+      <text class="modal-close" bindtap="closeCalculator">✕</text>
+    </view>
+
+    <view class="calc-section">
+      <text class="calc-label">每月工作天数</text>
+      <input 
+        class="calc-input"
+        type="number"
+        value="{{calcWorkDays}}"
+        bindinput="onCalcWorkDaysInput"
+        placeholder="默认22天"
+      />
+    </view>
+
+    <view class="calc-section">
+      <text class="calc-label">当前周期总点数</text>
+      <view class="calc-result">
+        <text class="calc-result-num">{{totalPoints}}</text>
+        <text class="calc-result-unit">点</text>
+      </view>
+    </view>
+
+    <view class="calc-result-box">
+      <view class="calc-result-item">
+        <text class="calc-result-label">月薪金额</text>
+        <text class="calc-result-money">¥{{estimatedMonthlySalary}}</text>
+      </view>
+      <view class="calc-result-item">
+        <text class="calc-result-label">年薪金额</text>
+        <text class="calc-result-money">¥{{estimatedYearlySalary}}</text>
+      </view>
+    </view>
+
+    <view class="calc-note">
+      <text>基于 {{pricePerPoint}} 元/点 计算</text>
+    </view>
+  </view>
+</view>

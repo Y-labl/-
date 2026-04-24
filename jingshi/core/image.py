@@ -25,6 +25,7 @@ class ImageRecognizer:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         self._gray_template_cache = {}
+        self._template_cache = {}
         self._gray_template_miss_logged = set()
 
     def template_file_exists(self, config_key):
@@ -68,10 +69,14 @@ class ImageRecognizer:
 
     def clear_template_cache(self):
         self._gray_template_cache.clear()
+        self._template_cache.clear()
         self._gray_template_miss_logged.clear()
     
     def load_template(self, template_name):
-        """加载模板图像"""
+        """加载模板图像（缓存 BGR numpy，避免重复 I/O 与转换）"""
+        if template_name in self._template_cache:
+            return self._template_cache[template_name]
+
         template_path = Config.TEMPLATES.get(template_name)
         if not template_path:
             self.logger.error(f"未找到模板：{template_name}")
@@ -93,6 +98,7 @@ class ImageRecognizer:
             
             # 转换为 OpenCV 格式
             template = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+            self._template_cache[template_name] = template
             self.logger.info(f"模板加载成功：{full_path}")
             return template
         except Exception as e:

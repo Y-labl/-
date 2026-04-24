@@ -1,0 +1,451 @@
+<!-- pages/settings/settings.wxml -->
+<view class="container">
+  <!-- 基本设置 -->
+  <view class="card settings-card">
+    <view class="settings-header">
+      <text class="settings-title">⚙️ 基本设置</text>
+    </view>
+    
+    <view class="settings-item">
+      <view class="settings-item-left">
+        <text class="settings-item-icon">💰</text>
+        <view class="settings-item-info">
+          <text class="settings-item-title">每点单价</text>
+          <text class="settings-item-desc">用于计算收入金额</text>
+        </view>
+      </view>
+      <view class="settings-item-right">
+        <input 
+          class="settings-input"
+          type="digit"
+          value="{{settings.pricePerPoint}}"
+          bindinput="onPriceChange"
+        />
+        <text class="settings-unit">元/点</text>
+      </view>
+    </view>
+
+    <view class="settings-item">
+      <view class="settings-item-left">
+        <text class="settings-item-icon">⚡</text>
+        <view class="settings-item-info">
+          <text class="settings-item-title">快捷点数</text>
+          <text class="settings-item-desc">弹窗中的快捷选择按钮</text>
+        </view>
+      </view>
+      <view class="settings-item-right" bindtap="editQuickSelect">
+        <text class="settings-value">{{settings.quickSelectPoints.length}}个</text>
+        <text class="settings-arrow">›</text>
+      </view>
+    </view>
+
+    <view class="settings-item">
+      <view class="settings-item-left">
+        <text class="settings-item-icon">🏖️</text>
+        <view class="settings-item-info">
+          <text class="settings-item-title">半天点数</text>
+          <text class="settings-item-desc">"半天"对应的点数值</text>
+        </view>
+      </view>
+      <view class="settings-item-right">
+        <input 
+          class="settings-input settings-input-small"
+          type="digit"
+          value="{{settings.halfDayPoints}}"
+          bindinput="onHalfDayChange"
+        />
+        <text class="settings-unit">点</text>
+      </view>
+    </view>
+
+    <view class="settings-item">
+      <view class="settings-item-left">
+        <text class="settings-item-icon">📅</text>
+        <view class="settings-item-info">
+          <text class="settings-item-title">工作日设置</text>
+          <text class="settings-item-desc">标记未录入的工作日</text>
+        </view>
+      </view>
+      <view class="settings-item-right" bindtap="editWorkDays">
+        <text class="settings-value">{{workDaysStr}}</text>
+        <text class="settings-arrow">›</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 高级功能 -->
+  <view class="card features-card">
+    <view class="settings-header">
+      <text class="settings-title">✨ 高级功能</text>
+    </view>
+    
+    <!-- 月度目标 -->
+    <view class="settings-item" bindtap="editMonthlyGoal">
+      <view class="settings-item-left">
+        <text class="settings-item-icon">🎯</text>
+        <view class="settings-item-info">
+          <text class="settings-item-title">月度目标</text>
+          <text class="settings-item-desc">设定每月点数目标</text>
+        </view>
+      </view>
+      <view class="settings-item-right">
+        <text class="settings-value {{settings.monthlyGoal > 0 ? 'text-primary' : ''}}">
+          {{settings.monthlyGoal > 0 ? settings.monthlyGoal + ' 点' : '未设置'}}
+        </text>
+        <text class="settings-arrow">›</text>
+      </view>
+    </view>
+
+    <!-- 每日提醒 -->
+    <view class="settings-item">
+      <view class="settings-item-left">
+        <text class="settings-item-icon">🔔</text>
+        <view class="settings-item-info">
+          <text class="settings-item-title">每日打卡提醒</text>
+          <text class="settings-item-desc">提醒录入今日点数</text>
+        </view>
+      </view>
+      <switch 
+        checked="{{settings.enableReminder}}"
+        bindchange="onReminderChange"
+        color="#E91E63"
+      />
+    </view>
+
+    <view class="settings-item {{settings.enableReminder ? '' : 'item-disabled'}}">
+      <view class="settings-item-left">
+        <text class="settings-item-icon">⏰</text>
+        <view class="settings-item-info">
+          <text class="settings-item-title">提醒时间</text>
+          <text class="settings-item-desc">每天定时提醒</text>
+        </view>
+      </view>
+      <view class="settings-item-right" bindtap="editReminderTime">
+        <text class="settings-value">{{settings.reminderTime}}</text>
+        <text class="settings-arrow">›</text>
+      </view>
+    </view>
+
+    <!-- 备注模板 -->
+    <view class="settings-item" bindtap="editTemplates">
+      <view class="settings-item-left">
+        <text class="settings-item-icon">📝</text>
+        <view class="settings-item-info">
+          <text class="settings-item-title">备注模板</text>
+          <text class="settings-item-desc">快速添加常用备注</text>
+        </view>
+      </view>
+      <view class="settings-item-right">
+        <text class="settings-value">{{templatesCount}}个</text>
+        <text class="settings-arrow">›</text>
+      </view>
+    </view>
+
+    <!-- 多账本 -->
+    <view class="settings-item" bindtap="editLedgers">
+      <view class="settings-item-left">
+        <text class="settings-item-icon">📚</text>
+        <view class="settings-item-info">
+          <text class="settings-item-title">多账本管理</text>
+          <text class="settings-item-desc">分类记录不同工作</text>
+        </view>
+      </view>
+      <view class="settings-item-right">
+        <text class="settings-value {{currentLedger !== 'default' ? 'text-primary' : ''}}">{{currentLedgerName}}</text>
+        <text class="settings-arrow">›</text>
+      </view>
+    </view>
+
+    <!-- 批量录入 -->
+    <view class="settings-item" bindtap="showBatchEntry">
+      <view class="settings-item-left">
+        <text class="settings-item-icon">📊</text>
+        <view class="settings-item-info">
+          <text class="settings-item-title">批量录入</text>
+          <text class="settings-item-desc">快速补录历史记录</text>
+        </view>
+      </view>
+      <text class="settings-arrow">›</text>
+    </view>
+
+    <!-- 数据备份 -->
+    <view class="settings-item" bindtap="exportData">
+      <view class="settings-item-left">
+        <text class="settings-item-icon">💾</text>
+        <view class="settings-item-info">
+          <text class="settings-item-title">导出数据</text>
+          <text class="settings-item-desc">生成备份码（换手机可导入）</text>
+        </view>
+      </view>
+      <text class="settings-arrow">›</text>
+    </view>
+
+    <view class="settings-item" bindtap="importData">
+      <view class="settings-item-left">
+        <text class="settings-item-icon">📂</text>
+        <view class="settings-item-info">
+          <text class="settings-item-title">导入数据</text>
+          <text class="settings-item-desc">粘贴备份码恢复</text>
+        </view>
+      </view>
+      <text class="settings-arrow">›</text>
+    </view>
+  </view>
+
+  <!-- 数据管理 -->
+  <view class="card danger-card">
+    <view class="settings-header">
+      <text class="settings-title">⚠️ 数据管理</text>
+    </view>
+    
+    <view class="settings-item danger-item" bindtap="clearData">
+      <view class="settings-item-left">
+        <text class="settings-item-icon">🗑️</text>
+        <view class="settings-item-info">
+          <text class="settings-item-title danger-text">清空所有数据</text>
+          <text class="settings-item-desc">此操作不可恢复</text>
+        </view>
+      </view>
+      <text class="settings-arrow">›</text>
+    </view>
+  </view>
+
+  <!-- 关于 -->
+  <view class="about-section">
+    <text class="about-text">上班点数记录 v1.0</text>
+    <text class="about-text">由 贾维斯 × 主人 精心打造</text>
+  </view>
+
+  <!-- 底部留白 -->
+  <view style="height: 120rpx;"></view>
+</view>
+
+<!-- 备份码导入/导出弹窗 -->
+<view class="modal-mask" wx:if="{{showBackupModal}}" bindtap="closeBackupModal">
+  <view class="modal-content backup-modal" catchtap="stopPropagation">
+    <view class="modal-header">
+      <text class="modal-title">{{backupMode === 'export' ? '💾 导出备份码' : '📂 导入备份码'}}</text>
+      <text class="modal-close" bindtap="closeBackupModal">✕</text>
+    </view>
+
+    <view class="backup-hint" wx:if="{{backupMode === 'export'}}">
+      <text>已为你生成备份码，复制后发到自己微信/云笔记，换手机再粘贴导入即可。</text>
+    </view>
+    <view class="backup-hint" wx:if="{{backupMode === 'import'}}">
+      <text>请粘贴备份码。导入会覆盖当前本机的数据（建议先导出一份作为备份）。</text>
+    </view>
+
+    <textarea
+      class="backup-textarea"
+      value="{{backupText}}"
+      placeholder="{{backupMode === 'import' ? '在这里粘贴备份码...' : ''}}"
+      maxlength="-1"
+      auto-height
+      disabled="{{backupMode === 'export'}}"
+      bindinput="onBackupTextInput"
+    />
+
+    <view class="modal-actions">
+      <button class="btn btn-secondary" bindtap="closeBackupModal">关闭</button>
+      <button
+        class="btn btn-primary"
+        wx:if="{{backupMode === 'export'}}"
+        bindtap="copyBackupText"
+      >
+        复制备份码
+      </button>
+      <button
+        class="btn btn-primary"
+        wx:if="{{backupMode === 'import'}}"
+        bindtap="confirmImportBackup"
+      >
+        立即导入
+      </button>
+    </view>
+  </view>
+</view>
+
+<!-- 快捷点数编辑弹窗 -->
+<view class="modal-mask" wx:if="{{showQuickSelectModal}}" bindtap="closeQuickSelectModal">
+  <view class="modal-content" catchtap="stopPropagation">
+    <view class="modal-header">
+      <text class="modal-title">⚡ 快捷点数设置</text>
+      <text class="modal-close" bindtap="closeQuickSelectModal">✕</text>
+    </view>
+    <view class="quick-edit-list">
+      <view wx:for="{{editQuickSelect}}" wx:key="index" class="quick-edit-item">
+        <input 
+          class="quick-edit-input"
+          type="digit"
+          value="{{item}}"
+          bindinput="onQuickSelectItemChange"
+          data-index="{{index}}"
+        />
+        <text class="quick-edit-delete" bindtap="deleteQuickSelectItem" data-index="{{index}}">✕</text>
+      </view>
+    </view>
+    <view class="quick-edit-add" bindtap="addQuickSelectItem">
+      <text>+ 添加快捷点数</text>
+    </view>
+    <view class="modal-actions">
+      <button class="btn btn-secondary" bindtap="closeQuickSelectModal">取消</button>
+      <button class="btn btn-primary" bindtap="saveQuickSelect">保存</button>
+    </view>
+  </view>
+</view>
+
+<!-- 工作日编辑弹窗 -->
+<view class="modal-mask" wx:if="{{showWorkDaysModal}}" bindtap="closeWorkDaysModal">
+  <view class="modal-content" catchtap="stopPropagation">
+    <view class="modal-header">
+      <text class="modal-title">📅 工作日设置</text>
+      <text class="modal-close" bindtap="closeWorkDaysModal">✕</text>
+    </view>
+    <view class="workdays-grid">
+      <view 
+        wx:for="{{['周日', '周一', '周二', '周三', '周四', '周五', '周六']}}"
+        wx:key="index"
+        class="workday-item {{editWorkDays.includes(index) ? 'workday-active' : ''}}"
+        bindtap="toggleWorkDay"
+        data-day="{{index}}"
+      >
+        {{item}}
+      </view>
+    </view>
+    <view class="modal-actions">
+      <button class="btn btn-secondary" bindtap="closeWorkDaysModal">取消</button>
+      <button class="btn btn-primary" bindtap="saveWorkDays">保存</button>
+    </view>
+  </view>
+</view>
+
+<!-- 目标编辑弹窗 -->
+<view class="modal-mask" wx:if="{{showGoalModal}}" bindtap="closeGoalModal">
+  <view class="modal-content" catchtap="stopPropagation">
+    <view class="modal-header">
+      <text class="modal-title">🎯 月度目标设置</text>
+      <text class="modal-close" bindtap="closeGoalModal">✕</text>
+    </view>
+    <view class="goal-input-section">
+      <text class="goal-input-label">每月目标点数</text>
+      <view class="goal-input-row">
+        <input 
+          class="goal-input"
+          type="digit"
+          value="{{editGoal}}"
+          bindinput="onGoalChange"
+          placeholder="0"
+        />
+        <text class="goal-input-unit">点</text>
+      </view>
+    </view>
+    <view class="goal-presets">
+      <text class="goal-presets-label">快速设置</text>
+      <view class="goal-presets-row">
+        <view wx:for="{{[160, 176, 184, 200]}}" wx:key="index" class="goal-preset-btn" bindtap="setGoalPreset" data-goal="{{item}}">
+          {{item}}
+        </view>
+      </view>
+    </view>
+    <view class="modal-actions">
+      <button class="btn btn-secondary" bindtap="closeGoalModal">取消</button>
+      <button class="btn btn-primary" bindtap="saveGoal">保存</button>
+    </view>
+  </view>
+</view>
+
+<!-- 批量录入弹窗 -->
+<view class="modal-mask" wx:if="{{showBatchModal}}" bindtap="closeBatchModal">
+  <view class="modal-content batch-modal" catchtap="stopPropagation">
+    <view class="modal-header">
+      <text class="modal-title">📊 批量录入</text>
+      <text class="modal-close" bindtap="closeBatchModal">✕</text>
+    </view>
+    <view class="batch-section">
+      <text class="batch-label">选择日期范围</text>
+      <view class="batch-date-row">
+        <picker mode="date" value="{{batchStartDate}}" bindchange="onBatchStartChange">
+          <view class="batch-date-btn">{{batchStartDate}}</view>
+        </picker>
+        <text class="batch-date-sep">至</text>
+        <picker mode="date" value="{{batchEndDate}}" bindchange="onBatchEndChange">
+          <view class="batch-date-btn">{{batchEndDate}}</view>
+        </picker>
+      </view>
+    </view>
+    <view class="batch-section">
+      <text class="batch-label">每日点数（可修改）</text>
+      <input 
+        class="batch-input"
+        type="digit"
+        value="{{batchPoints}}"
+        bindinput="onBatchPointsChange"
+        placeholder="输入每日点数"
+      />
+    </view>
+    <view class="batch-preview">
+      <text class="batch-preview-text">将录入 {{batchDaysCount}} 天，每天 {{batchPoints}} 点</text>
+    </view>
+    <view class="modal-actions">
+      <button class="btn btn-secondary" bindtap="closeBatchModal">取消</button>
+      <button class="btn btn-primary" bindtap="executeBatchEntry">确认录入</button>
+    </view>
+  </view>
+</view>
+
+<!-- 模板编辑弹窗 -->
+<view class="modal-mask" wx:if="{{showTemplatesModal}}" bindtap="closeTemplatesModal">
+  <view class="modal-content" catchtap="stopPropagation">
+    <view class="modal-header">
+      <text class="modal-title">📝 备注模板</text>
+      <text class="modal-close" bindtap="closeTemplatesModal">✕</text>
+    </view>
+    <view class="templates-list">
+      <view wx:for="{{editTemplates}}" wx:key="index" class="template-item">
+        <input 
+          class="template-input"
+          value="{{item}}"
+          bindinput="onTemplateChange"
+          data-index="{{index}}"
+          placeholder="输入模板内容"
+        />
+        <text class="template-delete" bindtap="deleteTemplate" data-index="{{index}}">✕</text>
+      </view>
+    </view>
+    <view class="template-add" bindtap="addTemplate">
+      <text>+ 添加模板</text>
+    </view>
+    <view class="modal-actions">
+      <button class="btn btn-secondary" bindtap="closeTemplatesModal">取消</button>
+      <button class="btn btn-primary" bindtap="saveTemplates">保存</button>
+    </view>
+  </view>
+</view>
+
+<!-- 账本编辑弹窗 -->
+<view class="modal-mask" wx:if="{{showLedgersModal}}" bindtap="closeLedgersModal">
+  <view class="modal-content" catchtap="stopPropagation">
+    <view class="modal-header">
+      <text class="modal-title">📚 账本管理</text>
+      <text class="modal-close" bindtap="closeLedgersModal">✕</text>
+    </view>
+    <view class="ledgers-list">
+      <view 
+        wx:for="{{allLedgers}}"
+        wx:key="id"
+        class="ledger-item {{currentLedger === item.id ? 'ledger-active' : ''}}"
+        bindtap="selectLedger"
+        data-id="{{item.id}}"
+      >
+        <view class="ledger-info">
+          <text class="ledger-name">{{item.name}}</text>
+          <text class="ledger-count">{{item.count}} 条记录</text>
+        </view>
+        <text class="ledger-check" wx:if="{{currentLedger === item.id}}">✓</text>
+      </view>
+    </view>
+    <view class="ledger-add" bindtap="addLedger">
+      <text>+ 添加账本</text>
+    </view>
+  </view>
+</view>
