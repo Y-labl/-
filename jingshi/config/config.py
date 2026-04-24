@@ -6,6 +6,15 @@ class Config:
     MAX_ATTEMPTS = 5
     CONFIDENCE_THRESHOLD = 0.5
 
+    # 模板搜索区域（可选，用于提速）
+    # - key: Config.TEMPLATES 的键（如 "EXCHANGE"/"BUY"/"JINGSHI"）
+    # - value:
+    #   - (x, y, w, h) 且全为 0~1 的 float：表示相对截图宽高的比例区域
+    #   - (x, y, w, h) 含 int：表示像素区域（相对窗口截图左上角）
+    #
+    # 默认不限制（None/缺省），会在整张截图上做 matchTemplate，最耗时。
+    TEMPLATE_SEARCH_REGIONS = {}
+
     # 操作延迟配置（优化为极速模式）
     CLICK_DELAY = 0.01
     WINDOW_WAIT_DELAY = 0.05

@@ -1,4 +1,4 @@
-import { addLocalDays, defaultBizDateNow, isValidYmd, localBizDate } from './bizDate';
+import { defaultBizDateNow, isValidYmd, localBizDate } from './bizDate';
 import { getClientPrefsSnapshot, patchClientPrefs } from './clientPrefsStore';
 
 /** 各页面独立业务日，持久化在 user_client_prefs（非浏览器） */
@@ -30,41 +30,14 @@ function readStoredPageDate(pageId: string): string | null {
 
 /**
  * 读取某页业务日。
- * - 记账台：保留「计时锁定」与未锁定时跨自然日对齐「今天」。
- * - 其它页：无存储时默认今天；存储为「昨天」时在0 点过后自动对齐到今天；更早的手动查看日保留（各页独立）。
+ * - 全站不做日期锁定：默认始终展示「今天」（跨自然日自动对齐）。
+ * - 仍会把“今天”写回 prefs，便于服务端/多端状态一致，但不会长期停留在历史日期。
  */
 export function getPageBizDate(pageId: string): string {
   const shouldBe = defaultBizDateNow();
   const cur = readStoredPageDate(pageId);
-
-  if (pageId === BIZ_DATE_PAGE.ledger) {
-    if (isLedgerBizDateLocked()) {
-      if (cur) return cur;
-      const n = localBizDate();
-      persistPageDate(pageId, n);
-      return n;
-    }
-    if (cur && cur !== shouldBe) {
-      persistPageDate(pageId, shouldBe);
-      return shouldBe;
-    }
-    if (!cur) {
-      persistPageDate(pageId, shouldBe);
-      return shouldBe;
-    }
-    return cur;
-  }
-
-  if (!cur) {
-    persistPageDate(pageId, shouldBe);
-    return shouldBe;
-  }
-  const yesterday = addLocalDays(shouldBe, -1);
-  if (cur === yesterday) {
-    persistPageDate(pageId, shouldBe);
-    return shouldBe;
-  }
-  return cur;
+  if (cur !== shouldBe) persistPageDate(pageId, shouldBe);
+  return shouldBe;
 }
 
 /**
@@ -72,17 +45,11 @@ export function getPageBizDate(pageId: string): string {
  * 仅记账台在计时锁定时禁止向前调到更晚日期。
  */
 export function setPageBizDate(pageId: string, next: string): void {
-  if (!isValidYmd(next)) return;
+  // 全站默认展示今天：忽略手动设置，保持对齐到 shouldBe。
+  // 仍保留函数签名，避免调用方改动过大。
+  const shouldBe = defaultBizDateNow();
   const cur = readStoredPageDate(pageId);
-  if (
-    pageId === BIZ_DATE_PAGE.ledger &&
-    isLedgerBizDateLocked() &&
-    isValidYmd(cur) &&
-    next > cur
-  ) {
-    return;
-  }
-  persistPageDate(pageId, next);
+  if (cur !== shouldBe) persistPageDate(pageId, shouldBe);
 }
 
 export function getLedgerBizDate(): string {
@@ -90,16 +57,13 @@ export function getLedgerBizDate(): string {
 }
 
 export function isLedgerBizDateLocked(): boolean {
-  return getClientPrefsSnapshot().ledgerBizDateLocked === true;
+  return false;
 }
 
 export function lockLedgerBizDate(bizDate: string): void {
-  if (!isValidYmd(bizDate)) return;
-  const snap = getClientPrefsSnapshot();
-  patchClientPrefs({
-    ledgerBizDateLocked: true,
-    pageBizDates: { ...snap.pageBizDates, [BIZ_DATE_PAGE.ledger]: bizDate },
-  });
+  // 全站不支持锁定：强制回到今天
+  void bizDate;
+  unlockLedgerBizDateAndAdvanceToToday();
 }
 
 export function unlockLedgerBizDateAndAdvanceToToday(): void {

@@ -67,6 +67,23 @@ class ImageRecognizer:
             self.logger.error(f"加载灰度模板失败 {full_path}：{e}")
             return None
 
+    def load_template_gray(self, template_name):
+        """加载模板灰度图（缓存），用于更快的 matchTemplate。"""
+        if template_name in self._gray_template_cache:
+            return self._gray_template_cache[template_name]
+
+        template_bgr = self.load_template(template_name)
+        if template_bgr is None:
+            return None
+
+        try:
+            template_gray = cv2.cvtColor(template_bgr, cv2.COLOR_BGR2GRAY)
+            self._gray_template_cache[template_name] = template_gray
+            return template_gray
+        except Exception as e:
+            self.logger.error(f"转换模板灰度失败 {template_name}: {e}")
+            return None
+
     def clear_template_cache(self):
         self._gray_template_cache.clear()
         self._template_cache.clear()
@@ -105,30 +122,75 @@ class ImageRecognizer:
             self.logger.error(f"加载模板失败：{e}")
             return None
     
-    def find_image(self, screenshot, template_name):
-        """在截图中查找模板图像"""
-        template = self.load_template(template_name)
-        if template is None:
+    def _resolve_search_roi(self, image_w, image_h, template_name):
+        """将 Config.TEMPLATE_SEARCH_REGIONS[template_name] 解析为像素 ROI。"""
+        roi = getattr(Config, "TEMPLATE_SEARCH_REGIONS", {}).get(template_name)
+        if not roi:
             return None
-        
+
         try:
-            # 将PIL图像转换为OpenCV格式
-            screenshot_cv = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
-            
-            # 模板匹配
-            result = cv2.matchTemplate(screenshot_cv, template, cv2.TM_CCOEFF_NORMED)
-            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-            
-            # 检查匹配度
-            if max_val < Config.CONFIDENCE_THRESHOLD:
-                self.logger.warning(f"{template_name} 匹配度不足: {max_val}")
+            x, y, w, h = roi
+        except Exception:
+            self.logger.warning(f"TEMPLATE_SEARCH_REGIONS[{template_name}] 配置无效：{roi}")
+            return None
+
+        # 全 float 且在 0~1：按比例
+        if all(isinstance(v, float) for v in (x, y, w, h)):
+            if not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0 and 0.0 <= w <= 1.0 and 0.0 <= h <= 1.0):
                 return None
-            
-            # 计算中心点
-            h, w = template.shape[:2]
-            center_x = max_loc[0] + w // 2
-            center_y = max_loc[1] + h // 2
-            
+            px = int(x * image_w)
+            py = int(y * image_h)
+            pw = int(w * image_w)
+            ph = int(h * image_h)
+        else:
+            # 含 int：按像素
+            px, py, pw, ph = int(x), int(y), int(w), int(h)
+
+        if pw <= 0 or ph <= 0:
+            return None
+
+        px = max(0, min(px, image_w - 1))
+        py = max(0, min(py, image_h - 1))
+        pw = max(1, min(pw, image_w - px))
+        ph = max(1, min(ph, image_h - py))
+        return (px, py, pw, ph)
+
+    def find_image(self, screenshot, template_name):
+        """在截图中查找模板图像（灰度匹配 + 可选 ROI 提速）。"""
+        template_gray = self.load_template_gray(template_name)
+        if template_gray is None:
+            return None
+
+        try:
+            # PIL -> ndarray（RGB）-> 灰度。灰度匹配比 BGR 更快。
+            screenshot_rgb = np.asarray(screenshot)
+            screenshot_gray = cv2.cvtColor(screenshot_rgb, cv2.COLOR_RGB2GRAY)
+
+            h_img, w_img = screenshot_gray.shape[:2]
+            roi = self._resolve_search_roi(w_img, h_img, template_name)
+
+            if roi:
+                x, y, w, h = roi
+                search_gray = screenshot_gray[y : y + h, x : x + w]
+                roi_offset_x, roi_offset_y = x, y
+            else:
+                search_gray = screenshot_gray
+                roi_offset_x, roi_offset_y = 0, 0
+
+            # 模板必须不大于搜索区域
+            th, tw = template_gray.shape[:2]
+            sh, sw = search_gray.shape[:2]
+            if th > sh or tw > sw:
+                return None
+
+            result = cv2.matchTemplate(search_gray, template_gray, cv2.TM_CCOEFF_NORMED)
+            _, max_val, _, max_loc = cv2.minMaxLoc(result)
+
+            if max_val < Config.CONFIDENCE_THRESHOLD:
+                return None
+
+            center_x = roi_offset_x + max_loc[0] + tw // 2
+            center_y = roi_offset_y + max_loc[1] + th // 2
             self.logger.info(f"找到 {template_name} 在位置: ({center_x}, {center_y})，匹配度: {max_val}")
             return (center_x, center_y)
         except Exception as e:
