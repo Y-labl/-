@@ -14,6 +14,15 @@ import { BizDatePickerField } from '../components/BizDatePickerField';
 import { BizMonthPickerField } from '../components/BizMonthPickerField';
 import { formatWanZhCN } from '../utils/formatWanZhCN';
 
+function formatElapsedSec(sec: number | null | undefined): string {
+  if (sec == null || !Number.isFinite(Number(sec)) || Number(sec) < 0) return '0小时0分0秒';
+  const s = Math.max(0, Math.floor(Number(sec)));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const r = s % 60;
+  return `${h}小时${m}分${r}秒`;
+}
+
 export function OverviewPage() {
   const [viewDate, setViewDate] = usePageBizDate(BIZ_DATE_PAGE.overview);
   const ledgerBiz = useMemo(() => getLedgerBizDate(), []);
@@ -32,6 +41,13 @@ export function OverviewPage() {
   const [mechErr, setMechErr] = useState('');
   const [gameYuan, setGameYuan] = useState(() => loadGameYuanPair());
   const yuanPerWanW = useMemo(() => yuanPerWFromPair(gameYuan), [gameYuan]);
+
+  /** 兜底：总览业务日若停留在“昨天”，跨自然日后自动推进到今天 */
+  useEffect(() => {
+    const today = localBizDate();
+    const yesterday = addLocalDays(today, -1);
+    if (viewDate === yesterday) setViewDate(today);
+  }, [setViewDate, viewDate]);
 
   /** 与 weekStart 配套的周日（API 仍只传周一） */
   const weekEndStr = useMemo(() => addLocalDays(weekStart, 6), [weekStart]);
@@ -263,9 +279,6 @@ export function OverviewPage() {
           </p>
         ) : null}
         <p className="muted" style={{ fontSize: '0.78rem', margin: '0 0 0.65rem', lineHeight: 1.45 }}>
-          当日记账（点卡、现金、物品合计）均来自<strong>数据库</strong>；记账台会自动把当前数据写入库，打开总览即可同步，无需在总览清理 Session。
-        </p>
-        <p className="muted" style={{ fontSize: '0.78rem', margin: '0 0 0.65rem', lineHeight: 1.45 }}>
           下方日期<strong>仅影响本页「当日」</strong>；记账台、任务、消耗、神器攻略等页的<strong>业务日各自独立</strong>。
         </p>
         <div
@@ -360,7 +373,7 @@ export function OverviewPage() {
                 </div>
               ) : null}
             </div>
-            <div className="card stat-box" style={{ gridColumn: 4, gridRow: 2 }}>
+            <div className="card stat-box overview-cash-convert-card" style={{ gridColumn: 4, gridRow: 2 }}>
               <h3>净现金折算（元）</h3>
               <div className="num">{fmtYuan2(goldConvertYuan)}</div>
             </div>
@@ -442,16 +455,26 @@ export function OverviewPage() {
         )}
         {w && (
           <>
-            <div className="stat-grid">
-              <div className="card stat-box">
-                <h3>现金净额（元）</h3>
-                <div className="num">{fmtYuan2(w.netCashYuan ?? null)}</div>
-              </div>
-              <div className="card stat-box">
+            <div className="overview-daily-grid-4" style={{ marginBottom: '1.5rem' }}>
+              <div className="card stat-box overview-cash-total-card" style={{ gridColumn: 1, gridRow: 1 }}>
                 <h3>本周现金总额（元）</h3>
                 <div className="num">{fmtYuan2((w.totalCashYuan ?? null) as number | null)}</div>
               </div>
-              <div className="card stat-box">
+              <div className="card stat-box" style={{ gridColumn: 1, gridRow: 2 }}>
+                <h3>现金净额（元）</h3>
+                <div className="num">{fmtYuan2(w.netCashYuan ?? null)}</div>
+              </div>
+
+              <div className="card stat-box" style={{ gridColumn: 2, gridRow: 1 }}>
+                <h3>在线时长</h3>
+                <div className="num">{formatElapsedSec(w.onlineElapsedSecSum ?? null)}</div>
+              </div>
+              <div className="card stat-box" style={{ gridColumn: 2, gridRow: 2 }}>
+                <h3>在线角色数</h3>
+                <div className="num">{Number(w.onlineRolesWeekMax ?? 0)}</div>
+              </div>
+
+              <div className="card stat-box" style={{ gridColumn: 3, gridRow: 1 }}>
                 <h3>周点卡充值（元）</h3>
                 <div className="num">
                   {(Number(w.pointCardRechargeYuan) || 0).toLocaleString('zh-CN', {
@@ -460,25 +483,18 @@ export function OverviewPage() {
                   })}
                 </div>
               </div>
-              <div className="card stat-box">
-                <h3>周现金</h3>
-                <div className="num">{w.cash.toLocaleString('zh-CN')}</div>
-              </div>
-              <div className="card stat-box">
+              <div className="card stat-box" style={{ gridColumn: 3, gridRow: 2 }}>
                 <h3>周点卡</h3>
                 <div className="num">{Number(w.pointCard).toFixed(2)}</div>
               </div>
-              <div className="card stat-box">
+
+              <div className="card stat-box" style={{ gridColumn: 4, gridRow: 1 }}>
                 <h3>完成任务次数</h3>
                 <div className="num">{w.taskCompletionsCount}</div>
               </div>
-              <div className="card stat-box">
+              <div className="card stat-box" style={{ gridColumn: 4, gridRow: 2 }}>
                 <h3>物品数量合计</h3>
                 <div className="num">{weekItemQuantitySum.toLocaleString('zh-CN', { maximumFractionDigits: 2 })}</div>
-              </div>
-              <div className="card stat-box">
-                <h3>在线角色数</h3>
-                <div className="num">{Number(w.onlineRolesWeekMax ?? 0)}</div>
               </div>
             </div>
             <div className="card" style={{ padding: '1rem' }}>
@@ -524,16 +540,32 @@ export function OverviewPage() {
             <p className="muted" style={{ fontSize: '0.8rem', margin: '0.35rem 0 0.65rem', lineHeight: 1.45 }}>
               {mstat.year} 年 {mstat.month} 月自然月（1 日～月末），与「当日」业务日期无关；点卡充值口径同上（消耗页优先，其次旧表/点数折算）。
             </p>
-            <div className="stat-grid">
-              <div className="card stat-box">
-                <h3>现金净额（元）</h3>
-                <div className="num">{fmtYuan2(mstat.netCashYuan ?? null)}</div>
-              </div>
-              <div className="card stat-box">
+            <div className="overview-daily-grid-4" style={{ marginBottom: '1.5rem' }}>
+              <div className="card stat-box overview-cash-total-card" style={{ gridColumn: 1, gridRow: 1 }}>
                 <h3>本月现金总额（元）</h3>
                 <div className="num">{fmtYuan2((mstat.totalCashYuan ?? null) as number | null)}</div>
               </div>
-              <div className="card stat-box">
+              <div className="card stat-box" style={{ gridColumn: 1, gridRow: 2 }}>
+                <h3>现金净额（元）</h3>
+                <div className="num">{fmtYuan2(mstat.netCashYuan ?? null)}</div>
+              </div>
+
+              <div className="card stat-box" style={{ gridColumn: 2, gridRow: 1 }}>
+                <h3>在线时长</h3>
+                <div className="num">{formatElapsedSec(mstat.onlineElapsedSecSum ?? null)}</div>
+              </div>
+              <div className="card stat-box" style={{ gridColumn: 2, gridRow: 2 }}>
+                <h3>平均每天在线</h3>
+                <div className="num">
+                  {formatElapsedSec(
+                    mstat.onlineElapsedSecSum != null && mstat.onlineAvgDayCount
+                      ? mstat.onlineElapsedSecSum / Math.max(1, mstat.onlineAvgDayCount)
+                      : null,
+                  )}
+                </div>
+              </div>
+
+              <div className="card stat-box" style={{ gridColumn: 3, gridRow: 1 }}>
                 <h3>月点卡充值（元）</h3>
                 <div className="num">
                   {(Number(mstat.pointCardRechargeYuan) || 0).toLocaleString('zh-CN', {
@@ -542,15 +574,16 @@ export function OverviewPage() {
                   })}
                 </div>
               </div>
-              <div className="card stat-box">
+              <div className="card stat-box" style={{ gridColumn: 3, gridRow: 2 }}>
                 <h3>月点卡</h3>
                 <div className="num">{Number(mstat.pointCard).toFixed(2)}</div>
               </div>
-              <div className="card stat-box">
+
+              <div className="card stat-box" style={{ gridColumn: 4, gridRow: 1 }}>
                 <h3>完成任务次数</h3>
                 <div className="num">{mstat.taskCompletionsCount}</div>
               </div>
-              <div className="card stat-box">
+              <div className="card stat-box" style={{ gridColumn: 4, gridRow: 2 }}>
                 <h3>物品数量合计</h3>
                 <div className="num">
                   {monthItemQuantitySum.toLocaleString('zh-CN', { maximumFractionDigits: 2 })}

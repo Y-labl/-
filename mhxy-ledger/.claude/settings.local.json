@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -n \"accent-color\" client/src/styles/*.css client/src/pages/**/*.css client/src/components/**/*.css)",
+      "Bash(grep:*)"
+    ]
+  }
+}

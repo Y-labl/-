@@ -7,6 +7,8 @@ import { OverviewPage } from './pages/OverviewPage';
 import { ItemsHubPage } from './pages/ItemsHubPage';
 import { ItemsGridPage } from './pages/ItemsGridPage';
 import { ConsumptionPage } from './pages/ConsumptionPage';
+import { RecommendSkinHubPage } from './pages/RecommendSkinHubPage';
+import { RecommendSkinRoute } from './pages/RecommendSkinRoute';
 import { TasksPage } from './pages/TasksPage';
 import { ArtifactGuidePage } from './pages/ArtifactGuidePage';
 import MechanicalLedgerPage from './pages/ledger/MechanicalLedgerPage';
@@ -36,6 +38,8 @@ export default function App() {
         <Route path="ledger/catalog" element={<ItemCatalogPage />} />
         <Route path="ledger/daily" element={<MechDailyReportPage />} />
         <Route path="ledger" element={<MechanicalLedgerPage />} />
+        <Route path="tasks/styles" element={<RecommendSkinHubPage />} />
+        <Route path="tasks/style/:skinId" element={<RecommendSkinRoute />} />
         <Route path="tasks/backfill" element={<Navigate to="/app/tasks?tab=backfill" replace />} />
         <Route path="tasks" element={<TasksPage />} />
         <Route path="guide/artifacts" element={<ArtifactGuidePage />} />

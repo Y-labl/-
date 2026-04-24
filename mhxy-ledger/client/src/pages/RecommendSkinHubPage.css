@@ -1,0 +1,93 @@
+.rec-skin-hub {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.rec-skin-hub__head {
+  margin-bottom: 1.5rem;
+}
+
+.rec-skin-hub__head h2 {
+  margin: 0 0 0.5rem;
+}
+
+.rec-skin-hub__back {
+  margin-top: 0.75rem;
+}
+
+.rec-skin-hub__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
+  gap: 1rem;
+}
+
+.rec-skin-hub__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 5.5rem;
+  padding: 1rem 0.75rem;
+  border-radius: var(--radius);
+  text-decoration: none;
+  color: #fff;
+  font-weight: 700;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.rec-skin-hub__card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+}
+
+.rec-skin-hub__card-demo {
+  margin-top: 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+.rec-skin-hub__card--neon {
+  background: linear-gradient(145deg, #2a0a2a 0%, #0a2a2a 100%);
+}
+.rec-skin-hub__card--anime {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+.rec-skin-hub__card--mechanical {
+  background: linear-gradient(145deg, #0a1a1a 0%, #001018 100%);
+  border-color: rgba(0, 255, 255, 0.35);
+}
+.rec-skin-hub__card--romantic {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
+.rec-skin-hub__card--fresh {
+  background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
+  color: #1a2a10;
+}
+.rec-skin-hub__card--fresh .rec-skin-hub__card-demo {
+  color: #2a3a1a;
+}
+.rec-skin-hub__card--dragon {
+  background: linear-gradient(135deg, #f94d44 0%, #ff6b6b 100%);
+}
+.rec-skin-hub__card--galaxy {
+  background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+}
+.rec-skin-hub__card--water {
+  background: linear-gradient(135deg, #2193b0 0%, #6dd5ed 100%);
+}
+.rec-skin-hub__card--china {
+  background: linear-gradient(135deg, #ff4b1f 0%, #1f1f1f 100%);
+}
+.rec-skin-hub__card--glass {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+  border-color: rgba(255, 255, 255, 0.45);
+}
+
+.rec-skin-hub__card--crystal {
+  background: linear-gradient(135deg, #0d3d4d 0%, #1a5f7a 35%, #4a90a8 70%, #b8e8ff 100%);
+  border-color: rgba(200, 240, 255, 0.55);
+  box-shadow: 0 0 24px rgba(180, 235, 255, 0.35);
+}

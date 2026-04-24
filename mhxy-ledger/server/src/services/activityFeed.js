@@ -123,8 +123,8 @@ function getEmergencyBuiltinActivities() {
     normalizeActivity({
       key: 'maze-montothu',
       name: '活动：帮派迷宫',
-      description: '周一至周四晚间（应急内置）',
-      weekdays: [1, 2, 3, 4],
+      description: '周一、周三固定开放；周五仅无帮战时开放（应急内置；以游戏内为准）',
+      weekdays: [1, 3, 5],
       start: '20:00',
       end: '22:00',
       pinEarly: 30,

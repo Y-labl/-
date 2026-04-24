@@ -1,0 +1,348 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.mhxy-login-page {
+  font-family: "Microsoft YaHei", sans-serif;
+  min-height: 100vh;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  overflow: hidden;
+  background: #1a1a2e;
+  padding-right: 8%;
+  position: relative;
+  z-index: 1;
+}
+
+/* 动态背景容器 */
+.mhxy-login-page .background {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* 视频背景 */
+.mhxy-login-page .video-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.7;
+}
+
+/* 视频遮罩层 - 让登录框更清晰 */
+.mhxy-login-page .video-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, rgba(26, 26, 46, 0.5) 0%, rgba(15, 52, 96, 0.4) 100%);
+}
+
+/* 视频容器，用于在视频结尾淡出 */
+.mhxy-login-page .video-wrapper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* 视频淡出效果 */
+.mhxy-login-page .video-wrapper::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0) 95%, rgba(0, 0, 0, 0.9) 100%);
+  pointer-events: none;
+}
+
+/* 飘落的花瓣 */
+.mhxy-login-page .petals {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.mhxy-login-page .petal {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: radial-gradient(circle, #ffb6c1 0%, #ff69b4 100%);
+  border-radius: 50% 0 50% 50%;
+  animation: mhxy-login-fall 10s linear infinite;
+  opacity: 0.8;
+}
+
+.mhxy-login-page .petal:nth-child(1) { left: 5%; animation-delay: 0s; animation-duration: 8s; }
+.mhxy-login-page .petal:nth-child(2) { left: 15%; animation-delay: 1s; animation-duration: 10s; }
+.mhxy-login-page .petal:nth-child(3) { left: 25%; animation-delay: 2s; animation-duration: 9s; }
+.mhxy-login-page .petal:nth-child(4) { left: 40%; animation-delay: 3s; animation-duration: 11s; }
+.mhxy-login-page .petal:nth-child(5) { left: 55%; animation-delay: 4s; animation-duration: 8s; }
+.mhxy-login-page .petal:nth-child(6) { left: 70%; animation-delay: 5s; animation-duration: 10s; }
+.mhxy-login-page .petal:nth-child(7) { left: 85%; animation-delay: 6s; animation-duration: 9s; }
+.mhxy-login-page .petal:nth-child(8) { left: 95%; animation-delay: 7s; animation-duration: 11s; }
+.mhxy-login-page .petal:nth-child(9) { left: 12%; animation-delay: 2.5s; animation-duration: 9.5s; }
+.mhxy-login-page .petal:nth-child(10) { left: 62%; animation-delay: 5.5s; animation-duration: 10.5s; }
+
+/* 魔法粒子效果 */
+.mhxy-login-page .magic-particles {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.mhxy-login-page .particle {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: #ffd700;
+  border-radius: 50%;
+  animation: mhxy-login-floatParticle 6s ease-in-out infinite;
+  box-shadow: 0 0 10px #ffd700;
+}
+
+.mhxy-login-page .particle:nth-child(1) { left: 10%; top: 20%; animation-delay: 0s; }
+.mhxy-login-page .particle:nth-child(2) { left: 80%; top: 30%; animation-delay: 1s; }
+.mhxy-login-page .particle:nth-child(3) { left: 30%; top: 60%; animation-delay: 2s; }
+.mhxy-login-page .particle:nth-child(4) { left: 70%; top: 70%; animation-delay: 3s; }
+.mhxy-login-page .particle:nth-child(5) { left: 50%; top: 40%; animation-delay: 4s; }
+.mhxy-login-page .particle:nth-child(6) { left: 20%; top: 80%; animation-delay: 5s; }
+.mhxy-login-page .particle:nth-child(7) { left: 90%; top: 50%; animation-delay: 2.5s; }
+.mhxy-login-page .particle:nth-child(8) { left: 40%; top: 10%; animation-delay: 1.5s; }
+
+/* 登录框 */
+.mhxy-login-page .login-container {
+  position: relative;
+  z-index: 2;
+  background: linear-gradient(145deg, rgba(20, 30, 50, 0.85) 0%, rgba(40, 25, 50, 0.8) 100%);
+  backdrop-filter: blur(20px);
+  border-radius: 25px;
+  padding: 50px 60px;
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.6),
+    0 0 40px rgba(255, 200, 100, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 215, 0, 0.3);
+  animation: mhxy-login-fadeIn 1s ease-out;
+  min-width: 420px;
+}
+
+.mhxy-login-page .login-container::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, transparent 40%, rgba(255, 215, 0, 0.05) 50%, transparent 60%);
+  background-size: 200% 200%;
+  border-radius: 25px;
+  z-index: -1;
+  animation: mhxy-login-shimmer 3s ease-in-out infinite;
+}
+
+.mhxy-login-page .login-title {
+  text-align: center;
+  color: #ffd700;
+  font-size: 38px;
+  margin-bottom: 35px;
+  text-shadow:
+    0 0 20px rgba(255, 215, 0, 0.8),
+    0 0 40px rgba(255, 200, 100, 0.4),
+    0 4px 8px rgba(0, 0, 0, 0.5);
+  letter-spacing: 16px;
+  font-weight: bold;
+  background: linear-gradient(180deg, #fff8dc 0%, #ffd700 50%, #ff8c00 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.mhxy-login-page .form-group {
+  margin-bottom: 25px;
+}
+
+.mhxy-login-page .form-group label {
+  display: block;
+  color: rgba(255, 215, 0, 0.8);
+  margin-bottom: 10px;
+  font-size: 13px;
+  text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+  letter-spacing: 2px;
+}
+
+.mhxy-login-page .form-group input {
+  width: 100%;
+  padding: 15px 20px;
+  border: 1px solid rgba(255, 215, 0, 0.2);
+  border-radius: 12px;
+  background: rgba(20, 30, 50, 0.6);
+  color: #fff;
+  font-size: 15px;
+  outline: none;
+  transition: all 0.3s ease;
+}
+
+.mhxy-login-page .form-group input:focus {
+  border-color: rgba(255, 215, 0, 0.6);
+  box-shadow:
+    0 0 25px rgba(255, 215, 0, 0.3),
+    0 0 50px rgba(255, 200, 100, 0.1),
+    inset 0 0 15px rgba(255, 215, 0,  0.05);
+  background: rgba(20, 30, 50, 0.8);
+}
+
+.mhxy-login-page .form-group input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.mhxy-login-page .remember-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.mhxy-login-page .remember-row input[type="checkbox"] {
+  margin-right: 10px;
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+  accent-color: #ffd700;
+}
+
+.mhxy-login-page .remember-row label {
+  color: rgba(255, 215, 0, 0.8);
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.mhxy-login-page .login-btn {
+  width: 100%;
+  padding: 18px;
+  background: linear-gradient(135deg, #ff8c00 0%, #ffd700 50%, #ff8c00 100%);
+  background-size: 200% 200%;
+  border: none;
+  border-radius: 12px;
+  color: #1a1a2e;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.4s ease;
+  box-shadow: 0 4px 25px rgba(255, 215, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  letter-spacing: 6px;
+  animation: mhxy-login-btnGlow 3s ease-in-out infinite;
+}
+
+.mhxy-login-page .login-btn:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 35px rgba(255, 215, 0, 0.6), 0 0 50px rgba(255, 200, 100, 0.3);
+  background-position: 100% 50%;
+}
+
+.mhxy-login-page .login-btn:active {
+  transform: translateY(-2px);
+  box-shadow: 0 2px 15px rgba(255, 215, 0, 0.5);
+}
+
+.mhxy-login-page .login-btn:disabled {
+  opacity: 0.75;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.mhxy-login-page .login-error {
+  margin: 0.65rem 0 0;
+  color: #ff6b6b;
+  font-size: 0.9rem;
+  text-shadow: 0 0 12px rgba(255, 107, 107, 0.25);
+}
+
+.mhxy-login-page .links {
+  text-align: center;
+  margin-top: 30px;
+}
+
+.mhxy-login-page .links a {
+  color: rgba(255, 215, 0, 0.7);
+  text-decoration: none;
+  font-size: 13px;
+  margin: 0 20px;
+  transition: all 0.3s ease;
+  text-shadow: 0 0 8px rgba(255, 215, 0, 0.4);
+  letter-spacing: 1px;
+}
+
+.mhxy-login-page .links a:hover {
+  color: #ffd700;
+  text-shadow: 0 0 20px rgba(255, 215, 0, 0.8);
+}
+
+.mhxy-login-page .links span {
+  color: rgba(255, 215, 0, 0.3);
+}
+
+/* 动画定义 */
+@keyframes mhxy-login-fall {
+  0% { transform: translateY(-10px) rotate(0deg); opacity: 0; }
+  10% { opacity: 0.8; }
+  90% { opacity: 0.8; }
+  100% { transform: translateY(100vh) rotate(360deg); opacity: 0; }
+}
+
+@keyframes mhxy-login-floatParticle {
+  0%, 100% { transform: translateY(0) scale(1); opacity: 0.6; }
+  50% { transform: translateY(-30px) scale(1.2); opacity: 1; }
+}
+
+@keyframes mhxy-login-shimmer {
+  0% { background-position: 200% 50%; }
+  100% { background-position: -200% 50%; }
+}
+
+@keyframes mhxy-login-btnGlow {
+  0%, 100% { box-shadow: 0 4px 25px rgba(255, 215, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.4); }
+  50% { box-shadow: 0 4px 30px rgba(255, 215, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.5); }
+}
+
+@keyframes mhxy-login-fadeIn {
+  from { opacity: 0; transform: translateY(30px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* 响应式 */
+@media (max-width: 480px) {
+  .mhxy-login-page {
+    justify-content: center;
+    padding-right: 0;
+  }
+
+  .mhxy-login-page .login-container {
+    min-width: 320px;
+    padding: 30px 25px;
+  }
+
+  .mhxy-login-page .login-title {
+    font-size: 28px;
+    letter-spacing: 8px;
+  }
+}
+

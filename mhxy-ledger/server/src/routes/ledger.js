@@ -854,6 +854,120 @@ ledgerRouter.get('/mech-ledger/day-dates', async (req, res) => {
   }
 });
 
+/** 历史收益：按业务日汇总（物品合计 + 净现金；避免商人卖出物品重复计入） */
+ledgerRouter.get('/mech-ledger/history', async (req, res) => {
+  const uid = req.user.id;
+  const limit = Math.min(3660, Math.max(1, Math.floor(Number(req.query?.limit) || 120)));
+  const VENDOR_TRASH_NAMES = new Set(['乐器', '花', '玫瑰花', '图册']);
+  const trashList = [...VENDOR_TRASH_NAMES].map(() => '?').join(',');
+  try {
+    const [rows] = await pool.query(
+      `SELECT d.biz_date AS bizDate,
+              COALESCE(items.itemW, 0) AS itemW,
+              COALESCE(items.vendorTrashW, 0) AS vendorTrashW,
+              m.online_roles AS onlineRoles,
+              m.cash_game_gold_w AS cashGameGoldW,
+              m.team_principals_w AS teamPrincipalsW,
+              m.team_cash_game_gold_w AS teamCashGameGoldWRaw,
+              m.saved_at AS savedAt
+       FROM (
+         SELECT biz_date FROM mech_catalog_line_agg WHERE user_id = ?
+         UNION
+         SELECT biz_date FROM mech_ledger_day_meta WHERE user_id = ?
+       ) d
+       LEFT JOIN (
+         SELECT biz_date,
+                COALESCE(SUM(unit_price_w * quantity), 0) AS itemW,
+                COALESCE(SUM(CASE WHEN item_name IN (${trashList}) THEN unit_price_w * quantity ELSE 0 END), 0) AS vendorTrashW
+           FROM mech_catalog_line_agg
+          WHERE user_id = ?
+          GROUP BY biz_date
+       ) items ON items.biz_date = d.biz_date
+       LEFT JOIN mech_ledger_day_meta m ON m.user_id = ? AND m.biz_date = d.biz_date
+       ORDER BY d.biz_date DESC
+       LIMIT ?`,
+      [uid, uid, ...[...VENDOR_TRASH_NAMES], uid, uid, limit],
+    );
+
+    const items = rows.map((r) => {
+      let teamPrincipalsW = [];
+      try {
+        teamPrincipalsW = r ? parseTeamPrincipalsColumn(r.teamPrincipalsW) : [];
+      } catch {
+        teamPrincipalsW = [];
+      }
+      const cashGameGoldW = r && r.cashGameGoldW != null ? Number(r.cashGameGoldW) : 0;
+      const principalsSum = teamPrincipalsW.reduce((a, b) => a + b, 0);
+
+      let tcParsed = [];
+      let hasPerTeamCashColumn = false;
+      try {
+        const rawTc = r?.teamCashGameGoldWRaw;
+        hasPerTeamCashColumn =
+          rawTc != null &&
+          rawTc !== '' &&
+          !(typeof rawTc === 'string' && String(rawTc).trim() === 'null');
+        if (hasPerTeamCashColumn) {
+          tcParsed = parseTeamPrincipalsColumn(rawTc);
+          if (!Array.isArray(tcParsed) || tcParsed.length === 0) {
+            hasPerTeamCashColumn = false;
+            tcParsed = [];
+          }
+        }
+      } catch {
+        hasPerTeamCashColumn = false;
+        tcParsed = [];
+      }
+
+      const slotsFromRoles = teamSlotsFromPresetAndCount(null, r ? Number(r.onlineRoles) : 1);
+      const teamSlotsMeta = Math.min(4, Math.max(slotsFromRoles, teamPrincipalsW.length, tcParsed.length, 1));
+      const principalsPad = [];
+      for (let i = 0; i < teamSlotsMeta; i++) {
+        principalsPad.push(Number.isFinite(Number(teamPrincipalsW[i])) ? Number(teamPrincipalsW[i]) : 0);
+      }
+
+      let teamCashGameGoldW = null;
+      if (hasPerTeamCashColumn) {
+        teamCashGameGoldW = [];
+        for (let i = 0; i < teamSlotsMeta; i++) {
+          const x = Number(tcParsed[i]);
+          teamCashGameGoldW.push(Number.isFinite(x) && x >= 0 ? x : 0);
+        }
+      }
+
+      const netCashGameGoldW =
+        hasPerTeamCashColumn && teamCashGameGoldW && teamCashGameGoldW.length > 0
+          ? netCashFromTeamRows(teamCashGameGoldW, principalsPad, teamSlotsMeta)
+          : cashGameGoldW > 0
+            ? cashGameGoldW - principalsSum
+            : 0;
+
+      const itemW = Number(r?.itemW ?? 0) || 0;
+      const vendorTrashW = Number(r?.vendorTrashW ?? 0) || 0;
+      const profitW = itemW - vendorTrashW + (Number.isFinite(netCashGameGoldW) ? netCashGameGoldW : 0);
+
+      return {
+        bizDate: r?.bizDate ? String(r.bizDate).slice(0, 10) : todayStr(),
+        profitW,
+        netCashGameGoldW,
+        itemW,
+        vendorTrashW,
+        onlineRoles: r?.onlineRoles != null ? Number(r.onlineRoles) : 0,
+        savedAt: r?.savedAt ? new Date(r.savedAt).toISOString() : null,
+      };
+    });
+
+    res.json({ items });
+  } catch (e) {
+    if (e?.code === 'ER_NO_SUCH_TABLE') {
+      return res.status(503).json({
+        error: '数据库缺少记账台同步表。请在 server 目录执行：npm run db:migrate-v6',
+      });
+    }
+    throw e;
+  }
+});
+
 ledgerRouter.post('/item-gains', async (req, res) => {
   const itemId = Number(req.body?.itemId);
   const quantity = Math.max(1, Number(req.body?.quantity || 1));

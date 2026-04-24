@@ -1,4 +1,4 @@
-USE mhxy_ledger;
+
 
 -- 演示账号由 `npm run db:seed`（Node + bcrypt）创建，避免 SQL 内写死哈希。
 
@@ -44,3 +44,8 @@ INSERT IGNORE INTO task_templates (name, description, frequency, sort_order, coo
 
 INSERT IGNORE INTO task_templates (id, name, description, frequency, sort_order, cooldown_days, schedule_weekdays, schedule_start, schedule_end, schedule_pin_early_minutes) VALUES
 (12, '活动：皇宫飞贼', '周一至周五，中午 12:00 至下午 14:00（即 12 点–下午 2 点；以游戏内为准）。', 'daily', 36, 1, '1,2,3,4,5', '12:00:00', '14:00:00', 20);
+
+-- Weekly (reset Monday 08:00 by server logic)
+INSERT IGNORE INTO task_templates (name, description, frequency, sort_order, cooldown_days) VALUES
+('副本：九色鹿', '周常副本：每周可刷 2 次（周一早上 08:00 重置次数）', 'weekly_twice', 70, 7),
+('副本：维摩诘', '周常副本：每周可刷 1 次（周一早上 08:00 重置次数）', 'weekly_once', 71, 7);

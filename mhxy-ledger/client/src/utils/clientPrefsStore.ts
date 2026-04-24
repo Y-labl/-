@@ -31,6 +31,8 @@ export type UserClientPrefs = {
   tablePageSize?: number;
   taskCompleteChainEnd?: Record<string, string>;
   taskPrestartSticky?: Record<string, string[]>;
+  /** 推荐榜：停用（隐藏）的 live 限时活动 externalKey 列表 */
+  hiddenLiveActivities?: string[];
   beastScrollV2?: { v: number; rows: unknown[] };
   tierPrices?: Record<string, Record<string, number>>;
   ruyiDanPrices?: Record<string, number>;
@@ -47,6 +49,7 @@ export const DEFAULT_CLIENT_PREFS: UserClientPrefs = {
   tablePageSize: 20,
   taskCompleteChainEnd: {},
   taskPrestartSticky: {},
+  hiddenLiveActivities: [],
   tierPrices: {},
 };
 
@@ -93,6 +96,11 @@ function mergePrefs(prev: UserClientPrefs, patch: Partial<UserClientPrefs>): Use
   }
   if (patch.taskPrestartSticky) {
     out.taskPrestartSticky = { ...out.taskPrestartSticky, ...patch.taskPrestartSticky };
+  }
+  if (patch.hiddenLiveActivities) {
+    out.hiddenLiveActivities = Array.isArray(patch.hiddenLiveActivities)
+      ? patch.hiddenLiveActivities.map((x) => String(x)).filter(Boolean)
+      : out.hiddenLiveActivities;
   }
   if (patch.tierPrices) {
     out.tierPrices = { ...out.tierPrices, ...patch.tierPrices };

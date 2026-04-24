@@ -1,5 +1,5 @@
 -- MHXY Ledger v1 schema
-USE mhxy_ledger;
+USE ledger;
 
 SET NAMES utf8mb4;
 

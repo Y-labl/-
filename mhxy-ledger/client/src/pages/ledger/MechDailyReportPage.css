@@ -6,75 +6,87 @@
 
 .mech-daily-top-actions {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.6rem;
   flex-shrink: 0;
 }
 
 .mech-daily-controls {
-  margin-bottom: 1rem;
-  padding: 1rem 1.1rem;
+  margin-bottom: 1.2rem;
+  padding: 1.1rem 1.2rem;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.85rem;
+  border: 1px solid var(--border-gold-soft);
+  border-radius: var(--radius);
+  background: rgba(26, 26, 46, 0.6);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
 }
 
 .mech-daily-controls-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem 1rem;
+  gap: 0.6rem 1.2rem;
 }
 
 .mech-daily-nav-btns {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.6rem;
 }
 
 .mech-daily-pills {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.4rem;
 }
 
 .mech-daily-pill {
-  font-size: 0.78rem;
-  padding: 0.2rem 0.5rem;
+  font-size: 0.82rem;
+  padding: 0.25rem 0.55rem;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-gold-soft);
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(26, 26, 46, 0.7);
   color: var(--text-dim);
   cursor: pointer;
+  transition: all 0.3s ease;
 }
 
 .mech-daily-pill:hover {
   color: var(--text);
-  border-color: rgba(0, 229, 255, 0.35);
+  border-color: var(--border-gold);
+  background: rgba(45, 45, 68, 0.8);
 }
 
 .mech-daily-pill.active {
-  color: var(--gold-bright);
+  color: var(--gold);
   border-color: var(--border-gold);
-  background: rgba(0, 229, 255, 0.08);
+  background: rgba(255, 215, 0, 0.15);
+  box-shadow: 0 0 10px rgba(255, 215, 0, 0.2);
 }
 
 .mech-daily-err {
   color: var(--danger);
-  margin: 0 0 1rem;
+  margin: 0 0 1.2rem;
 }
 
 .mech-daily-section {
-  padding: 1rem 1.15rem 1.25rem;
+  padding: 1.2rem 1.35rem 1.35rem;
+  border: 1px solid var(--border-gold-soft);
+  border-radius: var(--radius);
+  background: rgba(26, 26, 46, 0.7);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
 }
 
 .mech-daily-section-title {
-  margin: 0 0 0.65rem;
-  font-size: 1rem;
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
   font-family: var(--font-display);
-  font-weight: 500;
+  font-weight: 600;
   color: var(--gold);
+  text-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
 }
 
 .mech-daily-table-wrap {
@@ -86,30 +98,38 @@
 .mech-daily-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.88rem;
+  font-size: 0.9rem;
 }
 
 .mech-daily-table th,
 .mech-daily-table td {
-  padding: 0.55rem 0.65rem;
+  padding: 0.6rem 0.7rem;
   text-align: left;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 215, 0, 0.08);
 }
 
-.mech-daily-table thead th {
-  background: rgba(0, 20, 30, 0.5);
+.mech-daily-table th {
+  background: rgba(45, 45, 68, 0.6);
   color: var(--text-dim);
-  font-weight: 500;
+  font-weight: 700;
+  border-bottom: 1px solid var(--border-gold-soft);
+}
+
+.mech-daily-table tbody tr:hover {
+  background: rgba(255, 215, 0, 0.05);
 }
 
 .mech-daily-table .num {
   text-align: right;
   font-variant-numeric: tabular-nums;
+  color: var(--gold);
+  font-weight: 600;
 }
 
 .mech-daily-empty {
   color: var(--muted);
-  padding: 1.25rem !important;
+  padding: 1.4rem !important;
+  text-align: center;
 }
 
 .mech-daily-summary-time {
@@ -118,35 +138,39 @@
 }
 
 .mech-daily-team-cells {
-  font-size: 0.82rem;
-  line-height: 1.4;
+  font-size: 0.85rem;
+  line-height: 1.5;
   vertical-align: top;
 }
 
 .mech-daily-team-primary {
-  max-width: 14rem;
+  max-width: 15rem;
 }
 
 .mech-daily-team-sub {
-  margin-top: 0.25rem;
-  font-size: 0.76rem;
-  line-height: 1.35;
+  margin-top: 0.3rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--text-dim);
 }
 
 .mech-daily-point-extra {
-  margin: 0.65rem 0 0;
-  font-size: 0.8rem;
-  line-height: 1.45;
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text-dim);
 }
 
 .mech-daily-footnote {
-  margin: 0.75rem 0 0;
-  font-size: 0.8rem;
+  margin: 0.85rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
 }
 
 .mech-daily-pointcard-sub {
-  margin-top: 0.3rem;
-  font-size: 0.78rem;
+  margin-top: 0.35rem;
+  font-size: 0.82rem;
   font-weight: 400;
-  line-height: 1.35;
+  line-height: 1.4;
+  color: var(--text-dim);
 }

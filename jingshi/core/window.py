@@ -60,30 +60,27 @@ class WindowManager:
     
     def capture_window(self, region=None):
         """截图窗口内容
-        
+
         :param region: 可选的截图区域 (x, y, width, height)，不传则截取整个窗口
         :return: PIL Image 对象或 None
         """
         rect = self.get_window_rect()
         if not rect:
             return None
-        
+
         try:
             left, top, width, height = rect
-            
-            # 如果指定了区域，使用区域截图
+
             if region:
                 region_abs = (
                     left + region[0],
                     top + region[1],
                     region[2],
-                    region[3]
+                    region[3],
                 )
-                screenshot = pyautogui.screenshot(region=region_abs)
-            else:
-                screenshot = pyautogui.screenshot(region=(left, top, width, height))
-            
-            return screenshot
+                return pyautogui.screenshot(region=region_abs)
+
+            return pyautogui.screenshot(region=(left, top, width, height))
         except Exception as e:
             self.logger.error(f"截图失败：{e}")
             return None

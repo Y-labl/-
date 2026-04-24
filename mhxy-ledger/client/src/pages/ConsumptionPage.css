@@ -1,15 +1,15 @@
 .consumption-form {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 0.75rem 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.85rem 1.2rem;
   align-items: end;
 }
 
 .consumption-field {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-  font-size: 0.82rem;
+  gap: 0.4rem;
+  font-size: 0.85rem;
   color: var(--muted);
 }
 
@@ -24,56 +24,71 @@
 .consumption-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.88rem;
+  font-size: 0.9rem;
 }
 
 .consumption-table th,
 .consumption-table td {
-  padding: 0.45rem 0.5rem;
+  padding: 0.5rem 0.6rem;
   text-align: left;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 215, 0, 0.1);
+}
+
+.consumption-table th {
+  background: rgba(45, 45, 68, 0.4);
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.consumption-table tbody tr:hover {
+  background: rgba(255, 215, 0, 0.05);
 }
 
 .consumption-table .num {
   text-align: right;
   font-variant-numeric: tabular-nums;
+  color: var(--gold);
+  font-weight: 600;
 }
 
 .consumption-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.65rem 1rem;
-  margin-bottom: 1rem;
+  gap: 0.75rem 1.2rem;
+  margin-bottom: 1.2rem;
 }
 
 .consumption-toolbar-btn {
   flex-shrink: 0;
-  min-height: 2.45rem;
+  min-height: 2.6rem;
   align-self: center;
 }
 
 .consumption-modal.modal {
-  width: min(520px, calc(100vw - 2rem));
+  width: min(540px, calc(100vw - 2rem));
 }
 
 .consumption-modal-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.6rem;
   justify-content: flex-end;
+  margin-top: 1rem;
 }
 
 .consumption-modal .btn-sm {
-  font-size: 0.8rem;
-  padding: 0.32rem 0.6rem;
+  font-size: 0.85rem;
+  padding: 0.35rem 0.65rem;
 }
 
 .consumption-roster-table-wrap {
   overflow-x: auto;
-  margin-bottom: 1rem;
+  margin-bottom: 1.2rem;
   max-height: min(40vh, 320px);
   overflow-y: auto;
+  border: 1px solid var(--border-gold-soft);
+  border-radius: var(--radius-sm);
 }
 
 .consumption-roster-actions {
@@ -82,30 +97,31 @@
 }
 
 .consumption-roster-add {
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  padding-top: 1rem;
+  border-top: 1px solid var(--border-gold-soft);
+  padding-top: 1.2rem;
 }
 
 .consumption-roster-add-title {
   grid-column: 1 / -1;
-  margin: 0 0 0.25rem;
-  font-size: 0.95rem;
-  font-weight: 500;
-  color: var(--muted);
+  margin: 0 0 0.3rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--gold);
 }
 
 .consumption-roster-edit-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 0.5rem 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.6rem 0.85rem;
   align-items: end;
 }
 
 .consumption-roster-edit-btns {
-  grid-column: 1 / -1;
+  grid: column 1 / -1;
   display: flex;
-  gap: 0.5rem;
+  gap: 0.6rem;
   justify-content: flex-end;
+  margin-top: 0.5rem;
 }
 
 .consumption-day-table-wrap {
@@ -117,28 +133,28 @@
 }
 
 .consumption-day-table .consumption-col-char {
-  width: 6.25rem;
+  width: 6.5rem;
 }
 
 .consumption-day-table .consumption-col-level {
-  width: 3.75rem;
+  width: 4rem;
 }
 
 .consumption-day-table .consumption-col-sect {
-  width: 5.5rem;
+  width: 5.8rem;
 }
 
 .consumption-day-table .consumption-col-num {
-  width: 7.25rem;
+  width: 7.5rem;
 }
 
 .consumption-day-table .consumption-col-items {
-  width: 11rem;
+  width: 11.5rem;
 }
 
 .consumption-day-table .consumption-col-note {
   width: auto;
-  min-width: 11rem;
+  min-width: 12rem;
 }
 
 .consumption-day-table th.num,
@@ -153,22 +169,23 @@
 }
 
 .consumption-day-th-action {
-  width: 4.5rem;
-  padding-left: 0.35rem;
-  padding-right: 0.35rem;
+  width: 4.8rem;
+  padding-left: 0.4rem;
+  padding-right: 0.4rem;
 }
 
 .consumption-day-table .consumption-day-input {
   min-width: 0;
   box-sizing: border-box;
-  font-size: 0.85rem;
-  padding: 0.35rem 0.45rem;
+  font-size: 0.88rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 8px;
 }
 
 .consumption-day-table td.consumption-day-cell-num .consumption-day-input {
   display: block;
-  width: 6.5rem;
-  max-width: 6.5rem;
+  width: 6.8rem;
+  max-width: 6.8rem;
   margin-left: auto;
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -186,16 +203,39 @@
 }
 
 .consumption-day-note-items-line {
-  font-size: 0.8rem;
-  line-height: 1.4;
-  color: var(--accent);
-  margin-bottom: 0.35rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--gold);
+  margin-bottom: 0.4rem;
   word-break: break-word;
 }
 
+.consumption-day-day-header {
+  padding: 0.6rem 0.8rem;
+  background: rgba(45, 45, 68, 0.4);
+  border: 1px solid var(--border-gold-soft);
+  border-radius: var(--radius-sm);
+  margin-bottom: 0.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.consumption-day-day-header-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--gold);
+}
+
+.consumption-day-day-header-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
 .consumption-day-cell-num {
-  padding-left: 0.35rem;
-  padding-right: 0.35rem;
+  padding-left: 0.4rem;
+  padding-right: 0.4rem;
 }
 
 .consumption-day-items-cell {
@@ -205,84 +245,89 @@
 }
 
 .consumption-day-items-btn {
-  padding: 0.25rem 0.5rem;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.85rem;
 }
 
 .consumption-items-modal.modal {
-  width: min(480px, calc(100vw - 2rem));
+  width: min(500px, calc(100vw - 2rem));
 }
 
 .consumption-items-filters {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.65rem 1.25rem;
-  margin-bottom: 0.65rem;
-  padding: 0.5rem 0.65rem;
-  border-radius: 2px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(0, 0, 0, 0.2);
+  gap: 0.75rem 1.3rem;
+  margin-bottom: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-gold-soft);
+  background: rgba(26, 26, 46, 0.6);
 }
 
 .consumption-items-filter-check {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  font-size: 0.88rem;
+  gap: 0.5rem;
+  font-size: 0.9rem;
   color: var(--text);
   cursor: pointer;
   user-select: none;
 }
 
 .consumption-items-filter-check input {
-  width: 1rem;
-  height: 1rem;
-  accent-color: var(--accent, #00e5ff);
+  width: 1.1rem;
+  height: 1.1rem;
   cursor: pointer;
 }
 
 .consumption-items-pearl-level {
-  min-width: 12rem;
-  max-width: min(100%, 22rem);
-  font-size: 0.85rem;
+  min-width: 13rem;
+  max-width: min(100%, 23rem);
+  font-size: 0.88rem;
 }
 
 .consumption-pearl-price-hint {
-  color: var(--accent);
-  line-height: 1.45;
+  color: var(--gold);
+  line-height: 1.5;
+  font-size: 0.9rem;
 }
 
 .consumption-items-add-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.6rem;
   align-items: center;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.85rem;
 }
 
 .consumption-items-add-row select.input {
   flex: 1;
-  min-width: 10rem;
+  min-width: 11rem;
 }
 
 .consumption-items-list {
   list-style: none;
   margin: 0;
   padding: 0;
-  font-size: 0.88rem;
+  font-size: 0.9rem;
 }
 
 .consumption-items-list li {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.4rem 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  gap: 0.6rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid rgba(255, 215, 0, 0.08);
+}
+
+.consumption-items-list li:last-child {
+  border-bottom: none;
 }
 
 .consumption-top-actions {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.6rem;
   flex-shrink: 0;
 }

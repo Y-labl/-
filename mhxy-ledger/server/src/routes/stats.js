@@ -8,6 +8,46 @@ import { computeMechNetCashYuanForPeriod, monthDateRange } from '../utils/mechPe
 const POINT_CARD_YUAN_PER_POINT = 0.1;
 
 /**
+ * 与 GET /mech-ledger/daily 的 elapsedSec 同口径：
+ * 跑表时库内 elapsed_sec 可能滞后；用 ledger_base + 墙钟 − runStart 折算。
+ */
+function mechLedgerDisplayElapsedSecFromMetaRow(m) {
+  if (!m) return null;
+  const base = Math.max(0, Math.floor(Number(m.ledgerBaseElapsedSec) || 0));
+  const runMs =
+    m.ledgerRunStartAtMs != null && Number.isFinite(Number(m.ledgerRunStartAtMs))
+      ? Math.floor(Number(m.ledgerRunStartAtMs))
+      : null;
+  if (runMs != null && runMs > 0) {
+    const running = Math.max(0, Math.floor((Date.now() - runMs) / 1000));
+    return base + running;
+  }
+  const col =
+    m.elapsedSec != null && Number.isFinite(Number(m.elapsedSec))
+      ? Math.max(0, Math.floor(Number(m.elapsedSec)))
+      : 0;
+  const out = Math.max(base, col);
+  return out > 0 ? out : null;
+}
+
+async function sumDisplayElapsedSecBetween(pool, uid, dateStart, dateEnd) {
+  const [rows] = await pool.query(
+    `SELECT elapsed_sec AS elapsedSec,
+            ledger_base_elapsed_sec AS ledgerBaseElapsedSec,
+            ledger_run_start_at_ms AS ledgerRunStartAtMs
+     FROM mech_ledger_day_meta
+     WHERE user_id = ? AND biz_date BETWEEN ? AND ?`,
+    [uid, dateStart, dateEnd],
+  );
+  let sum = 0;
+  for (const r of rows || []) {
+    const s = mechLedgerDisplayElapsedSecFromMetaRow(r);
+    if (s != null && Number.isFinite(Number(s)) && Number(s) > 0) sum += Number(s);
+  }
+  return Math.max(0, Math.floor(sum));
+}
+
+/**
  * 区间内「点卡充值」人民币：优先 consumption_day_totals（消耗页「充值(元)」）；
  * 若为 0 再试旧表 consumption_entries；仍为 0 再试 point_card_entries（点数 × 0.1，如语音/快捷入账）。
  */
@@ -146,7 +186,8 @@ statsRouter.get('/weekly', async (req, res) => {
   const weekEnd = addDaysStr(weekStart, 6);
   const uid = req.user.id;
 
-  const [qcash, qcashRmb, qpts, qgains, qtasks, qOnlineMax, mechPeriod, pointCardRechargeYuan] = await Promise.all([
+  const [qcash, qcashRmb, qpts, qgains, qtasks, qOnlineMax, onlineElapsedSecSum, mechPeriod, pointCardRechargeYuan] =
+    await Promise.all([
     pool.query(
       // "周现金" 统计记账台写入的现金梦幻币（万），来自 mech_ledger_day_meta.cash_game_gold_w
       'SELECT COALESCE(SUM(cash_game_gold_w),0) AS s FROM mech_ledger_day_meta WHERE user_id = ? AND biz_date BETWEEN ? AND ?',
@@ -178,6 +219,7 @@ statsRouter.get('/weekly', async (req, res) => {
        WHERE user_id = ? AND biz_date BETWEEN ? AND ?`,
       [uid, weekStart, weekEnd]
     ),
+    sumDisplayElapsedSecBetween(pool, uid, weekStart, weekEnd),
     computeMechNetCashYuanForPeriod(pool, uid, weekStart, weekEnd),
     sumPointCardRechargeRmbBetween(pool, uid, weekStart, weekEnd),
   ]);
@@ -192,6 +234,7 @@ statsRouter.get('/weekly', async (req, res) => {
     itemByDay: qgains[0],
     taskCompletionsCount: Number(qtasks[0][0]?.c ?? 0),
     onlineRolesWeekMax: Number(qOnlineMax[0][0]?.m ?? 0),
+    onlineElapsedSecSum,
     netCashYuan: mechPeriod.ok ? mechPeriod.netCashYuan : null,
     totalCashYuan: mechPeriod.ok ? mechPeriod.totalCashYuan : null,
   });
@@ -205,7 +248,7 @@ statsRouter.get('/monthly', async (req, res) => {
 
   const { start: monthStart, end: monthEnd } = monthDateRange(year, month);
 
-  const [qcash, qcashRmb, qpts, qgains, qtasks, mechPeriod, pointCardRechargeYuan] = await Promise.all([
+  const [qcash, qcashRmb, qpts, qgains, qtasks, onlineElapsedSecSum, mechPeriod, pointCardRechargeYuan] = await Promise.all([
     pool.query(
       // "月现金" 统计记账台写入的现金梦幻币（万）
       `SELECT COALESCE(SUM(cash_game_gold_w),0) AS s FROM mech_ledger_day_meta
@@ -232,9 +275,17 @@ statsRouter.get('/monthly', async (req, res) => {
        WHERE user_id = ? AND YEAR(biz_date) = ? AND MONTH(biz_date) = ?`,
       [uid, year, month]
     ),
+    sumDisplayElapsedSecBetween(pool, uid, monthStart, monthEnd),
     computeMechNetCashYuanForPeriod(pool, uid, monthStart, monthEnd),
     sumPointCardRechargeRmbBetween(pool, uid, monthStart, monthEnd),
   ]);
+
+  // 平均每日在线时长：自然日口径
+  const endDay = Number(String(monthEnd).slice(-2)) || 30; // YYYY-MM-DD
+  const now = new Date();
+  const isCurrentMonth = now.getFullYear() === year && now.getMonth() + 1 === month;
+  const todayDay = now.getDate();
+  const avgDayCount = Math.max(1, isCurrentMonth ? Math.min(endDay, todayDay) : endDay);
 
   res.json({
     year,
@@ -245,6 +296,8 @@ statsRouter.get('/monthly', async (req, res) => {
     pointCardRechargeYuan,
     itemByDay: qgains[0],
     taskCompletionsCount: Number(qtasks[0][0]?.c ?? 0),
+    onlineElapsedSecSum,
+    onlineAvgDayCount: avgDayCount,
     netCashYuan: mechPeriod.ok ? mechPeriod.netCashYuan : null,
     totalCashYuan: mechPeriod.ok ? mechPeriod.totalCashYuan : null,
   });

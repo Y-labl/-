@@ -129,16 +129,23 @@ class ImageRecognizer:
             self.logger.error(f"查找图像失败: {e}")
             return None
     
-    def find_image_with_retry(self, screenshot, template_name, max_attempts=None):
-        """带重试的图像查找"""
+    def find_image_with_retry(self, screenshot_provider, template_name, max_attempts=None):
+        """带重试的图像查找
+
+        :param screenshot_provider: PIL.Image 或 callable（每次重试时重新截图）
+        """
         if max_attempts is None:
             max_attempts = Config.MAX_ATTEMPTS
-        
+
         for attempt in range(max_attempts):
             self.logger.info(f"尝试查找 {template_name} (第 {attempt + 1}/{max_attempts} 次)")
+            screenshot = screenshot_provider() if callable(screenshot_provider) else screenshot_provider
+            if screenshot is None:
+                self.logger.warning(f"第 {attempt + 1} 次截图为空，继续重试")
+                continue
             result = self.find_image(screenshot, template_name)
             if result:
                 return result
-        
+
         self.logger.error(f"在 {max_attempts} 次尝试后未找到 {template_name}")
         return None

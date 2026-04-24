@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "byName": {
+    "金刚石": "jin_gang_shi.png",
+    "定魂珠": "ding_hun_zhu.png",
+    "龙鳞": "long_lin.png",
+    "避水珠": "bi_shui_zhu.png",
+    "夜光珠": "ye_guang_zhu.png",
+    "金锭": "jin_ding.png",
+    "兽决": "shou_jue.png",
+    "高级兽决": "gaoji_shou_jue.png",
+    "星辉石": "xing_hui_shi.png",
+    "宝石": "bao_shi.png",
+    "藏宝图": "cang_bao_tu.png",
+    "五宝盒": "wu_bao_he.png",
+    "环装": "huan_zhuang.png",
+    "书铁": "shu_tie.png",
+    "强化石": "qiang_hua_shi.png",
+    "金币袋": "jin_bi_dai.png"
+  }
+}

@@ -1,0 +1,920 @@
+/**
+ * 全站主题：由 AppThemeProvider 在 <html data-app-theme="…"> 上切换。
+ * 覆盖 :root 语义色、body 背景、侧栏，以及推荐榜表格容器等（与 demo-styles 对齐）。
+ */
+
+html[data-app-theme] body {
+  background-color: var(--bg-ink);
+  background-image: linear-gradient(135deg, var(--bg-ink-mid) 0%, var(--bg-ink) 48%, var(--bg-ink-mid) 100%);
+  background-attachment: fixed;
+}
+
+/* body 动态背景见 themeAnimatedBackdrops.css */
+
+html[data-app-theme] .sidebar {
+  background: var(
+    --theme-sidebar-bg,
+    linear-gradient(180deg, rgba(26, 26, 46, 0.98) 0%, rgba(22, 22, 38, 0.99) 100%)
+  );
+  border-right-color: var(--border-gold-soft);
+  box-shadow: 4px 0 28px rgba(0, 0, 0, 0.38), inset -1px 0 0 var(--border-gold-soft);
+}
+
+html[data-app-theme] .main {
+  background: transparent;
+}
+
+html[data-app-theme] .topbar h2 {
+  color: var(--gold);
+}
+
+html[data-app-theme] .tasks-cal-wrap,
+html[data-app-theme] .tasks-wukai-table-wrap {
+  border-radius: var(--radius);
+}
+
+/* —— 霓虹 —— */
+html[data-app-theme='neon'] {
+  font-family: 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+  --text: #f0f0f8;
+  --text-dim: #c8c8e0;
+  --muted: #a0a0c0;
+  --gold: #00ffff;
+  --gold-bright: #ff69b4;
+  --gold-deep: #cc0066;
+  --border-gold-soft: rgba(255, 0, 128, 0.45);
+  --border-gold: rgba(0, 255, 255, 0.55);
+  --danger: #ff6b9a;
+  --cinnabar: #ff6b9a;
+  --cinnabar-soft: rgba(255, 107, 154, 0.22);
+  --jade: #5fffd4;
+  --jade-soft: rgba(95, 255, 212, 0.12);
+  --bg-ink: #07070c;
+  --bg-ink-mid: #12121a;
+  --bg-panel: rgba(22, 20, 32, 0.94);
+  --bg-panel-hover: rgba(36, 30, 48, 0.96);
+  --shadow-card: 0 12px 40px rgba(0, 0, 0, 0.55), 0 0 28px rgba(255, 0, 128, 0.06);
+  --shadow-gold: 0 0 0 1px rgba(255, 0, 128, 0.2), 0 8px 28px rgba(0, 0, 0, 0.45);
+  --theme-sidebar-bg: linear-gradient(180deg, rgba(16, 12, 24, 0.98) 0%, rgba(8, 8, 12, 0.99) 100%);
+}
+html[data-app-theme='neon'] .tasks-cal-wrap,
+html[data-app-theme='neon'] .tasks-wukai-table-wrap {
+  border-color: rgba(255, 0, 128, 0.35);
+  background: rgba(20, 20, 28, 0.88);
+  box-shadow: 0 0 24px rgba(0, 255, 255, 0.1);
+}
+html[data-app-theme='neon'] .tasks-wukai-table th {
+  background: rgba(255, 0, 128, 0.12);
+  color: #ff8cc8;
+}
+html[data-app-theme='neon'] .tasks-wukai-table tbody tr:hover {
+  background: rgba(0, 255, 255, 0.07);
+}
+html[data-app-theme='neon'] .btn-primary {
+  background: linear-gradient(90deg, #ff0080, #8000ff);
+  border-color: transparent;
+  color: #fff;
+}
+
+/* —— 动漫 —— */
+html[data-app-theme='anime'] {
+  font-family: 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+  --text: #ffffff;
+  --text-dim: rgba(255, 255, 255, 0.92);
+  --muted: rgba(255, 255, 255, 0.75);
+  --gold: #ffd700;
+  --gold-bright: #fff8dc;
+  --gold-deep: #daa520;
+  --border-gold-soft: rgba(255, 255, 255, 0.35);
+  --border-gold: rgba(255, 255, 255, 0.55);
+  --danger: #ffb4c4;
+  --cinnabar: #ff8fa3;
+  --cinnabar-soft: rgba(255, 143, 163, 0.25);
+  --jade: #b4ffc9;
+  --jade-soft: rgba(180, 255, 201, 0.15);
+  --bg-ink: #3d2b6e;
+  --bg-ink-mid: #5c3d8a;
+  --bg-panel: rgba(255, 255, 255, 0.12);
+  --bg-panel-hover: rgba(255, 255, 255, 0.18);
+  --shadow-card: 0 12px 36px rgba(0, 0, 0, 0.35);
+  --shadow-gold: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 8px 28px rgba(0, 0, 0, 0.25);
+  --theme-sidebar-bg: linear-gradient(180deg, rgba(55, 40, 95, 0.95) 0%, rgba(40, 28, 78, 0.98) 100%);
+}
+html[data-app-theme='anime'] .tasks-cal-wrap,
+html[data-app-theme='anime'] .tasks-wukai-table-wrap {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(8px);
+}
+html[data-app-theme='anime'] .tasks-wukai-table th {
+  background: rgba(0, 0, 0, 0.22);
+  color: rgba(255, 255, 255, 0.92);
+}
+html[data-app-theme='anime'] .btn-primary {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  border: none;
+  color: #fff;
+}
+
+/* —— 机械 —— */
+html[data-app-theme='mechanical'] {
+  font-family: 'Consolas', 'Courier New', monospace;
+  --text: #00ffcc;
+  --text-dim: #66eedd;
+  --muted: #009977;
+  --gold: #00ffff;
+  --gold-bright: #aaffff;
+  --gold-deep: #008888;
+  --border-gold-soft: rgba(0, 255, 255, 0.35);
+  --border-gold: #00ffff;
+  --danger: #ff3366;
+  --cinnabar: #ff3366;
+  --cinnabar-soft: rgba(255, 51, 102, 0.2);
+  --jade: #00ff88;
+  --jade-soft: rgba(0, 255, 136, 0.12);
+  --bg-ink: #050808;
+  --bg-ink-mid: #0a1212;
+  --bg-panel: rgba(0, 24, 28, 0.92);
+  --bg-panel-hover: rgba(0, 40, 44, 0.95);
+  --shadow-card: 0 0 24px rgba(0, 255, 255, 0.08);
+  --shadow-gold: 0 0 0 1px rgba(0, 255, 255, 0.25), 0 8px 24px rgba(0, 0, 0, 0.5);
+  --theme-sidebar-bg: linear-gradient(180deg, rgba(0, 18, 22, 0.98) 0%, rgba(0, 8, 10, 0.99) 100%);
+}
+html[data-app-theme='mechanical'] .tasks-cal-wrap,
+html[data-app-theme='mechanical'] .tasks-wukai-table-wrap {
+  border: 2px solid rgba(0, 255, 255, 0.45);
+  background: rgba(0, 0, 0, 0.75);
+  box-shadow: 0 0 20px rgba(0, 255, 255, 0.12);
+}
+html[data-app-theme='mechanical'] .tasks-wukai-table th {
+  background: rgba(0, 40, 40, 0.9);
+  color: #00ff66;
+}
+html[data-app-theme='mechanical'] .btn-primary {
+  background: #002828;
+  border: 1px solid #0ff;
+  color: #0ff;
+}
+
+/* —— 浪漫 —— */
+html[data-app-theme='romantic'] {
+  font-family: 'Noto Serif SC', Georgia, serif;
+  --text: #fff;
+  --text-dim: rgba(255, 255, 255, 0.95);
+  --muted: rgba(255, 255, 255, 0.8);
+  --gold: #fff0f5;
+  --gold-bright: #ffb7c5;
+  --gold-deep: #db7093;
+  --border-gold-soft: rgba(255, 255, 255, 0.4);
+  --border-gold: rgba(255, 182, 193, 0.7);
+  --danger: #ff8da1;
+  --cinnabar: #ff8da1;
+  --cinnabar-soft: rgba(255, 141, 161, 0.22);
+  --jade: #ffe4ef;
+  --jade-soft: rgba(255, 228, 239, 0.15);
+  --bg-ink: #6b2d5c;
+  --bg-ink-mid: #8a3a6f;
+  --bg-panel: rgba(255, 255, 255, 0.14);
+  --bg-panel-hover: rgba(255, 255, 255, 0.2);
+  --shadow-card: 0 12px 36px rgba(0, 0, 0, 0.28);
+  --shadow-gold: 0 0 0 1px rgba(255, 255, 255, 0.15), 0 8px 28px rgba(0, 0, 0, 0.2);
+  --theme-sidebar-bg: linear-gradient(180deg, rgba(90, 36, 72, 0.96) 0%, rgba(60, 22, 50, 0.98) 100%);
+}
+html[data-app-theme='romantic'] .tasks-cal-wrap,
+html[data-app-theme='romantic'] .tasks-wukai-table-wrap {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(10px);
+}
+html[data-app-theme='romantic'] .tasks-wukai-table th {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+html[data-app-theme='romantic'] .btn-primary {
+  background: rgba(255, 255, 255, 0.95);
+  color: #ad1457;
+  border: none;
+}
+
+/* —— 清新 —— */
+html[data-app-theme='fresh'] {
+  font-family: 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+  --text: #1a3a2a;
+  --text-dim: #2d5a45;
+  --muted: #3d6b55;
+  --gold: #2e8b57;
+  --gold-bright: #5cb85c;
+  --gold-deep: #1b5e20;
+  --border-gold-soft: rgba(46, 139, 87, 0.35);
+  --border-gold: rgba(124, 252, 0, 0.5);
+  --danger: #c0392b;
+  --cinnabar: #c0392b;
+  --cinnabar-soft: rgba(192, 57, 43, 0.15);
+  --jade: #2e7d32;
+  --jade-soft: rgba(46, 125, 50, 0.12);
+  --bg-ink: #e8f5e9;
+  --bg-ink-mid: #c8e6c9;
+  --bg-panel: rgba(255, 255, 255, 0.72);
+  --bg-panel-hover: rgba(255, 255, 255, 0.85);
+  --shadow-card: 0 8px 28px rgba(46, 107, 60, 0.15);
+  --shadow-gold: 0 0 0 1px rgba(46, 139, 87, 0.2), 0 6px 20px rgba(0, 0, 0, 0.08);
+  --theme-sidebar-bg: linear-gradient(180deg, rgba(220, 240, 225, 0.98) 0%, rgba(200, 230, 210, 0.99) 100%);
+}
+html[data-app-theme='fresh'] .muted,
+html[data-app-theme='fresh'] code {
+  color: #2e4a38;
+}
+html[data-app-theme='fresh'] .tasks-cal-wrap,
+html[data-app-theme='fresh'] .tasks-wukai-table-wrap {
+  background: rgba(255, 255, 255, 0.72);
+  border-color: rgba(46, 139, 87, 0.35);
+}
+html[data-app-theme='fresh'] .tasks-wukai-table th {
+  background: rgba(200, 240, 210, 0.95);
+  color: #1b5e20;
+}
+html[data-app-theme='fresh'] .btn-primary {
+  background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
+  border: none;
+  color: #fff;
+}
+
+/* —— 烈焰 —— */
+html[data-app-theme='dragon'] {
+  font-family: 'Noto Sans SC', sans-serif;
+  --text: #fff8f0;
+  --text-dim: #ffe4d0;
+  --muted: #ffd4c4;
+  --gold: #ffcc00;
+  --gold-bright: #fff59d;
+  --gold-deep: #ff8f00;
+  --border-gold-soft: rgba(255, 200, 120, 0.45);
+  --border-gold: rgba(255, 140, 0, 0.65);
+  --danger: #7f1d1d;
+  --cinnabar: #ff6b35;
+  --cinnabar-soft: rgba(255, 107, 53, 0.25);
+  --jade: #ffe082;
+  --jade-soft: rgba(255, 224, 130, 0.15);
+  --bg-ink: #4a1510;
+  --bg-ink-mid: #7a2518;
+  --bg-panel: rgba(40, 10, 5, 0.55);
+  --bg-panel-hover: rgba(60, 18, 10, 0.65);
+  --shadow-card: 0 12px 32px rgba(0, 0, 0, 0.4);
+  --shadow-gold: 0 0 0 1px rgba(255, 180, 80, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+  --theme-sidebar-bg: linear-gradient(180deg, rgba(70, 20, 12, 0.96) 0%, rgba(40, 10, 6, 0.99) 100%);
+}
+html[data-app-theme='dragon'] .tasks-cal-wrap,
+html[data-app-theme='dragon'] .tasks-wukai-table-wrap {
+  background: rgba(40, 10, 5, 0.45);
+  border-color: rgba(255, 200, 100, 0.4);
+  backdrop-filter: blur(6px);
+}
+html[data-app-theme='dragon'] .tasks-wukai-table th {
+  background: rgba(0, 0, 0, 0.35);
+  color: #ffecb3;
+}
+html[data-app-theme='dragon'] .btn-primary {
+  background: linear-gradient(135deg, #ff9800 0%, #ff5722 100%);
+  border: none;
+  color: #fff;
+}
+
+/* —— 星河 —— */
+html[data-app-theme='galaxy'] {
+  font-family: 'Noto Sans SC', system-ui, sans-serif;
+  --text: #e8e8ff;
+  --text-dim: #c4c4f0;
+  --muted: #9a9acf;
+  --gold: #c9a0ff;
+  --gold-bright: #e0d4ff;
+  --gold-deep: #9575cd;
+  --border-gold-soft: rgba(180, 140, 255, 0.35);
+  --border-gold: rgba(200, 160, 255, 0.55);
+  --danger: #ff79c6;
+  --cinnabar: #ff79c6;
+  --cinnabar-soft: rgba(255, 121, 198, 0.2);
+  --jade: #b388ff;
+  --jade-soft: rgba(179, 136, 255, 0.12);
+  --bg-ink: #0f0c24;
+  --bg-ink-mid: #1a1440;
+  --bg-panel: rgba(25, 18, 55, 0.75);
+  --bg-panel-hover: rgba(40, 28, 80, 0.82);
+  --shadow-card: 0 12px 40px rgba(0, 0, 0, 0.5);
+  --shadow-gold: 0 0 0 1px rgba(180, 140, 255, 0.2), 0 8px 28px rgba(0, 0, 0, 0.4);
+  --theme-sidebar-bg: linear-gradient(180deg, rgba(22, 14, 48, 0.97) 0%, rgba(12, 8, 28, 0.99) 100%);
+}
+html[data-app-theme='galaxy'] .tasks-cal-wrap,
+html[data-app-theme='galaxy'] .tasks-wukai-table-wrap {
+  background: rgba(15, 10, 40, 0.65);
+  border-color: rgba(180, 140, 255, 0.35);
+}
+html[data-app-theme='galaxy'] .tasks-wukai-table th {
+  background: rgba(40, 30, 80, 0.75);
+  color: #d4c4ff;
+}
+html[data-app-theme='galaxy'] .btn-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  color: #fff;
+}
+
+/* —— 水流 —— */
+html[data-app-theme='water'] {
+  font-family: 'Noto Sans SC', sans-serif;
+  --text: #e3f2fd;
+  --text-dim: #bbdefb;
+  --muted: #90caf9;
+  --gold: #00bcd4;
+  --gold-bright: #80deea;
+  --gold-deep: #00838f;
+  --border-gold-soft: rgba(0, 188, 212, 0.35);
+  --border-gold: rgba(128, 222, 234, 0.55);
+  --danger: #ffcdd2;
+  --cinnabar: #ef9a9a;
+  --cinnabar-soft: rgba(239, 154, 154, 0.2);
+  --jade: #80cbc4;
+  --jade-soft: rgba(128, 203, 196, 0.15);
+  --bg-ink: #0a3048;
+  --bg-ink-mid: #0c4a6e;
+  --bg-panel: rgba(10, 40, 60, 0.55);
+  --bg-panel-hover: rgba(16, 60, 85, 0.65);
+  --shadow-card: 0 12px 32px rgba(0, 0, 0, 0.35);
+  --shadow-gold: 0 0 0 1px rgba(128, 222, 234, 0.2), 0 8px 24px rgba(0, 0, 0, 0.3);
+  --theme-sidebar-bg: linear-gradient(180deg, rgba(8, 42, 62, 0.97) 0%, rgba(4, 24, 38, 0.99) 100%);
+}
+html[data-app-theme='water'] .tasks-cal-wrap,
+html[data-app-theme='water'] .tasks-wukai-table-wrap {
+  background: rgba(10, 40, 60, 0.55);
+  border-color: rgba(128, 222, 234, 0.4);
+  backdrop-filter: blur(8px);
+}
+html[data-app-theme='water'] .tasks-wukai-table th {
+  background: rgba(0, 60, 80, 0.65);
+  color: #b2ebf2;
+}
+html[data-app-theme='water'] .tasks-wukai-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+html[data-app-theme='water'] .btn-primary {
+  background: linear-gradient(90deg, #2193b0, #6dd5ed);
+  border: none;
+  color: #fff;
+}
+
+/* —— 国潮 —— */
+html[data-app-theme='china'] {
+  font-family: 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+  --text: #fff8e7;
+  --text-dim: #ffe0b2;
+  --muted: #ffcc80;
+  --gold: #d4af37;
+  --gold-bright: #ffe082;
+  --gold-deep: #b8860b;
+  --border-gold-soft: rgba(212, 175, 55, 0.45);
+  --border-gold: rgba(255, 75, 31, 0.55);
+  --danger: #ffab91;
+  --cinnabar: #ff7043;
+  --cinnabar-soft: rgba(255, 112, 67, 0.22);
+  --jade: #ffcc80;
+  --jade-soft: rgba(255, 204, 128, 0.12);
+  --bg-ink: #1a0c08;
+  --bg-ink-mid: #3d1810;
+  --bg-panel: rgba(30, 15, 10, 0.72);
+  --bg-panel-hover: rgba(50, 22, 14, 0.8);
+  --shadow-card: 0 12px 36px rgba(0, 0, 0, 0.45);
+  --shadow-gold: 0 0 0 1px rgba(212, 175, 55, 0.25), 0 8px 28px rgba(0, 0, 0, 0.35);
+  --theme-sidebar-bg: linear-gradient(180deg, rgba(55, 22, 12, 0.97) 0%, rgba(28, 10, 6, 0.99) 100%);
+}
+html[data-app-theme='china'] .tasks-cal-wrap,
+html[data-app-theme='china'] .tasks-wukai-table-wrap {
+  background: rgba(30, 15, 10, 0.72);
+  border-color: rgba(212, 175, 55, 0.4);
+}
+html[data-app-theme='china'] .tasks-wukai-table th {
+  background: rgba(60, 20, 10, 0.85);
+  color: #d4af37;
+}
+html[data-app-theme='china'] .btn-primary {
+  background: linear-gradient(135deg, #d4af37 0%, #ff4b1f 100%);
+  border: none;
+  color: #1a0a0a;
+}
+
+/* —— 玻璃 —— */
+html[data-app-theme='glass'] {
+  font-family: 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+  --text: #ffffff;
+  --text-dim: rgba(255, 255, 255, 0.92);
+  --muted: rgba(255, 255, 255, 0.78);
+  --gold: #e0d4ff;
+  --gold-bright: #ffffff;
+  --gold-deep: #b39ddb;
+  --border-gold-soft: rgba(255, 255, 255, 0.35);
+  --border-gold: rgba(255, 255, 255, 0.55);
+  --danger: #ffcdd2;
+  --cinnabar: #f48fb1;
+  --cinnabar-soft: rgba(244, 143, 177, 0.2);
+  --jade: #e1bee7;
+  --jade-soft: rgba(225, 190, 231, 0.15);
+  --bg-ink: #4a3f7a;
+  --bg-ink-mid: #5c4a8a;
+  --bg-panel: rgba(255, 255, 255, 0.12);
+  --bg-panel-hover: rgba(255, 255, 255, 0.18);
+  --shadow-card: 0 12px 40px rgba(0, 0, 0, 0.25);
+  --shadow-gold: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 8px 28px rgba(0, 0, 0, 0.2);
+  --theme-sidebar-bg: linear-gradient(180deg, rgba(60, 45, 100, 0.92) 0%, rgba(40, 30, 72, 0.95) 100%);
+}
+html[data-app-theme='glass'] .tasks-cal-wrap,
+html[data-app-theme='glass'] .tasks-wukai-table-wrap {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+}
+html[data-app-theme='glass'] .tasks-wukai-table th {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+html[data-app-theme='glass'] .btn-primary {
+  background: rgba(255, 255, 255, 0.92);
+  color: #5b21b6;
+  border: none;
+}
+
+/* —— 水晶（冰棱 / 折射高光）—— */
+html[data-app-theme='crystal'] {
+  font-family: 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+  --text: #eaf8ff;
+  --text-dim: #c8e8f5;
+  --muted: #7eb8d4;
+  --gold: #9ef0ff;
+  --gold-bright: #ffffff;
+  --gold-deep: #4db8d9;
+  --border-gold-soft: rgba(180, 235, 255, 0.42);
+  --border-gold: rgba(220, 248, 255, 0.65);
+  --danger: #ffb4c4;
+  --cinnabar: #ff8fa8;
+  --cinnabar-soft: rgba(255, 143, 168, 0.22);
+  --jade: #7fffd4;
+  --jade-soft: rgba(127, 255, 212, 0.12);
+  --bg-ink: #061822;
+  --bg-ink-mid: #0c2a3a;
+  --bg-panel: rgba(255, 255, 255, 0.07);
+  --bg-panel-hover: rgba(255, 255, 255, 0.12);
+  --shadow-card: 0 12px 44px rgba(0, 40, 60, 0.45), 0 0 32px rgba(120, 210, 255, 0.12);
+  --shadow-gold: 0 0 0 1px rgba(180, 235, 255, 0.2), 0 8px 28px rgba(0, 60, 80, 0.35);
+  --theme-sidebar-bg: linear-gradient(175deg, rgba(8, 32, 48, 0.97) 0%, rgba(4, 16, 28, 0.99) 100%);
+}
+html[data-app-theme='crystal'] .tasks-cal-wrap,
+html[data-app-theme='crystal'] .tasks-wukai-table-wrap {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.1) 0%, rgba(180, 230, 255, 0.06) 50%, rgba(255, 255, 255, 0.08) 100%);
+  border: 1px solid rgba(200, 240, 255, 0.38);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 8px 36px rgba(0, 30, 50, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+html[data-app-theme='crystal'] .tasks-wukai-table th {
+  background: rgba(255, 255, 255, 0.08);
+  color: #d4f7ff;
+}
+html[data-app-theme='crystal'] .btn-primary {
+  background: linear-gradient(135deg, #3db8e0 0%, #7ee8ff 45%, #c5f6ff 100%);
+  border: 1px solid rgba(220, 248, 255, 0.55);
+  color: #042028;
+}
+
+/* =============================================================================
+ * 自选主题下全站通用（侧栏、导航、主区、表单、弹层、登录页）
+ * 与 html[data-app-theme='…'] 语义变量配合；默认主题无 data-app-theme 属性
+ * ============================================================================= */
+
+html[data-app-theme] .nav a:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--gold) 14%, transparent);
+  border-color: var(--border-gold-soft);
+}
+
+html[data-app-theme] .nav a.active {
+  color: var(--gold);
+  border-color: var(--border-gold);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--gold) 26%, transparent), transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--gold) 24%, transparent);
+}
+
+html[data-app-theme] .sidebar h1 {
+  text-shadow: 0 0 14px color-mix(in srgb, var(--gold) 55%, transparent);
+}
+
+html[data-app-theme] .topbar h2 {
+  text-shadow: 0 0 16px color-mix(in srgb, var(--gold) 48%, transparent);
+}
+
+html[data-app-theme] .main {
+  color: var(--text);
+}
+
+html[data-app-theme] a:hover {
+  text-shadow: 0 0 12px color-mix(in srgb, var(--gold) 38%, transparent);
+}
+
+/* 勿用 html .btn 覆盖 .btn-primary：特异性会与各主题下的 .btn-primary 冲突 */
+html[data-app-theme] .btn-ghost {
+  background: color-mix(in srgb, var(--bg-panel) 52%, transparent);
+}
+
+html[data-app-theme] .btn-ghost:hover {
+  background: color-mix(in srgb, var(--bg-panel-hover) 70%, transparent);
+  border-color: var(--border-gold-soft);
+  color: var(--gold);
+}
+
+html[data-app-theme] .badge {
+  border-color: var(--border-gold-soft);
+  color: var(--muted);
+  background: color-mix(in srgb, var(--bg-panel) 50%, transparent);
+}
+
+html[data-app-theme] .badge-4d {
+  background: color-mix(in srgb, var(--gold) 14%, transparent);
+}
+
+html[data-app-theme] .input {
+  background: color-mix(in srgb, var(--bg-panel) 88%, transparent);
+  color: var(--text);
+  border-color: var(--border-gold-soft);
+}
+
+html[data-app-theme] .input:focus {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold) 22%, transparent), inset 0 2px 8px rgba(0, 0, 0, 0.2);
+  background: color-mix(in srgb, var(--bg-panel) 95%, transparent);
+}
+
+html[data-app-theme] .modal-backdrop {
+  background: color-mix(in srgb, var(--bg-ink) 82%, black);
+}
+
+html[data-app-theme] .modal h2 {
+  text-shadow: 0 0 12px color-mix(in srgb, var(--gold) 35%, transparent);
+}
+
+html[data-app-theme] .app-theme-select-label {
+  color: var(--muted);
+}
+
+html[data-app-theme] select.input.app-theme-select {
+  background: color-mix(in srgb, var(--bg-panel) 75%, transparent);
+  color: var(--text);
+  border-color: var(--border-gold-soft);
+}
+
+/* —— 登录页（LoginPageMHXY）—— */
+html[data-app-theme] .mhxy-login-page {
+  background: var(--bg-ink);
+}
+
+html[data-app-theme] .mhxy-login-page .video-wrapper,
+html[data-app-theme] .mhxy-login-page .video-bg {
+  opacity: 0.2;
+}
+
+html[data-app-theme] .mhxy-login-page .video-overlay {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--bg-ink) 58%, transparent),
+    color-mix(in srgb, var(--bg-ink-mid) 52%, transparent)
+  );
+}
+
+html[data-app-theme] .mhxy-login-page .login-container {
+  background: color-mix(in srgb, var(--bg-panel) 88%, transparent);
+  border-color: var(--border-gold-soft);
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, 0.45),
+    0 0 28px color-mix(in srgb, var(--gold) 14%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--gold) 12%, transparent);
+}
+
+html[data-app-theme] .mhxy-login-page .login-container::before {
+  background: linear-gradient(
+    135deg,
+    transparent 40%,
+    color-mix(in srgb, var(--gold) 8%, transparent) 50%,
+    transparent 60%
+  );
+}
+
+html[data-app-theme] .mhxy-login-page .login-title {
+  background: linear-gradient(180deg, var(--gold-bright) 0%, var(--gold) 45%, var(--gold-deep) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 14px color-mix(in srgb, var(--gold) 42%, transparent));
+}
+
+html[data-app-theme] .mhxy-login-page .form-group label {
+  color: color-mix(in srgb, var(--gold) 78%, transparent);
+  text-shadow: none;
+}
+
+html[data-app-theme] .mhxy-login-page .form-group input {
+  background: color-mix(in srgb, var(--bg-ink) 62%, transparent);
+  border-color: var(--border-gold-soft);
+  color: var(--text);
+}
+
+html[data-app-theme] .mhxy-login-page .form-group input:focus {
+  border-color: var(--gold);
+  box-shadow:
+    0 0 22px color-mix(in srgb, var(--gold) 28%, transparent),
+    inset 0 0 12px color-mix(in srgb, var(--gold) 6%, transparent);
+  background: color-mix(in srgb, var(--bg-panel) 70%, transparent);
+}
+
+html[data-app-theme] .mhxy-login-page .remember-row label {
+  color: color-mix(in srgb, var(--gold) 72%, transparent);
+}
+
+html[data-app-theme] .mhxy-login-page .remember-row input[type='checkbox'] {
+  accent-color: var(--gold);
+}
+
+html[data-app-theme] .mhxy-login-page .login-btn {
+  background: linear-gradient(135deg, var(--gold-deep) 0%, var(--gold) 42%, var(--gold-bright) 100%);
+  color: var(--bg-ink);
+  box-shadow: 0 4px 22px color-mix(in srgb, var(--gold) 35%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+html[data-app-theme] .mhxy-login-page .login-btn:hover {
+  box-shadow: 0 8px 32px color-mix(in srgb, var(--gold) 45%, transparent), 0 0 40px color-mix(in srgb, var(--gold) 18%, transparent);
+}
+
+html[data-app-theme] .mhxy-login-page .login-error {
+  color: var(--danger);
+}
+
+html[data-app-theme] .mhxy-login-page .links a {
+  color: color-mix(in srgb, var(--gold) 72%, transparent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--gold) 28%, transparent);
+}
+
+html[data-app-theme] .mhxy-login-page .links a:hover {
+  color: var(--gold-bright);
+}
+
+html[data-app-theme] .mhxy-login-page .links span {
+  color: color-mix(in srgb, var(--gold) 28%, transparent);
+}
+
+html[data-app-theme] .login-theme-bar {
+  border-top-color: color-mix(in srgb, var(--border-gold-soft) 80%, transparent);
+}
+
+html[data-app-theme] .login-theme-bar label {
+  color: var(--muted);
+}
+
+html[data-app-theme] .login-theme-bar select {
+  background: color-mix(in srgb, var(--bg-panel) 70%, transparent);
+  border-color: var(--border-gold-soft);
+  color: var(--text);
+}
+
+/* =============================================================================
+ * 滚动条：随当前主题语义色（Firefox scrollbar-color + WebKit）
+ * ============================================================================= */
+
+html[data-app-theme],
+html[data-app-theme] body,
+html[data-app-theme] #root {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--gold) 52%, var(--bg-ink-mid) 48%)
+    color-mix(in srgb, var(--bg-ink) 82%, transparent);
+}
+
+html[data-app-theme] * {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--gold) 48%, var(--bg-ink-mid) 52%)
+    color-mix(in srgb, var(--bg-ink) 80%, transparent);
+}
+
+html[data-app-theme] *::-webkit-scrollbar,
+html[data-app-theme] *::-webkit-scrollbar-corner {
+  width: 9px;
+  height: 9px;
+}
+
+html[data-app-theme] *::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--bg-ink) 88%, transparent);
+  border-radius: 100px;
+}
+
+html[data-app-theme] *::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--gold-bright) 55%, transparent),
+    color-mix(in srgb, var(--gold) 45%, var(--gold-deep))
+  );
+  border-radius: 100px;
+  border: 2px solid color-mix(in srgb, var(--bg-ink) 86%, transparent);
+  box-shadow: inset 0 0 6px color-mix(in srgb, var(--gold-bright) 25%, transparent);
+}
+
+html[data-app-theme] *::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--gold-bright) 75%, transparent),
+    color-mix(in srgb, var(--gold) 60%, transparent)
+  );
+}
+
+/* 记账台内嵌表格滚动条：覆盖页面内固定青色样式，与全站主题一致 */
+html[data-app-theme] .mech-table-wrap {
+  scrollbar-color: color-mix(in srgb, var(--gold) 48%, transparent) color-mix(in srgb, var(--bg-ink) 75%, transparent);
+}
+
+html[data-app-theme] .mech-table-wrap::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+html[data-app-theme] .mech-table-wrap::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--bg-ink) 82%, transparent);
+  border-radius: 100px;
+}
+
+html[data-app-theme] .mech-table-wrap::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--gold-bright) 50%, transparent),
+    color-mix(in srgb, var(--gold) 45%, var(--gold-deep))
+  );
+  border-radius: 100px;
+}
+
+html[data-app-theme] .mech-table-wrap:hover::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--gold-bright) 70%, transparent),
+    color-mix(in srgb, var(--gold) 58%, transparent)
+  );
+}
+
+/* =============================================================================
+ * 记账台与物品库主题适配：为机械风格变量添加主题感知
+ * ============================================================================= */
+
+/* 默认主题变量（机械风格） */
+.mech-ledger-root,
+.item-catalog-page--mech {
+  --mech-bg: #0a0e14;
+  --mech-panel: rgba(12, 18, 28, 0.92);
+  --mech-cyan: #00e5ff;
+  --mech-cyan-dim: rgba(0, 229, 255, 0.35);
+  --mech-amber: #ff9f1c;
+  --mech-green: #39ff14;
+  --mech-red: #ff3366;
+  --mech-border: rgba(0, 229, 255, 0.45);
+}
+
+/* —— 霓虹 —— */
+html[data-app-theme='neon'] .mech-ledger-root,
+html[data-app-theme='neon'] .item-catalog-page--mech {
+  --mech-bg: #07070c;
+  --mech-panel: rgba(22, 20, 32, 0.94);
+  --mech-cyan: #00ffff;
+  --mech-cyan-dim: rgba(0, 255, 255, 0.35);
+  --mech-amber: #ff69b4;
+  --mech-green: #5fffd4;
+  --mech-red: #ff6b9a;
+  --mech-border: rgba(255, 0, 128, 0.45);
+}
+
+/* —— 动漫 —— */
+html[data-app-theme='anime'] .mech-ledger-root,
+html[data-app-theme='anime'] .item-catalog-page--mech {
+  --mech-bg: #3d2b6e;
+  --mech-panel: rgba(255, 255, 255, 0.12);
+  --mech-cyan: #ffd700;
+  --mech-cyan-dim: rgba(255, 215, 0, 0.35);
+  --mech-amber: #ff8fa3;
+  --mech-green: #b4ffc9;
+  --mech-red: #ffb4c4;
+  --mech-border: rgba(255, 255, 255, 0.35);
+}
+
+/* —— 机械 —— */
+html[data-app-theme='mechanical'] .mech-ledger-root,
+html[data-app-theme='mechanical'] .item-catalog-page--mech {
+  --mech-bg: #050808;
+  --mech-panel: rgba(0, 24, 28, 0.92);
+  --mech-cyan: #00ffff;
+  --mech-cyan-dim: rgba(0, 255, 255, 0.35);
+  --mech-amber: #ff9f1c;
+  --mech-green: #00ff88;
+  --mech-red: #ff3366;
+  --mech-border: rgba(0, 255, 255, 0.45);
+}
+
+/* —— 浪漫 —— */
+html[data-app-theme='romantic'] .mech-ledger-root,
+html[data-app-theme='romantic'] .item-catalog-page--mech {
+  --mech-bg: #6b2d5c;
+  --mech-panel: rgba(255, 255, 255, 0.14);
+  --mech-cyan: #fff0f5;
+  --mech-cyan-dim: rgba(255, 240, 245, 0.35);
+  --mech-amber: #ffb7c5;
+  --mech-green: #ffe4ef;
+  --mech-red: #ff8da1;
+  --mech-border: rgba(255, 255, 255, 0.4);
+}
+
+/* —— 清新 —— */
+html[data-app-theme='fresh'] .mech-ledger-root,
+html[data-app-theme='fresh'] .item-catalog-page--mech {
+  --mech-bg: #e8f5e9;
+  --mech-panel: rgba(255, 255, 255, 0.72);
+  --mech-cyan: #2e8b57;
+  --mech-cyan-dim: rgba(46, 139, 87, 0.35);
+  --mech-amber: #ff8c00;
+  --mech-green: #2e7d32;
+  --mech-red: #c0392b;
+  --mech-border: rgba(46, 139, 87, 0.35);
+}
+
+/* —— 烈焰 —— */
+html[data-app-theme='dragon'] .mech-ledger-root,
+html[data-app-theme='dragon'] .item-catalog-page--mech {
+  --mech-bg: #4a1510;
+  --mech-panel: rgba(40, 10, 5, 0.55);
+  --mech-cyan: #ffcc00;
+  --mech-cyan-dim: rgba(255, 204, 0, 0.35);
+  --mech-amber: #ff5722;
+  --mech-green: #ffe082;
+  --mech-red: #7f1d1d;
+  --mech-border: rgba(255, 200, 120, 0.45);
+}
+
+/* —— 星河 —— */
+html[data-app-theme='galaxy'] .mech-ledger-root,
+html[data-app-theme='galaxy'] .item-catalog-page--mech {
+  --mech-bg: #0f0c24;
+  --mech-panel: rgba(25, 18, 55, 0.75);
+  --mech-cyan: #c9a0ff;
+  --mech-cyan-dim: rgba(180, 140, 255, 0.35);
+  --mech-amber: #e0d4ff;
+  --mech-green: #b388ff;
+  --mech-red: #ff79c6;
+  --mech-border: rgba(180, 140, 255, 0.35);
+}
+
+/* —— 水流 —— */
+html[data-app-theme='water'] .mech-ledger-root,
+html[data-app-theme='water'] .item-catalog-page--mech {
+  --mech-bg: #0a3048;
+  --mech-panel: rgba(10, 40, 60, 0.55);
+  --mech-cyan: #00bcd4;
+  --mech-cyan-dim: rgba(128, 222, 234, 0.35);
+  --mech-amber: #80deea;
+  --mech-green: #80cbc4;
+  --mech-red: #ffcdd2;
+  --mech-border: rgba(128, 222, 234, 0.4);
+}
+
+/* —— 国潮 —— */
+html[data-app-theme='china'] .mech-ledger-root,
+html[data-app-theme='china'] .item-catalog-page--mech {
+  --mech-bg: #1a0c08;
+  --mech-panel: rgba(30, 15, 10, 0.72);
+  --mech-cyan: #d4af37;
+  --mech-cyan-dim: rgba(212, 175, 55, 0.35);
+  --mech-amber: #ff4b1f;
+  --mech-green: #ffcc80;
+  --mech-red: #ffab91;
+  --mech-border: rgba(212, 175, 55, 0.45);
+}
+
+/* —— 玻璃 —— */
+html[data-app-theme='glass'] .mech-ledger-root,
+html[data-app-theme='glass'] .item-catalog-page--mech {
+  --mech-bg: #4a3f7a;
+  --mech-panel: rgba(255, 255, 255, 0.12);
+  --mech-cyan: #e0d4ff;
+  --mech-cyan-dim: rgba(224, 212, 255, 0.35);
+  --mech-amber: #ffffff;
+  --mech-green: #e1bee7;
+  --mech-red: #f48fb1;
+  --mech-border: rgba(255, 255, 255, 0.35);
+}
+
+/* —— 水晶 —— */
+html[data-app-theme='crystal'] .mech-ledger-root,
+html[data-app-theme='crystal'] .item-catalog-page--mech {
+  --mech-bg: #061822;
+  --mech-panel: rgba(255, 255, 255, 0.07);
+  --mech-cyan: #9ef0ff;
+  --mech-cyan-dim: rgba(180, 235, 255, 0.42);
+  --mech-amber: #ffffff;
+  --mech-green: #7fffd4;
+  --mech-red: #ffb4c4;
+  --mech-border: rgba(220, 248, 255, 0.65);
+}
