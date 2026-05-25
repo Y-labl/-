@@ -42,7 +42,11 @@ Page({
     // 备份码导入导出
     showBackupModal: false,
     backupMode: 'export', // export | import
-    backupText: ''
+    backupText: '',
+
+    // 文件备份（防缓存清理）
+    lastBackupTimeStr: '暂无备份',
+    showReminderModal: false
   },
 
   onLoad() {
@@ -51,6 +55,7 @@ Page({
 
   onShow() {
     this.loadSettings();
+    this.setData({ lastBackupTimeStr: app.getLastBackupTimeStr() });
   },
 
   // 加载设置
@@ -103,16 +108,45 @@ Page({
   onReminderChange(e) {
     const settings = { ...this.data.settings, enableReminder: e.detail.value };
     this.saveSettings(settings);
-    
+
     if (e.detail.value) {
       wx.requestSubscribeMessage({
-        tmplIds: ['your_template_id'], // 需要配置
+        tmplIds: [], // 如需模板消息，在微信公众平台申请后填入
         success: () => {},
         fail: () => {
-          wx.showToast({ title: '请授权消息通知', icon: 'none' });
+          wx.showToast({ title: '订阅消息需在微信公众平台配置模板', icon: 'none', duration: 2500 });
         }
       });
     }
+  },
+
+  /** 测试提醒效果：模拟当前时间检查条件并弹窗 */
+  testReminder() {
+    const settings = this.data.settings;
+    if (!settings.enableReminder) {
+      wx.showToast({ title: '请先开启打卡提醒', icon: 'none' });
+      return;
+    }
+    const now = new Date();
+    const todayDay = now.getDay();
+    if (!settings.workDays.includes(todayDay)) {
+      wx.showToast({ title: '今天不是工作日，无需提醒', icon: 'none' });
+      return;
+    }
+    const records = app.getRecords();
+    const todayStr = app.formatDateKey(now);
+    if (records[todayStr] && !records[todayStr].isVacation && records[todayStr].points > 0) {
+      wx.showToast({ title: '今天已打卡，提醒不会触发', icon: 'none' });
+      return;
+    }
+    // 直接弹提醒
+    wx.showModal({
+      title: '🔔 打卡提醒（测试）',
+      content: `模拟效果：\r\n每天 ${settings.reminderTime}，若当天未录入点数，打开小程序时将收到此提醒。`,
+      confirmText: '知道了',
+      showCancel: false,
+      confirmColor: '#E91E63'
+    });
   },
 
   // 快捷点数编辑
@@ -326,8 +360,8 @@ Page({
             current.setDate(current.getDate() + 1);
           }
           
-          wx.setStorageSync(app.globalData.STORAGE_KEYS.RECORDS, records);
-          
+          app.saveRecords(records);
+
           this.setData({ showBatchModal: false });
           wx.showToast({ title: `已录入 ${count} 天`, icon: 'success' });
         }
@@ -423,6 +457,70 @@ Page({
     });
   },
 
+  // 自动文件备份开关
+  onAutoBackupChange(e) {
+    const settings = { ...this.data.settings, autoBackup: e.detail.value };
+    this.saveSettings(settings);
+    if (e.detail.value) {
+      const ok = app.backupAllDataToFile();
+      if (ok) {
+        this.setData({ lastBackupTimeStr: app.getLastBackupTimeStr() });
+        wx.showToast({ title: '已开启自动备份', icon: 'success' });
+      } else {
+        wx.showToast({ title: '备份文件写入失败', icon: 'none' });
+      }
+    }
+  },
+
+  /** 手动立即备份到文件系统 */
+  manualBackupNow() {
+    wx.showLoading({ title: '备份中...' });
+    try {
+      const ok = app.backupAllDataToFile();
+      wx.hideLoading();
+      if (ok) {
+        this.setData({ lastBackupTimeStr: app.getLastBackupTimeStr() });
+        wx.showToast({ title: '备份成功', icon: 'success' });
+      } else {
+        wx.showToast({ title: '备份失败', icon: 'none' });
+      }
+    } catch (e) {
+      wx.hideLoading();
+      wx.showToast({ title: '备份失败', icon: 'none' });
+    }
+  },
+
+  /** 从文件系统恢复数据 */
+  manualRestoreFromFile() {
+    if (!app.isBackupFileExists()) {
+      wx.showToast({ title: '未找到备份文件', icon: 'none' });
+      return;
+    }
+    wx.showModal({
+      title: '确认恢复',
+      content: '将从文件备份恢复数据，当前数据会被覆盖。是否继续？',
+      confirmColor: '#E91E63',
+      success: (res) => {
+        if (!res.confirm) return;
+        wx.showLoading({ title: '恢复中...' });
+        try {
+          const count = app.restoreAllDataFromFile();
+          wx.hideLoading();
+          if (count > 0) {
+            this.loadSettings();
+            this.setData({ lastBackupTimeStr: app.getLastBackupTimeStr() });
+            wx.showToast({ title: `已恢复 ${count} 项数据`, icon: 'success' });
+          } else {
+            wx.showToast({ title: '恢复失败，文件可能损坏', icon: 'none' });
+          }
+        } catch (e) {
+          wx.hideLoading();
+          wx.showToast({ title: '恢复失败', icon: 'none' });
+        }
+      }
+    });
+  },
+
   // 导出数据
   exportData() {
     const payload = this.buildBackupPayload();
@@ -511,7 +609,9 @@ Page({
       }
 
       wx.hideLoading();
-      this.setData({ showBackupModal: false });
+      // 导入后更新文件备份
+      app.autoBackupIfEnabled();
+      this.setData({ showBackupModal: false, lastBackupTimeStr: app.getLastBackupTimeStr() });
       this.loadSettings();
       wx.showToast({ title: '导入成功', icon: 'success' });
     } catch (e) {
@@ -561,7 +661,7 @@ Page({
   clearData() {
     wx.showModal({
       title: '危险操作',
-      content: '确定要清空所有数据吗？此操作不可恢复！',
+      content: '确定要清空所有数据吗？\r\n文件备份也将一并删除。此操作不可恢复！',
       confirmColor: '#ff4d4f',
       success: (res) => {
         if (res.confirm) {
@@ -572,8 +672,16 @@ Page({
             success: (res2) => {
               if (res2.confirm) {
                 wx.clearStorageSync();
+                // 同时删除文件备份
+                try {
+                  const fs = wx.getFileSystemManager();
+                  fs.unlinkSync(app.getBackupFilePath());
+                } catch (e) {
+                  // 文件可能不存在，忽略
+                }
                 app.initStorage();
                 this.loadSettings();
+                this.setData({ lastBackupTimeStr: '暂无备份' });
                 wx.showToast({ title: '数据已清空', icon: 'success' });
               }
             }

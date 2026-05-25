@@ -521,12 +521,13 @@ page {
 }
 
 .modal-body {
-  flex: 1;
-  height: 0;
+  flex-shrink: 0;
+  /* 纵向 scroll-view 必须有确定高度；勿仅用 flex:1+height:0 依赖「隐式父高」 */
+  height: 52vh;
+  min-height: 420rpx;
+  max-height: 62vh;
   padding: 30rpx 40rpx;
   box-sizing: border-box;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
 }
 
 .modal-footer {

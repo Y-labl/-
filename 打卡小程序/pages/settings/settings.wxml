@@ -126,6 +126,58 @@
       </view>
     </view>
 
+    <!-- 测试提醒 -->
+    <view class="settings-item {{settings.enableReminder ? '' : 'item-disabled'}}" bindtap="testReminder">
+      <view class="settings-item-left">
+        <text class="settings-item-icon">🔔</text>
+        <view class="settings-item-info">
+          <text class="settings-item-title">测试提醒</text>
+          <text class="settings-item-desc">预览提醒弹窗效果</text>
+        </view>
+      </view>
+      <text class="settings-arrow">›</text>
+    </view>
+
+    <!-- 文件备份（防缓存清理） -->
+    <view class="settings-item">
+      <view class="settings-item-left">
+        <text class="settings-item-icon">🛡️</text>
+        <view class="settings-item-info">
+          <text class="settings-item-title">自动文件备份</text>
+          <text class="settings-item-desc">数据写入文件系统，清理缓存不丢失</text>
+        </view>
+      </view>
+      <switch
+        checked="{{settings.autoBackup !== false}}"
+        bindchange="onAutoBackupChange"
+        color="#E91E63"
+      />
+    </view>
+
+    <view class="settings-item">
+      <view class="settings-item-left">
+        <text class="settings-item-icon">💾</text>
+        <view class="settings-item-info">
+          <text class="settings-item-title">备份状态</text>
+          <text class="settings-item-desc">最近备份：{{lastBackupTimeStr}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="settings-item settings-item-row">
+      <view class="settings-item-left">
+        <text class="settings-item-icon">📁</text>
+        <view class="settings-item-info">
+          <text class="settings-item-title">备份管理</text>
+          <text class="settings-item-desc">手动备份或从文件恢复</text>
+        </view>
+      </view>
+      <view class="settings-item-actions">
+        <view class="settings-action-btn" bindtap="manualBackupNow">立即备份</view>
+        <view class="settings-action-btn settings-action-btn-outline" bindtap="manualRestoreFromFile">恢复数据</view>
+      </view>
+    </view>
+
     <!-- 备注模板 -->
     <view class="settings-item" bindtap="editTemplates">
       <view class="settings-item-left">

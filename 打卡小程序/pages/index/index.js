@@ -103,11 +103,35 @@ Page({
             }, 120);
           }
         );
+        this.checkAndShowReminder();
         return;
       }
     }
     this.loadCalendarData();
     this.updateTodayInfo();
+    // 检查是否需要弹打卡提醒
+    this.checkAndShowReminder();
+  },
+
+  /** 开屏检查打卡提醒 */
+  checkAndShowReminder() {
+    const result = app.checkReminderDue();
+    if (result.due) {
+      const settings = app.getSettings();
+      wx.showModal({
+        title: '🔔 打卡提醒',
+        content: `今天还没录入工作点数哦~\r\n\r\n提醒时间：${settings.reminderTime}\r\n立即前往打卡吧！`,
+        confirmText: '去打卡',
+        cancelText: '稍后',
+        confirmColor: '#E91E63',
+        success: (res) => {
+          if (res.confirm) {
+            this.onTodayTap();
+          }
+        }
+      });
+      app.markReminderShown();
+    }
   },
 
   initFabPos() {
@@ -586,8 +610,8 @@ Page({
         if (res.confirm) {
           const records = app.getRecords();
           delete records[this.data.modalDate];
-          wx.setStorageSync(app.globalData.STORAGE_KEYS.RECORDS, records);
-          
+          app.saveRecords(records);
+
           wx.showToast({ title: '已删除', icon: 'success' });
           this.setData({ showModal: false });
           this.loadCalendarData();
