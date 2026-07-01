@@ -1,0 +1,380 @@
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.tasks-cal-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  border: 1px solid rgba(120, 200, 255, 0.22);
+  background: linear-gradient(165deg, rgba(20, 48, 72, 0.55) 0%, rgba(8, 20, 32, 0.72) 100%);
+}
+
+.tasks-cal-nav {
+  align-self: center;
+  min-width: 2.25rem;
+  height: 2.5rem;
+  border: 1px solid rgba(0, 229, 255, 0.28);
+  border-radius: var(--radius);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text);
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tasks-cal-nav:hover {
+  background: rgba(0, 229, 255, 0.12);
+}
+
+.tasks-cal-center {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.tasks-cal-oneline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.45rem 0.65rem;
+}
+
+.tasks-cal-ymd {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+
+.tasks-cal-bigday {
+  font-size: 1.65rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  color: var(--accent, #00e5ff);
+}
+
+.tasks-cal-weekday {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.tasks-cal-badge {
+  display: inline-block;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  background: rgba(232, 197, 71, 0.18);
+  color: var(--gold, #e8c547);
+  border: 1px solid rgba(232, 197, 71, 0.35);
+}
+
+.tasks-cal-today {
+  align-self: center;
+}
+
+.tasks-cal-iso {
+  align-self: center;
+}
+
+.tasks-cal-iso .input {
+  max-width: 10.5rem;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.8rem;
+}
+
+.tasks-wukai-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.65rem;
+}
+
+.tasks-wukai-table-wrap {
+  overflow-x: auto;
+  margin-bottom: 1rem;
+  border-radius: var(--radius);
+  border: 1px solid rgba(0, 229, 255, 0.18);
+  background: rgba(0, 12, 20, 0.45);
+}
+
+.tasks-wukai-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  table-layout: fixed;
+}
+
+.tasks-wukai-table th,
+.tasks-wukai-table td {
+  padding: 0.34rem 0.45rem;
+  text-align: left;
+  vertical-align: middle;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.tasks-wukai-table th {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.tasks-wukai-table tbody tr:hover {
+  background: rgba(0, 229, 255, 0.06);
+}
+
+.tasks-wukai-table .tasks-wukai-rank {
+  width: 2.25rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.tasks-wukai-table .tasks-wukai-stars {
+  white-space: nowrap;
+  width: 4.75rem;
+}
+
+.tasks-wukai-table .tasks-wukai-status {
+  width: 4.75rem;
+}
+
+.tasks-wukai-table .tasks-wukai-slot {
+  width: 6.25rem;
+}
+
+.tasks-wukai-table .tasks-wukai-status .badge,
+.tasks-wukai-table .tasks-wukai-slot .badge {
+  white-space: nowrap;
+}
+
+/* —— 补录表格（按列） —— */
+.tasks-bf-table-wrap {
+  margin-top: 0.75rem;
+  overflow: hidden;
+}
+
+.tasks-bf-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.tasks-bf-table th,
+.tasks-bf-table td {
+  padding: 0.75rem 0.6rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+  vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tasks-bf-table thead th {
+  font-size: 0.82rem;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.tasks-bf-type {
+  width: 6.25rem;
+}
+
+.tasks-bf-kind {
+  width: 5.25rem;
+}
+
+.tasks-bf-status {
+  width: 6.5rem;
+}
+
+.tasks-bf-actions {
+  width: 9.5rem;
+}
+
+.tasks-bf-task {
+  white-space: normal;
+}
+
+.tasks-bf-name {
+  font-weight: 800;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tasks-bf-desc {
+  margin-top: 0.2rem;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tasks-bf-actions-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.tasks-wukai-table .tasks-wukai-actions {
+  min-width: 5.25rem;
+  width: auto;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.tasks-wukai-table .tasks-wukai-actions .btn {
+  padding: 0.28rem 0.55rem;
+  font-size: 0.78rem;
+}
+
+.tasks-wukai-table .tasks-wukai-kind,
+.tasks-wukai-table .tasks-wukai-freq,
+.tasks-wukai-table .tasks-wukai-ghost {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tasks-wukai-table .tasks-wukai-kind {
+  width: 4.75rem;
+}
+
+.tasks-wukai-table .tasks-wukai-freq {
+  width: 6.75rem;
+}
+
+.tasks-wukai-kind-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.22rem;
+  position: relative;
+}
+
+.tasks-wukai-sort-arrows {
+  display: inline-flex;
+  gap: 0.18rem;
+  align-items: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  transform: translateY(-2px);
+  position: absolute;
+  top: -0.1rem;
+  right: -0.1rem;
+}
+
+/* 仅当鼠标移到「推荐」这一列时显示上下箭头 */
+.tasks-wukai-table td.tasks-wukai-kind:hover .tasks-wukai-sort-arrows {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.tasks-wukai-sort-arrows .btn-sm {
+  padding: 0.2rem 0.35rem;
+  font-size: 0.76rem;
+  line-height: 1.05;
+}
+
+.tasks-wukai-table .tasks-wukai-ghost {
+  width: 5.25rem;
+}
+
+.tasks-wukai-times-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.tasks-wukai-disable-btn {
+  position: absolute;
+  top: -0.12rem;
+  left: 0;
+  z-index: 2;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  transform: translateY(-2px);
+}
+
+/* 鼠标移到「次数」单元格才显示停用按钮 */
+.tasks-wukai-table td.tasks-wukai-ghost:hover .tasks-wukai-disable-btn {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.tasks-wukai-disable-btn.btn-sm {
+  padding: 0.18rem 0.35rem;
+  font-size: 0.76rem;
+  line-height: 1.1;
+}
+
+.tasks-wukai-table .tasks-wukai-task {
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.tasks-wukai-name {
+  font-weight: 700;
+  color: var(--text);
+  display: inline-block;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tasks-wukai-desc {
+  display: none;
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-weight: 400;
+  margin-top: 0.15rem;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/** 推荐榜：用于显示“神器：xxx”等第二行信息（需要可见） */
+.tasks-wukai-subline {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-weight: 400;
+  margin-top: 0.15rem;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tasks-wukai-table tr.tasks-wukai-row-done {
+  opacity: 0.72;
+}
+
+.tasks-wukai-table tr.tasks-wukai-row-done .tasks-wukai-name {
+  color: var(--muted);
+}

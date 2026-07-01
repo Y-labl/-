@@ -5,12 +5,12 @@ import { api, getToken } from '../../api';
 import type {
   ItemCatalogAllResponse,
   MechLedgerDailyResponse,
+  MechLedgerHistoryRow,
   MechLedgerPointCardSegments,
 } from '../../api';
 import {
   DAILY_FIXED_ITEMS,
   DAILY_VAR_ITEMS,
-  MOCK_HISTORY,
   YAKSHA_COUNTER_KEYS,
   YAKSHA_REWARD,
   YAKSHA_WHITE,
@@ -49,7 +49,9 @@ import { localBizDate, pointCardPointsToYuan } from '../../utils/bizDate';
 import {
   BIZ_DATE_PAGE,
   getLedgerBizDate,
+  isLedgerBizDateLocked,
   lockLedgerBizDate,
+  unlockLedgerBizDateAndAdvanceToToday,
 } from '../../utils/pageBizDate';
 import { usePageBizDate } from '../../utils/usePageBizDate';
 import { TablePaginationBar } from '../../components/TablePaginationBar';
@@ -429,6 +431,9 @@ export default function MechanicalLedgerPage() {
   const principalsSumWWan = useMemo(() => principalsSumW / 10000, [principalsSumW]);
   const [yaksha, setYaksha] = useState(initYakshaCounts);
   const [toast, setToast] = useState<string | null>(null);
+  const [historyRows, setHistoryRows] = useState<MechLedgerHistoryRow[]>([]);
+  const [historyErr, setHistoryErr] = useState('');
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [priceEditStrsByLineId, setPriceEditStrsByLineId] = useState<Record<string, string>>({});
   const [removeLineTarget, setRemoveLineTarget] = useState<TodayLine | null>(null);
   const [removeQtyStr, setRemoveQtyStr] = useState('1');
@@ -978,6 +983,8 @@ export default function MechanicalLedgerPage() {
       });
       try {
         await api.mechLedgerSaveMeta(buildMechLedgerMetaPayload(biz));
+        setToast(`在线人数已切换为 ${next} 人（已写入数据库）`);
+        window.setTimeout(() => setToast(null), 2200);
       } catch (e) {
         setToast(e instanceof Error ? e.message : '在线人数保存失败，请检查网络或是否已登录');
         window.setTimeout(() => setToast(null), 3200);
@@ -1087,7 +1094,41 @@ export default function MechanicalLedgerPage() {
   );
 
   const todayLinesPg = useTablePagination(todayLines);
-  const historyPg = useTablePagination(MOCK_HISTORY);
+  const historyViewRows = useMemo(() => {
+    return historyRows.map((r) => {
+      const profitYuan = (Number(r.profitW) || 0) * yuanPerWanW;
+      const note = r.onlineRoles > 0 ? `${r.onlineRoles}开` : '—';
+      return {
+        date: r.bizDate,
+        profitYuan: Number.isFinite(profitYuan) ? Math.round(profitYuan * 100) / 100 : 0,
+        note,
+      };
+    });
+  }, [historyRows, yuanPerWanW]);
+  const historyPg = useTablePagination(historyViewRows);
+
+  useEffect(() => {
+    if (rightTab !== 'history') return;
+    let cancel = false;
+    (async () => {
+      try {
+        setHistoryLoading(true);
+        setHistoryErr('');
+        const r = await api.mechLedgerHistory(3650);
+        if (cancel) return;
+        setHistoryRows(Array.isArray(r.items) ? r.items : []);
+      } catch (e) {
+        if (cancel) return;
+        setHistoryRows([]);
+        setHistoryErr(e instanceof Error ? e.message : '历史收益加载失败');
+      } finally {
+        if (!cancel) setHistoryLoading(false);
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, [rightTab]);
 
   const addTodayItem = useCallback(
     (item: LedgerItemDef) => {
@@ -1277,6 +1318,57 @@ export default function MechanicalLedgerPage() {
   }, []);
   const showToastRef = useRef<(msg: string) => void>(() => {});
   showToastRef.current = showToast;
+
+  /** 自然日已跨天但记账台仍锁在昨日：不清空内容，直接把“本轮计时”归到今天 */
+  const advanceLedgerBizToTodayKeepingTimer = useCallback(async () => {
+    if (!sessionReady) return;
+    const today = localBizDate();
+    const curBiz = getLedgerBizDate();
+    if (curBiz === today) return;
+    if (!isLedgerBizDateLocked()) {
+      unlockLedgerBizDateAndAdvanceToToday();
+      return;
+    }
+    const ok = window.confirm(
+      `检测到自然日已是 ${today}，但记账台业务日仍为 ${curBiz}（计时锁定）。\n\n` +
+        `是否换日到今天并保留计时？\n` +
+        `- 不会清空本页物品/现金/本金/点卡\n` +
+        `- 会把“正在计时”的状态写入今天（避免刷新又回到昨天）`,
+    );
+    if (!ok) return;
+
+    hudMetaEffectSaveEnabledRef.current = true;
+    const elapsedNow = Math.max(0, Math.floor(elapsedSecRef.current));
+    const wasRunning = runStartAtRef.current != null;
+    const now = Date.now();
+
+    // 先把昨天的“跑表”停掉（保留已累计时长），避免库里出现两个业务日都在跑
+    try {
+      await api.mechLedgerSaveMeta({
+        ...buildMechLedgerMetaPayload(curBiz),
+        elapsedSec: elapsedNow,
+        ledgerBaseElapsedSec: elapsedNow,
+        ledgerRunStartAtMs: null,
+      });
+    } catch {
+      // ignore: 仍尝试推进到今天；若失败刷新可能仍被锁回昨日
+    }
+
+    // 把本地计时切成“以当前累计为底数，从此刻继续跑”
+    setBaseElapsedSec(elapsedNow);
+    baseElapsedSecRef.current = elapsedNow;
+    const nextRunStart = wasRunning ? now : null;
+    setRunStartAt(nextRunStart);
+    runStartAtRef.current = nextRunStart;
+
+    unlockLedgerBizDateAndAdvanceToToday();
+    try {
+      await api.mechLedgerSaveMeta(buildMechLedgerMetaPayload(today));
+      showToast(`已换日到 ${today}（保留计时）`);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : '换日写入失败，请检查网络或是否已登录');
+    }
+  }, [buildMechLedgerMetaPayload, sessionReady, showToast]);
 
   const commitLineUnitPrice = useCallback(
     async (lineId: string) => {
@@ -1490,6 +1582,12 @@ export default function MechanicalLedgerPage() {
       setPriceEditStrsByLineId({});
       setPickModal(null);
       setTimerTick((x) => x + 1);
+      // 同步 ref，保证随后显式写 meta 时不会带上旧的 runStartAt/计时
+      baseElapsedSecRef.current = 0;
+      runStartAtRef.current = null;
+      pointCardSegRef.current = { closedSlices: [], segmentStartElapsed: 0 };
+      onlinePresetRef.current = DEFAULT_ONLINE_PRESET;
+      onlineExtraRef.current = 0;
       if (opts?.toast) showToast(opts.toast);
     };
 
@@ -1520,10 +1618,19 @@ export default function MechanicalLedgerPage() {
     );
   }, [showToast, teamCashWanStrs, teamSlotCount]);
 
-  const confirmClearLedger = useCallback(() => {
+  const confirmClearLedger = useCallback(async () => {
     setClearTimerConfirmOpen(false);
+    const prevBiz = getLedgerBizDate();
     applyClearLedgerTimer();
-  }, [applyClearLedgerTimer]);
+    // 结束本轮计时：把“停止计时（runStartAt=null）”写回服务端，避免刷新后 /daily 又把业务日锁回旧日
+    try {
+      await api.mechLedgerSaveMeta(buildMechLedgerMetaPayload(prevBiz));
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : '停止计时写入失败，请检查网络或是否已登录');
+    }
+    // 解锁记账台业务日并推进到自然日“今天”
+    unlockLedgerBizDateAndAdvanceToToday();
+  }, [applyClearLedgerTimer, buildMechLedgerMetaPayload, showToast]);
 
   const confirmRemoveLineQty = useCallback(() => {
     if (!removeLineTarget) return;
@@ -2074,6 +2181,13 @@ export default function MechanicalLedgerPage() {
                     const n = Number(e.target.value);
                     if (!(ONLINE_COUNT_PRESETS as readonly number[]).includes(n)) return;
                     if (n === onlinePreset) return;
+                    const ok = window.confirm(
+                      `确认切换在线人数档位：${onlinePreset} → ${n}？\n\n` +
+                        `- 临时 + 人数将清零\n` +
+                        `- 点卡从此刻起按新合计人数分段累计\n` +
+                        `- 将立即写入数据库（刷新/跳页仍生效）`,
+                    );
+                    if (!ok) return;
                     void applyOnlinePresetNow(n as OnlinePreset);
                   }}
                 >
@@ -2314,6 +2428,11 @@ export default function MechanicalLedgerPage() {
                 >
                   {isTimerRunning ? '暂停计时' : baseElapsedSec > 0 ? '继续计时' : '开始计时'}
                 </button>
+                {sessionReady && localBizDate() !== getLedgerBizDate() && (
+                  <button type="button" className="mech-btn" onClick={() => void advanceLedgerBizToTodayKeepingTimer()}>
+                    换日到今天
+                  </button>
+                )}
                 <button
                   type="button"
                   className={`mech-btn ${voiceListening ? 'mech-btn--voice-active' : ''}`}
@@ -2328,9 +2447,7 @@ export default function MechanicalLedgerPage() {
                   保存收益
                 </button>
               </div>
-              <p className="mech-hud-save-hint" style={{ margin: 0, fontSize: '0.68rem', lineHeight: 1.45, color: '#6b7c8f' }}>
-                物品行与 HUD 会随操作自动写入库；点「保存收益」才写入当日正式收益快照（点卡快照时刻等）。
-              </p>
+
             </div>
           </div>
         </section>
@@ -2646,6 +2763,12 @@ export default function MechanicalLedgerPage() {
 
             {rightTab === 'history' && (
               <div className="mech-table-wrap">
+                {historyErr && <p style={{ color: 'var(--danger)', margin: '0.25rem 0 0.65rem' }}>{historyErr}</p>}
+                {historyLoading && !historyErr && (
+                  <p className="muted" style={{ margin: '0.25rem 0 0.65rem' }}>
+                    加载中…
+                  </p>
+                )}
                 <table className="mech-table">
                   <thead>
                     <tr>
@@ -2655,13 +2778,23 @@ export default function MechanicalLedgerPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {historyPg.slice.map((row) => (
-                      <tr key={row.date}>
-                        <td>{row.date}</td>
-                        <td className="num">{row.profitYuan}</td>
-                        <td>{row.note}</td>
+                    {historyPg.total === 0 ? (
+                      <tr>
+                        <td colSpan={3} style={{ color: '#5c6d7e', padding: '1rem' }}>
+                          暂无历史记录（请先在某业务日点「保存收益」或录入物品/现金使其写入库）。
+                        </td>
                       </tr>
-                    ))}
+                    ) : (
+                      <>
+                        {historyPg.slice.map((row) => (
+                          <tr key={row.date}>
+                            <td>{row.date}</td>
+                            <td className="num">{row.profitYuan}</td>
+                            <td>{row.note}</td>
+                          </tr>
+                        ))}
+                      </>
+                    )}
                   </tbody>
                 </table>
                 <TablePaginationBar
@@ -2694,8 +2827,9 @@ export default function MechanicalLedgerPage() {
             >
               <h2 id="mech-clear-timer-title">确认清除？</h2>
               <p style={{ margin: '0 0 1rem', fontSize: '0.85rem', color: '#94a3b8', lineHeight: 1.5 }}>
-                <strong style={{ color: '#e2e8f0' }}>不向服务器写入或删除任何数据</strong>
-                （物品汇总、当日 meta、业务日锁定偏好等均不因本操作而变）。随后仅清空本页：计时、今日收益表、夜叉、本金/现金等。
+                将清空本页：计时、今日收益表、夜叉、本金/现金等，并
+                <strong style={{ color: '#e2e8f0' }}>停止计时（写入服务端 meta：runStartAt 置空）</strong>，随后
+                <strong style={{ color: '#e2e8f0' }}>解锁记账台业务日并换日到今天</strong>。
                 同一业务日<strong style={{ color: '#e2e8f0' }}>离开再进本页</strong>也不会用库里的数据自动填满，直至你再次录入物品或现金/本金（两）；之后照常同步到库。
               </p>
               <div className="mech-pick-actions">

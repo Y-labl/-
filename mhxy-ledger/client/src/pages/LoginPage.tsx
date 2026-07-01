@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, setToken } from '../api';
+import { useAppTheme } from '../contexts/AppThemeContext';
+import type { AppThemeId } from './recommendSkinMeta';
+import { APP_THEME_OPTIONS } from './recommendSkinMeta';
 import './LoginPageMHXY.css';
 
 export function LoginPage() {
   const nav = useNavigate();
+  const { themeId, setThemeId } = useAppTheme();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -190,6 +194,21 @@ export function LoginPage() {
           >
             忘记密码
           </a>
+        </div>
+
+        <div className="login-theme-bar">
+          <label htmlFor="login-app-theme">界面主题（全站，刷新后仍保留）</label>
+          <select
+            id="login-app-theme"
+            value={themeId}
+            onChange={(e) => setThemeId(e.target.value as AppThemeId)}
+          >
+            {APP_THEME_OPTIONS.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
     </div>

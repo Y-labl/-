@@ -263,6 +263,16 @@ function writePreStartStickyKeys(bizDate: string, keys: Set<string>) {
   });
 }
 
+function readHiddenLiveActivities(): Set<string> {
+  const arr = getClientPrefsSnapshot().hiddenLiveActivities;
+  if (!Array.isArray(arr)) return new Set();
+  return new Set(arr.map((x) => String(x)).filter(Boolean));
+}
+
+function writeHiddenLiveActivities(next: Set<string>) {
+  patchClientPrefs({ hiddenLiveActivities: [...next] });
+}
+
 function setsEqualString(a: Set<string>, b: Set<string>): boolean {
   if (a.size !== b.size) return false;
   for (const x of a) {
@@ -488,6 +498,17 @@ export function TasksPage() {
     [loadBackfill, loadRecommended]
   );
 
+  const toggleLiveHidden = useCallback(
+    async (externalKey: string, hide: boolean) => {
+      const next = readHiddenLiveActivities();
+      if (hide) next.add(externalKey);
+      else next.delete(externalKey);
+      writeHiddenLiveActivities(next);
+      await Promise.all([loadRecommended(), loadBackfill()]);
+    },
+    [loadBackfill, loadRecommended],
+  );
+
   const loadTaskLog = useCallback(async () => {
     setErr('');
     try {
@@ -546,18 +567,26 @@ export function TasksPage() {
         if (targetIdx < 0 || targetIdx >= sorted.length) return prev;
         const target = sorted[targetIdx];
         if (target.source !== 'db' || target.enabled === false) return prev;
-        const ia = prev.indexOf(row);
-        const ib = prev.indexOf(target);
-        if (ia < 0 || ib < 0) return prev;
-        const next = [...prev];
-        next[ia] = target;
-        next[ib] = row;
-        const persistOrder = clientStickySortApplies
-          ? [...next].sort((a, b) =>
-              compareRecommendedTasksClient(a, b, wallMinutes, stickyRemindedKeys),
-            )
-          : next;
-        void persistManualOrder(persistOrder).catch(() => {});
+
+        // 展示层会按 manualSortOrder/推荐段位重新排序，所以仅交换数组顺序不会“看起来生效”。
+        // 这里直接在“展示顺序”上交换，并重算各模板的 manualSortOrder，让排序器按手动顺序展示。
+        const view = [...sorted];
+        view[idx] = target;
+        view[targetIdx] = row;
+
+        const dbEnabled = view.filter((t) => t.source === 'db' && t.enabled !== false && t.id != null);
+        const orderById = new Map<number, number>();
+        for (let i = 0; i < dbEnabled.length; i++) {
+          orderById.set(Number(dbEnabled[i].id), i + 1);
+        }
+
+        const next = prev.map((t) => {
+          if (t.source !== 'db' || t.id == null) return t;
+          const mo = orderById.get(Number(t.id));
+          return mo != null ? { ...t, manualSortOrder: mo } : t;
+        });
+
+        void persistManualOrder(view).catch(() => {});
         return next;
       });
     },
@@ -1095,6 +1124,15 @@ export function TasksPage() {
                         >
                           停用
                         </button>
+                      ) : t.source === 'live' && t.externalKey ? (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm tasks-wukai-disable-btn"
+                          onClick={() => void toggleLiveHidden(String(t.externalKey), true)}
+                          title="停用：从推荐榜与补录页隐藏（仅当前账号）"
+                        >
+                          停用
+                        </button>
                       ) : null}
                       {t.source === 'db' && Number(t.id) === 2 && t.weeklyCap != null && t.weeklyRemaining != null ? (
                         <span className="badge" style={{ opacity: 0.9 }}>
@@ -1194,6 +1232,15 @@ export function TasksPage() {
                           title="启用：显示在推荐榜"
                         >
                           启用
+                        </button>
+                      ) : r.source === 'live' && r.externalKey ? (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => void toggleLiveHidden(String(r.externalKey), false)}
+                          title="恢复：重新出现在推荐榜/补录页（仅当前账号）"
+                        >
+                          恢复
                         </button>
                       ) : null}
                       <button type="button" className="btn btn-primary btn-sm" onClick={() => openBackfillRow(r)}>

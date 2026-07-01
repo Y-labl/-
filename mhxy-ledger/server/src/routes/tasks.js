@@ -20,6 +20,47 @@ import { getActivityFeed } from '../services/activityFeed.js';
 export const tasksRouter = Router();
 tasksRouter.use(authRequired);
 
+function parsePrefsRow(raw) {
+  if (raw == null) return {};
+  if (typeof raw === 'object' && !Buffer.isBuffer(raw)) {
+    return raw && typeof raw === 'object' && !Array.isArray(raw) ? { ...raw } : {};
+  }
+  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(raw)) {
+    try {
+      const o = JSON.parse(raw.toString('utf8'));
+      return o && typeof o === 'object' && !Array.isArray(o) ? o : {};
+    } catch {
+      return {};
+    }
+  }
+  if (typeof raw === 'string') {
+    try {
+      const o = JSON.parse(raw);
+      return o && typeof o === 'object' && !Array.isArray(o) ? o : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+async function loadHiddenLiveKeys(uid) {
+  try {
+    const [rows] = await pool.query(
+      'SELECT prefs_json AS prefsJson FROM user_client_prefs WHERE user_id = ? LIMIT 1',
+      [uid],
+    );
+    const prefs = rows.length ? parsePrefsRow(rows[0].prefsJson) : {};
+    const arr = Array.isArray(prefs.hiddenLiveActivities) ? prefs.hiddenLiveActivities : [];
+    const out = new Set(arr.map((x) => String(x)).filter(Boolean));
+    return out;
+  } catch (e) {
+    // user_client_prefs 不存在时保持默认（不隐藏）
+    if (e?.code === 'ER_NO_SUCH_TABLE') return new Set();
+    throw e;
+  }
+}
+
 tasksRouter.patch('/templates/:id', async (req, res) => {
   const id = Math.floor(Number(req.params.id));
   if (!Number.isFinite(id) || id < 1) return res.status(400).json({ error: '无效 id' });
@@ -233,6 +274,26 @@ function monday00RangeByWall(d) {
   return { start, end };
 }
 
+/**
+ * 周常刷新口径：周一 08:00 ～ 下周一 08:00（本地墙钟）。
+ * - 周一 00:00～07:59 仍计入“上周”次数，08:00 才重置。
+ */
+function monday08RangeByWall(d) {
+  const now = new Date(d);
+  if (Number.isNaN(now.getTime())) return null;
+  const x = new Date(now);
+  const day = x.getDay(); // 0 Sun..6 Sat
+  const diff = day === 0 ? -6 : 1 - day;
+  x.setHours(8, 0, 0, 0);
+  x.setDate(x.getDate() + diff);
+  let start = x;
+  if (now.getTime() < start.getTime()) {
+    start = new Date(start.getTime() - 7 * 24 * 60 * 60 * 1000);
+  }
+  const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
+  return { start, end };
+}
+
 async function loadWeeklyTaskStats(uid, weekStartAt, weekEndAt) {
   const [rows] = await pool.query(
     `SELECT task_id AS taskId,
@@ -441,7 +502,7 @@ async function buildWukaiEnrichedList(req) {
       ? Number(wallRaw)
       : new Date().getHours() * 60 + new Date().getMinutes();
 
-  const [feed, qt, doneKeys, lastByTask] = await Promise.all([
+  const [feed, qt, doneKeys, lastByTask, hiddenLiveKeys] = await Promise.all([
     getActivityFeed(),
     pool.query(
       `SELECT id, name, description, frequency,
@@ -455,14 +516,32 @@ async function buildWukaiEnrichedList(req) {
     ),
     loadDoneKeys(uid, bizDate),
     loadLastByTaskId(uid),
+    loadHiddenLiveKeys(uid),
   ]);
 
   const tasks = qt[0];
   const doneToday = doneTodayDbIds(doneKeys);
-  const weekRange = monday00RangeByWall(new Date());
+  const weekRange = monday08RangeByWall(new Date());
   const weekStats = weekRange ? await loadWeeklyTaskStats(uid, weekRange.start, weekRange.end) : {};
   const ghostWeekUsed = weekRange ? await loadWeeklyGhostUsed(uid, weekRange.start, weekRange.end) : 0;
   const enriched = [];
+
+  /**
+   * 帮战冲突处理：
+   * - 帮派迷宫：周一/周三固定；周五仅在“无帮战”时开放。
+   * - 这里无法判断服务器具体是否开帮战，采用活动源同日是否出现「帮战/帮派竞赛」作为近似判断。
+   */
+  const hasGuildWarTonight = (() => {
+    if (weekday !== 5) return false;
+    for (const a of feed.activities || []) {
+      const n = String(a?.name || '');
+      if (!n) continue;
+      if (/帮战|帮派竞赛/.test(n)) {
+        if (calendarActivityMatchesDay(a, weekday, bizDate)) return true;
+      }
+    }
+    return false;
+  })();
   /** 日历限时名称去重：跳过无时段的「日常：xxx」模板，避免盖住带 12:00–14:00 等的活动日历行 */
   const feedTimedDedupe = new Set();
   for (const a of feed.activities) {
@@ -487,7 +566,9 @@ async function buildWukaiEnrichedList(req) {
   }
 
   for (const a of feed.activities) {
+    if (hiddenLiveKeys && a?.key && hiddenLiveKeys.has(String(a.key))) continue;
     if (skipWukaiExcludedLive(a)) continue;
+    if (weekday === 5 && hasGuildWarTonight && String(a.key) === 'bangpai-migong') continue;
     let stars = Math.round(Number(a.stars));
     if (!Number.isFinite(stars)) stars = WUKAI_FEED_MIN_STARS;
     stars = Math.min(5, Math.max(1, stars));
@@ -837,8 +918,8 @@ tasksRouter.get('/candidates', async (req, res) => {
   const bizDate = String(req.query.bizDate || todayStr());
   const uid = req.user.id;
   const wd = weekdayFromBizDate(bizDate);
-  const rng = monday00RangeByWall(new Date());
-  const [doneKeys, lastByTask, qt, feed, weekStats] = await Promise.all([
+  const rng = monday08RangeByWall(new Date());
+  const [doneKeys, lastByTask, qt, feed, weekStats, hiddenLiveKeys] = await Promise.all([
     loadDoneKeys(uid, bizDate),
     loadLastByTaskId(uid),
     pool.query(
@@ -852,6 +933,7 @@ tasksRouter.get('/candidates', async (req, res) => {
     ),
     getActivityFeed(),
     rng ? loadWeeklyTaskStats(uid, rng.start, rng.end) : Promise.resolve({}),
+    loadHiddenLiveKeys(uid),
   ]);
   const list = [];
 
@@ -917,6 +999,7 @@ tasksRouter.get('/candidates', async (req, res) => {
   }
 
   for (const a of feed.activities) {
+    if (hiddenLiveKeys && a?.key && hiddenLiveKeys.has(String(a.key))) continue;
     if (skipWukaiExcludedLive(a)) continue;
     if (!calendarActivityMatchesDay(a, wd, bizDate)) continue;
     const dk = `live:${a.key}:${bizDate}`;
@@ -1027,7 +1110,7 @@ async function processTaskDone(req, res) {
       if (per % 10 !== 0) {
         return res.status(400).json({ error: '抓鬼数量请按 10 的倍数填写（10,20,30...）' });
       }
-      const rng = monday00RangeByWall(endedAt || new Date());
+      const rng = monday08RangeByWall(endedAt || new Date());
       if (!rng) return res.status(400).json({ error: '结束时间无效' });
       const [[sumRow]] = await pool.query(
         `SELECT COALESCE(SUM(COALESCE(unit_count, 0)), 0) AS s,
@@ -1072,7 +1155,7 @@ async function processTaskDone(req, res) {
 
     const wCap = weeklyCapFromFrequency(task.frequency);
     if (wCap > 0) {
-      const rng = monday00RangeByWall(endedAt || new Date());
+      const rng = monday08RangeByWall(endedAt || new Date());
       if (!rng) return res.status(400).json({ error: '结束时间无效' });
       const [cntRows] = await pool.query(
         `SELECT COUNT(*) AS c FROM task_done_entries

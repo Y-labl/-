@@ -67,7 +67,6 @@
 .mech-pick-radio-label input[type='radio'] {
   width: auto;
   margin: 0;
-  accent-color: var(--mech-cyan, #00e5ff);
 }
 
 /** 与兽决一致：单列纵向排列（等级、兽决种类等） */
@@ -453,9 +452,7 @@
   align-items: stretch;
   gap: 0.45rem;
   min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* legacy Edge */
+  overflow: hidden;
 }
 
 .mech-hud-gold-rate-actions {
@@ -472,16 +469,18 @@
   justify-content: flex-start;
 }
 
-.mech-hud-cell--gold-rate::-webkit-scrollbar {
-  display: none; /* Chrome, Safari */
+.mech-hud-cell--gold-rate::-webkit-scrollbar,
+.mech-hud-cell--gold-rate::-webkit-scrollbar-corner {
+  width: 0;
+  height: 0;
 }
 
 .mech-gold-rate-row {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: flex-end;
   gap: 0.45rem 0.5rem;
-  min-width: min-content;
+  min-width: 0;
 }
 
 .mech-gold-rate-field {

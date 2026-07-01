@@ -15,13 +15,57 @@ const upload = multer({
 });
 
 let ocrWorkerPromise = null;
+let ocrChiSimReady = false;
+
+function cjkCharCount(s) {
+  const m = String(s || '').match(/[\u4e00-\u9fff]/g);
+  return m ? m.length : 0;
+}
+
+function scoreOcrText(s) {
+  const t = String(s || '');
+  const cjk = cjkCharCount(t);
+  const hasQiZhuan = /起\s*[:：]/.test(t) && /转\s*[:：]/.test(t);
+  const hasAsciiSpam = /[A-Za-z]{3,}/.test(t);
+  // Prefer: has 起/转 + more CJK. Penalize ASCII spam.
+  return (hasQiZhuan ? 1000 : 0) + cjk - (hasAsciiSpam ? 10 : 0);
+}
 
 async function getOcrWorker() {
   if (process.env.SMART_OCR_DISABLED === '1') return null;
   if (!ocrWorkerPromise) {
-    ocrWorkerPromise = createWorker(['chi_sim', 'eng'], 1, {
-      logger: () => {},
-    });
+    ocrWorkerPromise = (async () => {
+      // NOTE: our installed tesseract.js expects signature:
+      //   createWorker(langs?, oem?, options?, config?)
+      // so the first argument must be language(s), not an options object.
+      //
+      // IMPORTANT: do NOT pass function values (e.g. logger callback) into createWorker in Node worker_threads;
+      // Node's structuredClone cannot clone functions and will crash with DataCloneError.
+      const langPath =
+        (process.env.SMART_OCR_LANG_PATH || '').trim() ||
+        // Default public tessdata mirror (requires outbound internet).
+        'https://tessdata.projectnaptha.com/4.0.0';
+
+      // Prefer Chinese simplified; if chi_sim cannot be loaded, we will surface a clear error.
+      let worker;
+      try {
+        worker = await createWorker('chi_sim', undefined, { langPath });
+        ocrChiSimReady = true;
+      } catch {
+        ocrChiSimReady = false;
+        // Still return worker so /ocr can respond with a helpful message instead of gibberish.
+        try {
+          worker = await createWorker('eng', undefined, { langPath });
+        } catch {
+          /* ignore */
+        }
+      }
+      // Some UI screenshots are tiny; nudge DPI.
+      if (typeof worker.setParameters === 'function') {
+        await worker.setParameters({ user_defined_dpi: '300' });
+      }
+      return worker;
+    })();
   }
   return ocrWorkerPromise;
 }
@@ -40,10 +84,33 @@ smartRouter.post('/ocr', upload.single('image'), async (req, res) => {
   if (!worker) {
     return res.status(503).json({ error: 'OCR 已禁用（SMART_OCR_DISABLED=1）' });
   }
+  if (!ocrChiSimReady) {
+    return res.status(503).json({
+      error:
+        'OCR 中文语言包 chi_sim 未能加载，当前会退回英文识别导致乱码。请确保服务器可联网下载 tessdata，或设置环境变量 SMART_OCR_LANG_PATH 指向可用的 tessdata 路径/URL（含 chi_sim.traineddata）。',
+    });
+  }
   try {
-    const {
-      data: { text },
-    } = await worker.recognize(req.file.buffer);
+    // Two-pass OCR with different page segmentation modes (PSM):
+    // - 6: Assume a block of text (good default for UI panels)
+    // - 7: Single text line (sometimes better for short "起:xxx 转:yyy" snippets)
+    let text1 = '';
+    let text2 = '';
+    try {
+      await worker.setParameters({ tessedit_pageseg_mode: '6', preserve_interword_spaces: '1' });
+      const r1 = await worker.recognize(req.file.buffer);
+      text1 = r1?.data?.text ?? '';
+    } catch {
+      text1 = '';
+    }
+    try {
+      await worker.setParameters({ tessedit_pageseg_mode: '7', preserve_interword_spaces: '1' });
+      const r2 = await worker.recognize(req.file.buffer);
+      text2 = r2?.data?.text ?? '';
+    } catch {
+      text2 = '';
+    }
+    const text = scoreOcrText(text2) > scoreOcrText(text1) ? text2 : text1;
     const [rows] = await pool.query('SELECT id, name FROM items ORDER BY CHAR_LENGTH(name) DESC');
     const actions = parseLedgerText(text, rows);
     res.json({ ocrText: text, actions });

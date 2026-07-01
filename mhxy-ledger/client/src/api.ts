@@ -63,6 +63,7 @@ export const api = {
       method: 'POST',
       json: body,
     }),
+  me: () => request<{ user: { id: number; username: string } }>('/api/me'),
   categories: () => request<ItemCategory[]>('/api/categories'),
   items: (categoryId?: number) => {
     const q = categoryId ? `?categoryId=${categoryId}` : '';
@@ -325,6 +326,8 @@ export const api = {
     ),
   mechLedgerDayDates: (limit?: number) =>
     request<{ dates: string[] }>(`/api/mech-ledger/day-dates?limit=${limit ?? 90}`),
+  mechLedgerHistory: (limit?: number) =>
+    request<MechLedgerHistoryResponse>(`/api/mech-ledger/history?limit=${limit ?? 90}`),
   mechLedgerPrefsGet: () =>
     request<{ gameWan: number; yuan: number; persisted: boolean }>('/api/mech-ledger/prefs'),
   mechLedgerPrefsPut: (body: { yuan: number }) =>
@@ -637,6 +640,8 @@ export type Weekly = {
   taskCompletionsCount: number;
   /** 本周各日「保存收益」快照中在线角色数的最大值 */
   onlineRolesWeekMax: number;
+  /** 本周在线时长（秒）：Σ mech_ledger_day_meta.elapsed_sec */
+  onlineElapsedSecSum?: number;
   /** 与总览「当日」现金净额同口径：记账台物品+梦幻币折算元 − 区间内消耗页点卡充值（元） */
   netCashYuan: number | null;
   /** 与总览「当日」现金总额同口径：记账台物品+梦幻币折算元（未扣消耗） */
@@ -653,6 +658,10 @@ export type Monthly = {
   pointCardRechargeYuan?: number;
   itemByDay: { d: string; qty: string | number }[];
   taskCompletionsCount: number;
+  /** 本月在线时长（秒）：Σ mech_ledger_day_meta.elapsed_sec */
+  onlineElapsedSecSum?: number;
+  /** 月均口径的自然日天数：当前月=截至今天，否则=整月天数 */
+  onlineAvgDayCount?: number;
   /** 与总览「当日」现金净额同口径 */
   netCashYuan: number | null;
   /** 与总览「当日」现金总额同口径：记账台物品+梦幻币折算元（未扣消耗） */
@@ -684,6 +693,20 @@ export type MechLedgerDailyResponse = {
   /** 计时进行中时的墙钟 ms；停表则为 null */
   ledgerRunStartAtMs?: number | null;
   ledgerPointCard?: MechLedgerPointCardSegments;
+};
+
+export type MechLedgerHistoryRow = {
+  bizDate: string;
+  profitW: number;
+  netCashGameGoldW: number;
+  itemW: number;
+  vendorTrashW: number;
+  onlineRoles: number;
+  savedAt: string | null;
+};
+
+export type MechLedgerHistoryResponse = {
+  items: MechLedgerHistoryRow[];
 };
 
 /** 点卡分段：closedSlices 为已结束区间；当前区间从 segmentStartElapsed 到「现在」，人数取当前在线合计 */

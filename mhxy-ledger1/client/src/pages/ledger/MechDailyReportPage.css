@@ -1,0 +1,152 @@
+.mech-daily-page {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.mech-daily-top-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.mech-daily-controls {
+  margin-bottom: 1rem;
+  padding: 1rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.mech-daily-controls-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+
+.mech-daily-nav-btns {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mech-daily-pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.mech-daily-pill {
+  font-size: 0.78rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-gold-soft);
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.mech-daily-pill:hover {
+  color: var(--text);
+  border-color: rgba(0, 229, 255, 0.35);
+}
+
+.mech-daily-pill.active {
+  color: var(--gold-bright);
+  border-color: var(--border-gold);
+  background: rgba(0, 229, 255, 0.08);
+}
+
+.mech-daily-err {
+  color: var(--danger);
+  margin: 0 0 1rem;
+}
+
+.mech-daily-section {
+  padding: 1rem 1.15rem 1.25rem;
+}
+
+.mech-daily-section-title {
+  margin: 0 0 0.65rem;
+  font-size: 1rem;
+  font-family: var(--font-display);
+  font-weight: 500;
+  color: var(--gold);
+}
+
+.mech-daily-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border-gold-soft);
+  border-radius: var(--radius-sm);
+}
+
+.mech-daily-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.mech-daily-table th,
+.mech-daily-table td {
+  padding: 0.55rem 0.65rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.mech-daily-table thead th {
+  background: rgba(0, 20, 30, 0.5);
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.mech-daily-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.mech-daily-empty {
+  color: var(--muted);
+  padding: 1.25rem !important;
+}
+
+.mech-daily-summary-time {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.mech-daily-team-cells {
+  font-size: 0.82rem;
+  line-height: 1.4;
+  vertical-align: top;
+}
+
+.mech-daily-team-primary {
+  max-width: 14rem;
+}
+
+.mech-daily-team-sub {
+  margin-top: 0.25rem;
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.mech-daily-point-extra {
+  margin: 0.65rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.mech-daily-footnote {
+  margin: 0.75rem 0 0;
+  font-size: 0.8rem;
+}
+
+.mech-daily-pointcard-sub {
+  margin-top: 0.3rem;
+  font-size: 0.78rem;
+  font-weight: 400;
+  line-height: 1.35;
+}

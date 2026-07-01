@@ -31,16 +31,32 @@ if errorlevel 1 (
 echo Server: %ROOT%server
 echo Client: %ROOT%client
 echo.
+
+echo Checking MySQL database status...
+netstat -ano | findstr ":3306" | findstr LISTENING >nul 2>&1
+if errorlevel 1 (
+  echo MySQL is not running on port 3306. Attempting to start MySQL...
+  call "D:\MySQL\start-mysql-if-needed.bat"
+  if errorlevel 1 (
+    echo WARNING: Could not start MySQL. Please start it manually.
+  ) else (
+    echo MySQL started successfully.
+  )
+) else (
+  echo MySQL is already running on port 3306.
+)
+echo.
+
 echo Freeing listen ports 3001 ^(API^) and 5173 ^(Vite^) if a previous run is still bound...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%free-listen-ports.ps1" 3001 5173
 if errorlevel 1 (
   echo WARNING: Could not free a port ^(permission or system process^). If startup fails, close the old window or Task Manager.
   echo.
 )
-echo Note: server uses "npm start" (stable). For auto-reload on code edits use: npm run dev
+echo Note: server uses "npm start" ^(stable^). For auto-reload on code edits use: npm run dev
 echo.
 
-start "mhxy-ledger-server" /D "%ROOT%server" cmd /k "npm start"
+start "mhxy-ledger-server" /D "%ROOT%server" cmd /k "set SKIP_DB_AUTO_MIGRATE=1 && npm start"
 start "mhxy-ledger-client" /D "%ROOT%client" cmd /k "npm run dev"
 
 echo Started server and client in new windows. This window can be closed; services keep running.

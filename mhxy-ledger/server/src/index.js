@@ -26,7 +26,7 @@ function runStartupMigrations() {
     console.log('[mhxy-server] SKIP_DB_AUTO_MIGRATE=1，已跳过启动迁移');
     return;
   }
-  for (const script of ['migrate-v43.js', 'migrate-v44.js', 'migrate-v45.js']) {
+  for (const script of ['migrate-v43.js', 'migrate-v44.js', 'migrate-v45.js', 'migrate-v46.js']) {
     const r = spawnSync(process.execPath, [`scripts/${script}`], {
       cwd: serverRoot,
       stdio: 'inherit',

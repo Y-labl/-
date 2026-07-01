@@ -95,6 +95,9 @@ export default function ItemCatalogPage() {
   const [pageMsg, setPageMsg] = useState<{ text: string; err?: boolean } | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(defaultForm);
+  /** 数字输入：编辑时允许清空；保存时再把空值落为 0 */
+  const [formPriceWStr, setFormPriceWStr] = useState<string>('0');
+  const [formSortOrderStr, setFormSortOrderStr] = useState<string>('0');
   const [modalEditingId, setModalEditingId] = useState<number | null>(null);
   const [modalMsg, setModalMsg] = useState<{ text: string; err?: boolean } | null>(null);
   const [lingshiTabLevel, setLingshiTabLevel] = useState<string>('120');
@@ -102,13 +105,61 @@ export default function ItemCatalogPage() {
   const [lingshiMatrix, setLingshiMatrix] = useState<Record<string, Record<LingshiBookType, number>>>(() =>
     loadLingshiBookMatrix()
   );
+  const [lingshiPriceStrs, setLingshiPriceStrs] = useState<Record<string, string>>({});
   const [ruyiPrices, setRuyiPrices] = useState<Record<RuyiElement, number>>(() => loadRuyiDanPrices());
+  const [ruyiPriceStrs, setRuyiPriceStrs] = useState<Record<string, string>>({});
   const [ruyiPickElement, setRuyiPickElement] = useState<RuyiElement>(RUYI_ELEMENTS[0]);
   const [beastRows, setBeastRows] = useState<BeastScrollRow[]>(() => loadBeastScrollRows());
   const [beastPickId, setBeastPickId] = useState(() => loadBeastScrollRows()[0]?.id ?? '');
+  const [beastPriceStrs, setBeastPriceStrs] = useState<Record<string, string>>({});
   const [tieredTabLevel, setTieredTabLevel] = useState('120');
   const [tieredPrices, setTieredPrices] = useState<Record<string, number>>({});
+  const [tieredPriceStrs, setTieredPriceStrs] = useState<Record<string, string>>({});
   const [imageUploading, setImageUploading] = useState(false);
+
+  function parseNonNegNumberOrNull(s: string): number | null {
+    const t = String(s ?? '').trim();
+    if (!t) return null;
+    const n = Number(t);
+    if (!Number.isFinite(n) || n < 0) return null;
+    return n;
+  }
+
+  function lingshiKey(level: string, type: string): string {
+    return `${level}::${type}`;
+  }
+
+  function effectivePriceFromStrOrMatrix(level: string, type: LingshiBookType): number {
+    const k = lingshiKey(level, type);
+    const raw = lingshiPriceStrs[k];
+    const n = raw != null ? parseNonNegNumberOrNull(raw) : null;
+    if (n != null) return n;
+    const v = lingshiMatrix[level]?.[type];
+    return Number.isFinite(Number(v)) && Number(v) >= 0 ? Number(v) : 0;
+  }
+
+  function effectiveRuyiPrice(el: RuyiElement): number {
+    const raw = ruyiPriceStrs[el];
+    const n = raw != null ? parseNonNegNumberOrNull(raw) : null;
+    if (n != null) return n;
+    const v = ruyiPrices[el];
+    return Number.isFinite(Number(v)) && Number(v) >= 0 ? Number(v) : 0;
+  }
+
+  function effectiveTieredPrice(level: string): number {
+    const raw = tieredPriceStrs[level];
+    const n = raw != null ? parseNonNegNumberOrNull(raw) : null;
+    if (n != null) return n;
+    const v = tieredPrices[level];
+    return Number.isFinite(Number(v)) && Number(v) >= 0 ? Number(v) : 0;
+  }
+
+  function effectiveBeastPrice(id: string, fallback: number): number {
+    const raw = beastPriceStrs[id];
+    const n = raw != null ? parseNonNegNumberOrNull(raw) : null;
+    if (n != null) return n;
+    return Number.isFinite(Number(fallback)) && Number(fallback) >= 0 ? Number(fallback) : 0;
+  }
 
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [batchDeleting, setBatchDeleting] = useState(false);
@@ -189,11 +240,13 @@ export default function ItemCatalogPage() {
   useEffect(() => {
     if (!modalOpen || !formIsLingshiBook) return;
     setLingshiMatrix(loadLingshiBookMatrix());
+    setLingshiPriceStrs({});
   }, [modalOpen, formIsLingshiBook]);
 
   useEffect(() => {
     if (!modalOpen || !formIsRuyiDan) return;
     setRuyiPrices(loadRuyiDanPrices());
+    setRuyiPriceStrs({});
   }, [modalOpen, formIsRuyiDan]);
 
   useEffect(() => {
@@ -201,6 +254,7 @@ export default function ItemCatalogPage() {
     const next = loadBeastScrollRows();
     setBeastRows(next);
     setBeastPickId((id) => (next.some((r) => r.id === id) ? id : next[0]?.id ?? ''));
+    setBeastPriceStrs({});
   }, [modalOpen, formIsBeastScroll]);
 
   useEffect(() => {
@@ -208,6 +262,7 @@ export default function ItemCatalogPage() {
     const levels = TIERED_ITEM_CONFIG[tieredBase].levels;
     setTieredPrices(loadTieredPricesByBase(tieredBase));
     setTieredTabLevel((cur) => (levels.includes(cur) ? cur : levels[0] ?? cur));
+    setTieredPriceStrs({});
   }, [modalOpen, tieredBase]);
 
   useEffect(() => {
@@ -222,6 +277,8 @@ export default function ItemCatalogPage() {
     setModalEditingId(null);
     const base = defaultForm();
     setForm({ ...base, sortOrder: nextSortOrderForPanel(base.panel, rows) });
+    setFormPriceWStr('');
+    setFormSortOrderStr(String(nextSortOrderForPanel(base.panel, rows)));
     setModalMsg(null);
     setModalOpen(true);
   }
@@ -285,6 +342,8 @@ export default function ItemCatalogPage() {
       panel: row.panel,
       sortOrder: row.sortOrder,
     });
+    setFormPriceWStr(priceW != null && Number.isFinite(Number(priceW)) ? String(Number(priceW)) : '');
+    setFormSortOrderStr(row.sortOrder != null && Number.isFinite(Number(row.sortOrder)) ? String(Number(row.sortOrder)) : '');
     setModalMsg(null);
     setModalOpen(true);
     if (isLingshiBookCatalogName(row.name)) {
@@ -328,7 +387,7 @@ export default function ItemCatalogPage() {
 
   function applyLingshiPick() {
     saveLingshiBookMatrix(lingshiMatrix);
-    const price = getPriceFromMatrix(lingshiMatrix, lingshiTabLevel, lingshiPickType);
+    const price = effectivePriceFromStrOrMatrix(lingshiTabLevel, lingshiPickType);
     const name = buildLedgerPickedDisplayName(LEDGER_PICK_BOOK_ITEM_NAME, lingshiTabLevel, lingshiPickType);
     setForm((f) => ({
       ...f,
@@ -336,11 +395,12 @@ export default function ItemCatalogPage() {
       priceW: price,
       levelLabel: `${lingshiTabLevel}级`,
     }));
+    setFormPriceWStr(String(price));
   }
 
   function applyRuyiPick() {
     saveRuyiDanPrices(ruyiPrices);
-    const price = getRuyiDanPrice(ruyiPrices, ruyiPickElement);
+    const price = effectiveRuyiPrice(ruyiPickElement);
     const name = buildRuyiDanDisplayName(ruyiPickElement);
     setForm((f) => ({
       ...f,
@@ -348,24 +408,27 @@ export default function ItemCatalogPage() {
       priceW: price,
       levelLabel: ruyiPickElement,
     }));
+    setFormPriceWStr(String(price));
   }
 
   function applyBeastPick() {
     const row = beastRows.find((r) => r.id === beastPickId) ?? beastRows[0];
     if (!row) return;
     saveBeastScrollRows(beastRows);
+    const price = effectiveBeastPrice(row.id, row.priceW);
     setForm((f) => ({
       ...f,
       name: buildBeastScrollDisplayName(row.label),
-      priceW: row.priceW,
+      priceW: price,
       levelLabel: row.label,
     }));
+    setFormPriceWStr(String(price));
   }
 
   function applyTieredPick() {
     if (!tieredBase) return;
     saveTieredPricesByBase(tieredBase, tieredPrices);
-    const price = tieredPrices[tieredTabLevel] ?? 0;
+    const price = effectiveTieredPrice(tieredTabLevel);
     const name = buildLedgerPickedDisplayName(tieredBase, tieredTabLevel);
     setForm((f) => ({
       ...f,
@@ -373,6 +436,7 @@ export default function ItemCatalogPage() {
       priceW: price,
       levelLabel: `${tieredTabLevel}级`,
     }));
+    setFormPriceWStr(String(price));
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -381,26 +445,86 @@ export default function ItemCatalogPage() {
       setModalMsg({ text: '请填写名称', err: true });
       return;
     }
+
+    // 保存时：把所有数字输入的空值规范化为 0
+    const submitPrice = parseNonNegNumberOrNull(formPriceWStr) ?? 0;
+    const submitSort = parseNonNegNumberOrNull(formSortOrderStr) ?? form.sortOrder ?? 0;
+    const submitForm = { ...form, priceW: submitPrice, sortOrder: Math.floor(submitSort) };
+
+    let nextLingshiMatrix = lingshiMatrix;
+    let nextRuyiPrices = ruyiPrices;
+    let nextBeastRows = beastRows;
+    let nextTieredPrices = tieredPrices;
+
+    if (Object.keys(lingshiPriceStrs).length) {
+      const next = { ...lingshiMatrix };
+      for (const [k, raw] of Object.entries(lingshiPriceStrs)) {
+        const [lv, tp] = k.split('::');
+        if (!lv || !tp) continue;
+        const n = parseNonNegNumberOrNull(raw) ?? 0;
+        if (!next[lv]) continue;
+        if ((LEDGER_LINGSHI_TYPES as readonly string[]).includes(tp)) {
+          next[lv] = { ...next[lv], [tp as LingshiBookType]: n };
+        }
+      }
+      nextLingshiMatrix = next;
+    }
+
+    if (Object.keys(ruyiPriceStrs).length) {
+      const next = { ...ruyiPrices };
+      for (const [el, raw] of Object.entries(ruyiPriceStrs)) {
+        if (!(RUYI_ELEMENTS as readonly string[]).includes(el)) continue;
+        next[el as RuyiElement] = parseNonNegNumberOrNull(raw) ?? 0;
+      }
+      nextRuyiPrices = next;
+    }
+
+    if (Object.keys(beastPriceStrs).length) {
+      nextBeastRows = beastRows.map((r) => {
+        const raw = beastPriceStrs[r.id];
+        if (raw == null) return r;
+        return { ...r, priceW: parseNonNegNumberOrNull(raw) ?? 0 };
+      });
+    }
+
+    if (Object.keys(tieredPriceStrs).length) {
+      const next = { ...tieredPrices };
+      for (const [lv, raw] of Object.entries(tieredPriceStrs)) {
+        next[lv] = parseNonNegNumberOrNull(raw) ?? 0;
+      }
+      nextTieredPrices = next;
+    }
+
+    // 同步回 state（使 UI 回填 0、并清空临时字符串）
+    if (nextLingshiMatrix !== lingshiMatrix) setLingshiMatrix(nextLingshiMatrix);
+    if (nextRuyiPrices !== ruyiPrices) setRuyiPrices(nextRuyiPrices);
+    if (nextBeastRows !== beastRows) setBeastRows(nextBeastRows);
+    if (nextTieredPrices !== tieredPrices) setTieredPrices(nextTieredPrices);
+    if (Object.keys(lingshiPriceStrs).length) setLingshiPriceStrs({});
+    if (Object.keys(ruyiPriceStrs).length) setRuyiPriceStrs({});
+    if (Object.keys(beastPriceStrs).length) setBeastPriceStrs({});
+    if (Object.keys(tieredPriceStrs).length) setTieredPriceStrs({});
+
     if (isLingshiBookCatalogName(form.name)) {
-      saveLingshiBookMatrix(lingshiMatrix);
+      saveLingshiBookMatrix(nextLingshiMatrix);
     }
     if (isRuyiDanCatalogName(form.name)) {
-      saveRuyiDanPrices(ruyiPrices);
+      saveRuyiDanPrices(nextRuyiPrices);
     }
     if (isBeastScrollCatalogName(form.name)) {
-      saveBeastScrollRows(beastRows);
+      saveBeastScrollRows(nextBeastRows);
     }
     if (tieredBase) {
-      saveTieredPricesByBase(tieredBase, tieredPrices);
+      saveTieredPricesByBase(tieredBase, nextTieredPrices);
     }
     setModalMsg(null);
     try {
       if (modalEditingId != null) {
-        await api.itemCatalogUpdate(modalEditingId, form);
+        await api.itemCatalogUpdate(modalEditingId, submitForm);
         setPageMsg({ text: '已保存修改' });
       } else {
-        const sortOrder = nextSortOrderForPanel(form.panel, rows);
-        await api.itemCatalogCreate({ ...form, sortOrder });
+        const sortOrder = nextSortOrderForPanel(submitForm.panel, rows);
+        await api.itemCatalogCreate({ ...submitForm, sortOrder });
         setPageMsg({ text: '已新增物品' });
       }
       closeModal();
@@ -876,16 +1000,14 @@ export default function ItemCatalogPage() {
                                     type="number"
                                     step="0.01"
                                     min={0}
-                                    value={lingshiMatrix[lingshiTabLevel]?.[t] ?? 0}
+                                    value={
+                                      lingshiPriceStrs[lingshiKey(lingshiTabLevel, t)] ??
+                                      String(lingshiMatrix[lingshiTabLevel]?.[t] ?? 0)
+                                    }
                                     onChange={(e) => {
-                                      const n = Number(e.target.value);
-                                      setLingshiMatrix((prev) => ({
-                                        ...prev,
-                                        [lingshiTabLevel]: {
-                                          ...prev[lingshiTabLevel],
-                                          [t]: Number.isFinite(n) && n >= 0 ? n : 0,
-                                        },
-                                      }));
+                                      const v = e.target.value;
+                                      const k = lingshiKey(lingshiTabLevel, t);
+                                      setLingshiPriceStrs((prev) => ({ ...prev, [k]: v }));
                                     }}
                                   />
                                 </td>
@@ -896,7 +1018,7 @@ export default function ItemCatalogPage() {
                       </div>
                       <p className="item-catalog-lingshi-price-preview">
                         将写入：灵饰书 · {lingshiTabLevel}级 · {lingshiPickType}，单价{' '}
-                        {getPriceFromMatrix(lingshiMatrix, lingshiTabLevel, lingshiPickType)} w
+                        {effectivePriceFromStrOrMatrix(lingshiTabLevel, lingshiPickType)} w
                       </p>
                       <div className="item-catalog-lingshi-embed-actions">
                         <button type="button" className="btn btn-primary" onClick={applyLingshiPick}>
@@ -941,13 +1063,10 @@ export default function ItemCatalogPage() {
                                     type="number"
                                     step="0.01"
                                     min={0}
-                                    value={ruyiPrices[el] ?? 0}
+                                    value={ruyiPriceStrs[el] ?? String(ruyiPrices[el] ?? 0)}
                                     onChange={(e) => {
-                                      const n = Number(e.target.value);
-                                      setRuyiPrices((prev) => ({
-                                        ...prev,
-                                        [el]: Number.isFinite(n) && n >= 0 ? n : 0,
-                                      }));
+                                      const v = e.target.value;
+                                      setRuyiPriceStrs((prev) => ({ ...prev, [el]: v }));
                                     }}
                                   />
                                 </td>
@@ -957,8 +1076,7 @@ export default function ItemCatalogPage() {
                         </table>
                       </div>
                       <p className="item-catalog-lingshi-price-preview">
-                        将写入：{RUYI_DAN_ITEM_NAME} · {ruyiPickElement}，单价 {getRuyiDanPrice(ruyiPrices, ruyiPickElement)}{' '}
-                        w
+                        将写入：{RUYI_DAN_ITEM_NAME} · {ruyiPickElement}，单价 {effectiveRuyiPrice(ruyiPickElement)} w
                       </p>
                       <div className="item-catalog-lingshi-embed-actions">
                         <button type="button" className="btn btn-primary" onClick={applyRuyiPick}>
@@ -1019,16 +1137,10 @@ export default function ItemCatalogPage() {
                                     type="number"
                                     step="0.01"
                                     min={0}
-                                    value={row.priceW}
+                                    value={beastPriceStrs[row.id] ?? String(row.priceW ?? 0)}
                                     onChange={(e) => {
-                                      const n = Number(e.target.value);
-                                      setBeastRows((prev) =>
-                                        prev.map((r) =>
-                                          r.id === row.id
-                                            ? { ...r, priceW: Number.isFinite(n) && n >= 0 ? n : 0 }
-                                            : r
-                                        )
-                                      );
+                                      const v = e.target.value;
+                                      setBeastPriceStrs((prev) => ({ ...prev, [row.id]: v }));
                                     }}
                                   />
                                 </td>
@@ -1047,6 +1159,11 @@ export default function ItemCatalogPage() {
                                       }
                                       setBeastRows(next);
                                       if (beastPickId === row.id) setBeastPickId(next[0]!.id);
+                                      setBeastPriceStrs((prev) => {
+                                        const copy = { ...prev };
+                                        delete copy[row.id];
+                                        return copy;
+                                      });
                                     }}
                                   >
                                     删除
@@ -1060,7 +1177,12 @@ export default function ItemCatalogPage() {
                       <p className="item-catalog-lingshi-price-preview">
                         将写入：{BEAST_SCROLL_ITEM_NAME} ·{' '}
                         {beastRows.find((r) => r.id === beastPickId)?.label ?? '—'}，单价{' '}
-                        {beastRows.find((r) => r.id === beastPickId)?.priceW ?? 0} w
+                        {(() => {
+                          const r = beastRows.find((x) => x.id === beastPickId);
+                          if (!r) return 0;
+                          return effectiveBeastPrice(r.id, r.priceW);
+                        })()}{' '}
+                        w
                       </p>
                       <div className="item-catalog-lingshi-embed-actions">
                         <button
@@ -1116,20 +1238,17 @@ export default function ItemCatalogPage() {
                             type="number"
                             step="0.01"
                             min={0}
-                            value={tieredPrices[tieredTabLevel] ?? 0}
+                            value={tieredPriceStrs[tieredTabLevel] ?? String(tieredPrices[tieredTabLevel] ?? 0)}
                             onChange={(e) => {
-                              const n = Number(e.target.value);
-                              setTieredPrices((prev) => ({
-                                ...prev,
-                                [tieredTabLevel]: Number.isFinite(n) && n >= 0 ? n : 0,
-                              }));
+                              const v = e.target.value;
+                              setTieredPriceStrs((prev) => ({ ...prev, [tieredTabLevel]: v }));
                             }}
                           />
                         </label>
                       </div>
                       <p className="item-catalog-lingshi-price-preview">
                         将写入：{buildLedgerPickedDisplayName(tieredBase, tieredTabLevel)}，单价{' '}
-                        {tieredPrices[tieredTabLevel] ?? 0} w
+                        {effectiveTieredPrice(tieredTabLevel)} w
                       </p>
                       <div className="item-catalog-lingshi-embed-actions">
                         <button type="button" className="btn btn-primary" onClick={applyTieredPick}>
@@ -1144,8 +1263,13 @@ export default function ItemCatalogPage() {
                     className="input"
                     type="number"
                     step="0.01"
-                    value={form.priceW ?? 0}
-                    onChange={(e) => setForm((f) => ({ ...f, priceW: Number(e.target.value) }))}
+                    value={formPriceWStr}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setFormPriceWStr(v);
+                      const n = parseNonNegNumberOrNull(v);
+                      if (n != null) setForm((f) => ({ ...f, priceW: n }));
+                    }}
                   />
                 </label>
                 <label>
@@ -1163,8 +1287,13 @@ export default function ItemCatalogPage() {
                     <input
                       className="input"
                       type="number"
-                      value={form.sortOrder ?? 0}
-                      onChange={(e) => setForm((f) => ({ ...f, sortOrder: Number(e.target.value) }))}
+                    value={formSortOrderStr}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setFormSortOrderStr(v);
+                      const n = parseNonNegNumberOrNull(v);
+                      if (n != null) setForm((f) => ({ ...f, sortOrder: Math.floor(n) }));
+                    }}
                     />
                   </label>
                 ) : (

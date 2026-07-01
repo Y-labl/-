@@ -261,8 +261,30 @@ function normalizeArtifactOcrText(raw: string): string {
     .replace(/[：︰﹕∶]/g, ':')
     .replace(/[轉転]/g, '转')
     .replace(/\s+/g, '');
-  s = s.replace(/（未完成）/g, '').replace(/\(未完成\)/g, '').replace(/未完成/g, '');
+  // Drop common UI/status noise and various bracket styles that OCR often leaks.
+  s = s
+    .replace(/【[^】]*】/g, '')
+    .replace(/\[[^\]]*\]/g, '')
+    .replace(/[【】\[\]]/g, '')
+    .replace(/（未完成）/g, '')
+    .replace(/\(未完成\)/g, '')
+    .replace(/未完成/g, '')
+    .replace(/已完成/g, '')
+    .replace(/完成/g, '')
+    .replace(/进行中/g, '');
   s = s.replace(/[（）()]/g, '');
+  return s;
+}
+
+function cleanArtifactOcrSegment(seg: string): string {
+  let s = String(seg || '').trim();
+  if (!s) return '';
+  s = normalizeArtifactOcrText(s);
+  // Remove common server/realm suffixes accidentally captured next to the name.
+  s = s.replace(/(本区|全区|本服|全服|大区|区服|服务器|服务区)$/g, '');
+  s = s.replace(/(区|服|线|频道)$/g, '');
+  // OCR may keep stray punctuation; keep only CJK and a few joining chars.
+  s = s.replace(/[^\u4e00-\u9fff之]+/g, '');
   return s;
 }
 
@@ -270,7 +292,12 @@ function normalizeArtifactOcrText(raw: string): string {
 function parseQiZhuanSegments(t: string): { qiSeg: string; zhuanSeg: string } | null {
   const s = String(t || '').trim();
   const m = s.match(/起\s*:\s*(.+?)\s*转\s*:\s*(.+)$/u);
-  if (m) return { qiSeg: m[1].trim(), zhuanSeg: m[2].trim() };
+  if (m) {
+    const qiSeg = cleanArtifactOcrSegment(m[1]);
+    const zhuanSeg = cleanArtifactOcrSegment(m[2]);
+    if (qiSeg && zhuanSeg) return { qiSeg, zhuanSeg };
+    return null;
+  }
   return null;
 }
 
@@ -353,7 +380,8 @@ function pickClosestArtifactByEdit(seg: string, candidates: readonly string[]): 
   }
   if (!best) return null;
   const maxLen = Math.max(t.length, best.name.length);
-  const allow = Math.max(2, Math.ceil(maxLen / 2));
+  // OCR may contain 1-2 extra/incorrect chars; allow a bit more slack but still avoid random matches.
+  const allow = Math.max(3, Math.ceil(maxLen * 0.6));
   if (best.d > allow) return null;
   return best.name;
 }
@@ -472,6 +500,37 @@ async function preprocessImageForOcr(file: File): Promise<File> {
     ctx.filter = 'contrast(1.45) saturate(0)';
     ctx.drawImage(bmp, 0, 0, w, h);
 
+    const blob: Blob | null = await new Promise((resolve) =>
+      canvas.toBlob((b) => resolve(b), 'image/png', 1.0),
+    );
+    if (!blob) return file;
+    return new File([blob], file.name.replace(/\.\w+$/, '') + '.png', { type: 'image/png' });
+  } catch {
+    return file;
+  }
+}
+
+function cjkCharCount(s: string): number {
+  const m = String(s || '').match(/[\u4e00-\u9fff]/g);
+  return m ? m.length : 0;
+}
+
+async function preprocessImageForOcrAlt(file: File): Promise<File> {
+  if (!file.type.startsWith('image/')) return file;
+  try {
+    const bmp = await createImageBitmap(file);
+    const scale = 4;
+    const w = Math.max(1, Math.floor(bmp.width * scale));
+    const h = Math.max(1, Math.floor(bmp.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return file;
+    // Keep some color information (blue UI text) + stronger contrast.
+    ctx.imageSmoothingEnabled = false;
+    ctx.filter = 'contrast(1.85) brightness(1.25)';
+    ctx.drawImage(bmp, 0, 0, w, h);
     const blob: Blob | null = await new Promise((resolve) =>
       canvas.toBlob((b) => resolve(b), 'image/png', 1.0),
     );
@@ -609,12 +668,33 @@ export function ArtifactGuidePage() {
         return URL.createObjectURL(file);
       });
       const pre = await preprocessImageForOcr(file);
-      const r = await api.smartOcr(pre);
-      const ocrText = String(r.ocrText || '');
-      setLastOcrText(ocrText);
-      const picked = pickArtifactsFromOcrText(ocrText);
+      const r1 = await api.smartOcr(pre);
+      let bestText = String(r1.ocrText || '');
+      let bestPicked = pickArtifactsFromOcrText(bestText);
+
+      // OCR 有时会把中文识别成英文乱码（例如只剩 ASCII）。此时用另一套预处理再试一次，取更像中文且能解析出起/转的结果。
+      if (bestPicked.length !== 2) {
+        const looksBroken = cjkCharCount(bestText) < 2 && /[A-Za-z]{3,}/.test(bestText);
+        if (looksBroken) {
+          const preAlt = await preprocessImageForOcrAlt(file);
+          const r2 = await api.smartOcr(preAlt);
+          const t2 = String(r2.ocrText || '');
+          const p2 = pickArtifactsFromOcrText(t2);
+          const score1 = (bestPicked.length === 2 ? 1000 : 0) + cjkCharCount(bestText);
+          const score2 = (p2.length === 2 ? 1000 : 0) + cjkCharCount(t2);
+          if (score2 > score1) {
+            bestText = t2;
+            bestPicked = p2;
+          }
+        }
+      }
+
+      setLastOcrText(bestText);
+      const picked = bestPicked;
       if (picked.length !== 2) {
-        const brief = ocrText.trim() ? `OCR：${ocrText.trim().slice(0, 90)}${ocrText.trim().length > 90 ? '…' : ''}` : 'OCR：空';
+        const brief = bestText.trim()
+          ? `OCR：${bestText.trim().slice(0, 90)}${bestText.trim().length > 90 ? '…' : ''}`
+          : 'OCR：空';
         throw new Error(`未识别出 2 种神器名称，请换更清晰截图（包含两条神器名称的区域）。${brief}`);
       }
       try {
@@ -1102,7 +1182,7 @@ export function ArtifactGuidePage() {
             </>
           ) : (
             <div className="muted" style={{ fontSize: '0.82rem' }}>
-              攻略加载中/未入库。请先在 server 目录执行：node scripts/migrate-v41.js
+              攻略加载中/未入库。请先在 server 目录执行：node scripts/seed-artifact-guide-content.js
             </div>
           )}
         </div>

@@ -17,8 +17,8 @@
     {
       "key": "bangpai-migong",
       "name": "活动：帮派迷宫",
-      "description": "仅限周一、周三；无帮战周的周五、周日也开放（以游戏内为准）。",
-      "weekdays": [1, 3, 5, 0],
+      "description": "周一、周三固定开放；周五仅在无帮战时开放（以游戏内为准）。",
+      "weekdays": [1, 3, 5],
       "start": "20:00",
       "end": "22:00",
       "pinEarly": 30,

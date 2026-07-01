@@ -1,0 +1,25 @@
+{
+  "updatedAt": "2026-04-05T12:00:00.000Z",
+  "activities": [
+    {
+      "key": "menpai-sunday",
+      "name": "活动：门派闯关",
+      "description": "周日 15:00–17:00（示例，可按区服修改）",
+      "weekdays": [0],
+      "start": "15:00",
+      "end": "17:00",
+      "pinEarly": 30,
+      "sortOrder": 2
+    },
+    {
+      "key": "maze-montothu",
+      "name": "活动：帮派迷宫",
+      "description": "周一至周四 20:00–22:00",
+      "weekdays": [1, 2, 3, 4],
+      "start": "20:00",
+      "end": "22:00",
+      "pinEarly": 30,
+      "sortOrder": 3
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+.geo-dolls-wrap {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  max-width: min(360px, 92vw);
+  margin: 0 auto;
+}
+
+.geo-dolls-svg {
+  width: 100%;
+  height: auto;
+  max-height: min(340px, 48vh);
+  display: block;
+  filter: drop-shadow(0 12px 28px rgba(0, 0, 0, 0.2));
+}
+
+.geo-doll {
+  transition: transform 0.35s ease;
+}
+
+.geo-dolls-wrap:hover .geo-doll-blue {
+  transform: translate(-2px, -1px);
+}
+
+.geo-dolls-wrap:hover .geo-doll-black {
+  transform: translate(2px, -1px);
+}
+
+.geo-dolls-wrap:hover .geo-doll-orange {
+  transform: translate(-1px, 2px);
+}
+
+.geo-dolls-wrap:hover .geo-doll-yellow {
+  transform: translate(1px, 2px);
+}
