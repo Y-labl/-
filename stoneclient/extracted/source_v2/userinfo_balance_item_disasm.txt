@@ -1,0 +1,601 @@
+Module: userinfo_balance_item
+Names: ('PyQt5.QtCore', 'Qt', 'PyQt5.QtGui', 'QFont', 'PyQt5.QtWidgets', 'QListWidgetItem', 'QWidget', 'QLabel', 'QHBoxLayout', 'QVBoxLayout', 'const', 'PerStoneBalance', 'UserInfoBalanceItem')
+Varnames: ()
+
+Consts:
+  [0]: 0
+  [1]: ('Qt',)
+  [2]: ('QFont',)
+  [3]: ('QListWidgetItem', 'QWidget', 'QLabel', 'QHBoxLayout', 'QVBoxLayout')
+  [4]: ('PerStoneBalance',)
+  [5]: <code object UserInfoBalanceItem at 0x000002612A5ECF50, file "userinfo_balance_item.py", line 8>
+  [6]: 'UserInfoBalanceItem'
+  [7]: None
+
+  1           0 LOAD_CONST               0 (0)
+              2 LOAD_CONST               1 (('Qt',))
+              4 IMPORT_NAME              0 (PyQt5.QtCore)
+              6 IMPORT_FROM              1 (Qt)
+              8 STORE_NAME               1 (Qt)
+             10 POP_TOP
+
+  2          12 LOAD_CONST               0 (0)
+             14 LOAD_CONST               2 (('QFont',))
+             16 IMPORT_NAME              2 (PyQt5.QtGui)
+             18 IMPORT_FROM              3 (QFont)
+             20 STORE_NAME               3 (QFont)
+             22 POP_TOP
+
+  3          24 LOAD_CONST               0 (0)
+             26 LOAD_CONST               3 (('QListWidgetItem', 'QWidget', 'QLabel', 'QHBoxLayout', 'QVBoxLayout'))
+             28 IMPORT_NAME              4 (PyQt5.QtWidgets)
+             30 IMPORT_FROM              5 (QListWidgetItem)
+             32 STORE_NAME               5 (QListWidgetItem)
+             34 IMPORT_FROM              6 (QWidget)
+             36 STORE_NAME               6 (QWidget)
+             38 IMPORT_FROM              7 (QLabel)
+             40 STORE_NAME               7 (QLabel)
+             42 IMPORT_FROM              8 (QHBoxLayout)
+             44 STORE_NAME               8 (QHBoxLayout)
+             46 IMPORT_FROM              9 (QVBoxLayout)
+             48 STORE_NAME               9 (QVBoxLayout)
+             50 POP_TOP
+
+  5          52 LOAD_CONST               0 (0)
+             54 LOAD_CONST               4 (('PerStoneBalance',))
+             56 IMPORT_NAME             10 (const)
+             58 IMPORT_FROM             11 (PerStoneBalance)
+             60 STORE_NAME              11 (PerStoneBalance)
+             62 POP_TOP
+
+  8          64 LOAD_BUILD_CLASS
+             66 LOAD_CONST               5 (<code object UserInfoBalanceItem at 0x000002612A5ECF50, file "userinfo_balance_item.py", line 8>)
+             68 LOAD_CONST               6 ('UserInfoBalanceItem')
+             70 MAKE_FUNCTION            0
+             72 LOAD_CONST               6 ('UserInfoBalanceItem')
+             74 LOAD_NAME                5 (QListWidgetItem)
+             76 CALL_FUNCTION            3
+             78 STORE_NAME              12 (UserInfoBalanceItem)
+             80 LOAD_CONST               7 (None)
+             82 RETURN_VALUE
+
+Disassembly of <code object UserInfoBalanceItem at 0x000002612A5ECF50, file "userinfo_balance_item.py", line 8>:
+  8           0 LOAD_NAME                0 (__name__)
+              2 STORE_NAME               1 (__module__)
+              4 LOAD_CONST               0 ('UserInfoBalanceItem')
+              6 STORE_NAME               2 (__qualname__)
+
+  9           8 LOAD_CLOSURE             0 (__class__)
+             10 BUILD_TUPLE              1
+             12 LOAD_CONST               1 (<code object __init__ at 0x000002612A5ECEA0, file "userinfo_balance_item.py", line 9>)
+             14 LOAD_CONST               2 ('UserInfoBalanceItem.__init__')
+             16 MAKE_FUNCTION            8 (closure)
+             18 STORE_NAME               3 (__init__)
+             20 LOAD_CLOSURE             0 (__class__)
+             22 DUP_TOP
+             24 STORE_NAME               4 (__classcell__)
+             26 RETURN_VALUE
+
+Disassembly of <code object __init__ at 0x000002612A5ECEA0, file "userinfo_balance_item.py", line 9>:
+ 10           0 LOAD_GLOBAL              0 (super)
+              2 CALL_FUNCTION            0
+              4 LOAD_METHOD              1 (__init__)
+              6 CALL_METHOD              0
+              8 POP_TOP
+
+ 11          10 LOAD_GLOBAL              2 (QFont)
+             12 CALL_FUNCTION            0
+             14 STORE_FAST               2 (fontSize10)
+
+ 12          16 LOAD_GLOBAL              2 (QFont)
+             18 CALL_FUNCTION            0
+             20 STORE_FAST               3 (fontSize14)
+
+ 13          22 LOAD_GLOBAL              2 (QFont)
+             24 CALL_FUNCTION            0
+             26 STORE_FAST               4 (fontSize16)
+
+ 14          28 LOAD_GLOBAL              2 (QFont)
+             30 CALL_FUNCTION            0
+             32 STORE_FAST               5 (fontSize20)
+
+ 15          34 LOAD_FAST                2 (fontSize10)
+             36 LOAD_METHOD              3 (setPointSize)
+             38 LOAD_CONST               1 (10)
+             40 CALL_METHOD              1
+             42 POP_TOP
+
+ 16          44 LOAD_FAST                3 (fontSize14)
+             46 LOAD_METHOD              3 (setPointSize)
+             48 LOAD_CONST               2 (14)
+             50 CALL_METHOD              1
+             52 POP_TOP
+
+ 17          54 LOAD_FAST                4 (fontSize16)
+             56 LOAD_METHOD              3 (setPointSize)
+             58 LOAD_CONST               3 (16)
+             60 CALL_METHOD              1
+             62 POP_TOP
+
+ 18          64 LOAD_FAST                5 (fontSize20)
+             66 LOAD_METHOD              3 (setPointSize)
+             68 LOAD_CONST               4 (20)
+             70 CALL_METHOD              1
+             72 POP_TOP
+
+ 20          74 LOAD_CONST               5 ('QLabel{color:rgb(255,20,147,255);font-size:16px;font-weight:normal;font-family:Arial;}')
+             76 STORE_FAST               6 (red)
+
+ 21          78 LOAD_CONST               6 ('QLabel{color:rgb(65,105,225,255);font-size:16px;font-weight:normal;font-family:Arial;}')
+             80 STORE_FAST               7 (blue)
+
+ 22          82 LOAD_CONST               7 ('QLabel{color:rgb(190,190,190,255);font-size:16px;font-weight:normal;font-family:Arial;}')
+             84 STORE_FAST               8 (grey)
+
+ 24          86 LOAD_CONST               8 ('QLabel{color:rgb(255,20,147,255);font-size:14px;font-weight:normal;font-family:Arial;border:2px solid rgb(255,20,147,255)}')
+             88 STORE_FAST               9 (redBorder)
+
+ 25          90 LOAD_CONST               9 ('QLabel{color:rgb(63,81,181,255);font-size:14px;font-weight:normal;font-family:Arial;border:2px solid rgb(63,81,181,255)}')
+             92 STORE_FAST              10 (green)
+
+ 26          94 LOAD_CONST              10 ('QLabel{color:rgb(156,39,176,255);font-size:14px;font-weight:normal;font-family:Arial;border:2px solid rgb(156,39,176,255)}')
+             96 STORE_FAST              11 (purple)
+
+ 27          98 LOAD_CONST               9 ('QLabel{color:rgb(63,81,181,255);font-size:14px;font-weight:normal;font-family:Arial;border:2px solid rgb(63,81,181,255)}')
+            100 STORE_FAST              12 (indigo)
+
+ 30         102 LOAD_GLOBAL              4 (QWidget)
+            104 CALL_FUNCTION            0
+            106 LOAD_FAST                0 (self)
+            108 STORE_ATTR               5 (wrapper)
+
+ 32         110 LOAD_GLOBAL              4 (QWidget)
+            112 CALL_FUNCTION            0
+            114 LOAD_FAST                0 (self)
+            116 STORE_ATTR               6 (widget)
+
+ 33         118 LOAD_FAST                0 (self)
+            120 LOAD_ATTR                6 (widget)
+            122 LOAD_METHOD              7 (setFixedHeight)
+            124 LOAD_CONST              11 (65)
+            126 CALL_METHOD              1
+            128 POP_TOP
+
+ 35         130 LOAD_GLOBAL              8 (QLabel)
+            132 CALL_FUNCTION            0
+            134 LOAD_FAST                0 (self)
+            136 STORE_ATTR               9 (timeLabel)
+
+ 36         138 LOAD_FAST                0 (self)
+            140 LOAD_ATTR                9 (timeLabel)
+            142 LOAD_METHOD             10 (setText)
+            144 LOAD_FAST                1 (balanceRecord)
+            146 LOAD_ATTR               11 (createdAt)
+            148 CALL_METHOD              1
+            150 POP_TOP
+
+ 37         152 LOAD_FAST                0 (self)
+            154 LOAD_ATTR                9 (timeLabel)
+            156 LOAD_METHOD             12 (setFont)
+            158 LOAD_FAST                3 (fontSize14)
+            160 CALL_METHOD              1
+            162 POP_TOP
+
+ 39         164 LOAD_GLOBAL              8 (QLabel)
+            166 CALL_FUNCTION            0
+            168 LOAD_FAST                0 (self)
+            170 STORE_ATTR              13 (balanceLabel)
+
+ 40         172 LOAD_CONST              12 ('')
+            174 STORE_FAST              13 (balanceStr)
+
+ 41         176 LOAD_FAST                1 (balanceRecord)
+            178 LOAD_ATTR               14 (balance)
+            180 LOAD_CONST              13 (0)
+            182 COMPARE_OP               4 (>)
+            184 POP_JUMP_IF_FALSE      218
+
+ 42         186 LOAD_FAST                0 (self)
+            188 LOAD_ATTR               13 (balanceLabel)
+            190 LOAD_METHOD             15 (setStyleSheet)
+            192 LOAD_FAST                6 (red)
+            194 CALL_METHOD              1
+            196 POP_TOP
+
+ 43         198 LOAD_CONST              14 ('充值')
+            200 LOAD_GLOBAL             16 (str)
+            202 LOAD_FAST                1 (balanceRecord)
+            204 LOAD_ATTR               14 (balance)
+            206 CALL_FUNCTION            1
+            208 BINARY_ADD
+            210 LOAD_CONST              15 ('小石头')
+            212 BINARY_ADD
+            214 STORE_FAST              13 (balanceStr)
+            216 JUMP_FORWARD            88 (to 306)
+
+ 45     >>  218 LOAD_FAST                0 (self)
+            220 LOAD_ATTR               13 (balanceLabel)
+            222 LOAD_METHOD             15 (setStyleSheet)
+            224 LOAD_FAST                7 (blue)
+            226 CALL_METHOD              1
+            228 POP_TOP
+
+ 46         230 LOAD_CONST              12 ('')
+            232 STORE_FAST              14 (tip)
+
+ 47         234 LOAD_FAST                1 (balanceRecord)
+            236 LOAD_ATTR               17 (wincount)
+            238 LOAD_CONST               0 (None)
+            240 COMPARE_OP               9 (is not)
+            242 EXTENDED_ARG             1
+            244 POP_JUMP_IF_FALSE      274
+            246 LOAD_FAST                1 (balanceRecord)
+            248 LOAD_ATTR               18 (buytype)
+            250 LOAD_CONST               0 (None)
+            252 COMPARE_OP               9 (is not)
+            254 EXTENDED_ARG             1
+            256 POP_JUMP_IF_FALSE      274
+
+ 48         258 LOAD_CONST              16 ('[{}开{}]')
+            260 LOAD_METHOD             19 (format)
+            262 LOAD_FAST                1 (balanceRecord)
+            264 LOAD_ATTR               17 (wincount)
+            266 LOAD_FAST                1 (balanceRecord)
+            268 LOAD_ATTR               18 (buytype)
+            270 CALL_METHOD              2
+            272 STORE_FAST              14 (tip)
+
+ 49     >>  274 LOAD_CONST              17 ('抢到')
+            276 LOAD_GLOBAL             16 (str)
+            278 LOAD_GLOBAL             20 (int)
+            280 LOAD_FAST                1 (balanceRecord)
+            282 LOAD_ATTR               14 (balance)
+            284 UNARY_NEGATIVE
+            286 LOAD_GLOBAL             21 (PerStoneBalance)
+            288 BINARY_TRUE_DIVIDE
+            290 CALL_FUNCTION            1
+            292 CALL_FUNCTION            1
+            294 BINARY_ADD
+            296 LOAD_CONST              18 ('个晶石')
+            298 BINARY_ADD
+            300 LOAD_FAST               14 (tip)
+            302 BINARY_ADD
+            304 STORE_FAST              13 (balanceStr)
+
+ 51     >>  306 LOAD_FAST                0 (self)
+            308 LOAD_ATTR               13 (balanceLabel)
+            310 LOAD_METHOD             10 (setText)
+            312 LOAD_FAST               13 (balanceStr)
+            314 CALL_METHOD              1
+            316 POP_TOP
+
+ 52         318 LOAD_FAST                0 (self)
+            320 LOAD_ATTR               13 (balanceLabel)
+            322 LOAD_METHOD             12 (setFont)
+            324 LOAD_FAST                4 (fontSize16)
+            326 CALL_METHOD              1
+            328 POP_TOP
+
+ 54         330 LOAD_FAST                1 (balanceRecord)
+            332 LOAD_ATTR               22 (userbalance)
+            334 LOAD_CONST               0 (None)
+            336 COMPARE_OP               9 (is not)
+            338 EXTENDED_ARG             1
+            340 POP_JUMP_IF_FALSE      380
+
+ 55         342 LOAD_FAST                0 (self)
+            344 LOAD_ATTR               13 (balanceLabel)
+            346 LOAD_METHOD             10 (setText)
+            348 LOAD_CONST              19 ('当前余额')
+            350 LOAD_GLOBAL             16 (str)
+            352 LOAD_FAST                1 (balanceRecord)
+            354 LOAD_ATTR               22 (userbalance)
+            356 CALL_FUNCTION            1
+            358 BINARY_ADD
+            360 LOAD_CONST              15 ('小石头')
+            362 BINARY_ADD
+            364 CALL_METHOD              1
+            366 POP_TOP
+
+ 56         368 LOAD_FAST                0 (self)
+            370 LOAD_ATTR               13 (balanceLabel)
+            372 LOAD_METHOD             15 (setStyleSheet)
+            374 LOAD_FAST                8 (grey)
+            376 CALL_METHOD              1
+            378 POP_TOP
+
+ 59     >>  380 LOAD_GLOBAL              8 (QLabel)
+            382 CALL_FUNCTION            0
+            384 LOAD_FAST                0 (self)
+            386 STORE_ATTR              23 (typeLabel)
+
+ 60         388 LOAD_FAST                1 (balanceRecord)
+            390 LOAD_ATTR               24 (type)
+            392 LOAD_CONST              13 (0)
+            394 COMPARE_OP               2 (==)
+            396 EXTENDED_ARG             1
+            398 POP_JUMP_IF_FALSE      460
+
+ 61         400 LOAD_CONST              12 ('')
+            402 STORE_FAST              15 (rmb)
+
+ 62         404 LOAD_FAST                1 (balanceRecord)
+            406 LOAD_ATTR               25 (rmb)
+            408 LOAD_CONST               0 (None)
+            410 COMPARE_OP               9 (is not)
+            412 EXTENDED_ARG             1
+            414 POP_JUMP_IF_FALSE      430
+
+ 63         416 LOAD_GLOBAL             16 (str)
+            418 LOAD_FAST                1 (balanceRecord)
+            420 LOAD_ATTR               25 (rmb)
+            422 CALL_FUNCTION            1
+            424 LOAD_CONST              20 ('R')
+            426 BINARY_ADD
+            428 STORE_FAST              15 (rmb)
+
+ 64     >>  430 LOAD_FAST                0 (self)
+            432 LOAD_ATTR               23 (typeLabel)
+            434 LOAD_METHOD             15 (setStyleSheet)
+            436 LOAD_FAST                9 (redBorder)
+            438 CALL_METHOD              1
+            440 POP_TOP
+
+ 65         442 LOAD_FAST                0 (self)
+            444 LOAD_ATTR               23 (typeLabel)
+            446 LOAD_METHOD             10 (setText)
+            448 LOAD_CONST              21 ('正常充值')
+            450 LOAD_FAST               15 (rmb)
+            452 BINARY_ADD
+            454 CALL_METHOD              1
+            456 POP_TOP
+            458 JUMP_FORWARD           112 (to 572)
+
+ 66     >>  460 LOAD_FAST                1 (balanceRecord)
+            462 LOAD_ATTR               24 (type)
+            464 LOAD_CONST              22 (1)
+            466 COMPARE_OP               2 (==)
+            468 EXTENDED_ARG             1
+            470 POP_JUMP_IF_FALSE      498
+
+ 67         472 LOAD_FAST                0 (self)
+            474 LOAD_ATTR               23 (typeLabel)
+            476 LOAD_METHOD             15 (setStyleSheet)
+            478 LOAD_FAST               10 (green)
+            480 CALL_METHOD              1
+            482 POP_TOP
+
+ 68         484 LOAD_FAST                0 (self)
+            486 LOAD_ATTR               23 (typeLabel)
+            488 LOAD_METHOD             10 (setText)
+            490 LOAD_CONST              23 ('新用户')
+            492 CALL_METHOD              1
+            494 POP_TOP
+            496 JUMP_FORWARD            74 (to 572)
+
+ 69     >>  498 LOAD_FAST                1 (balanceRecord)
+            500 LOAD_ATTR               24 (type)
+            502 LOAD_CONST              24 (2)
+            504 COMPARE_OP               2 (==)
+            506 EXTENDED_ARG             2
+            508 POP_JUMP_IF_FALSE      536
+
+ 70         510 LOAD_FAST                0 (self)
+            512 LOAD_ATTR               23 (typeLabel)
+            514 LOAD_METHOD             15 (setStyleSheet)
+            516 LOAD_FAST               11 (purple)
+            518 CALL_METHOD              1
+            520 POP_TOP
+
+ 71         522 LOAD_FAST                0 (self)
+            524 LOAD_ATTR               23 (typeLabel)
+            526 LOAD_METHOD             10 (setText)
+            528 LOAD_CONST              25 ('推广')
+            530 CALL_METHOD              1
+            532 POP_TOP
+            534 JUMP_FORWARD            36 (to 572)
+
+ 72     >>  536 LOAD_FAST                1 (balanceRecord)
+            538 LOAD_ATTR               24 (type)
+            540 LOAD_CONST              26 (3)
+            542 COMPARE_OP               2 (==)
+            544 EXTENDED_ARG             2
+            546 POP_JUMP_IF_FALSE      572
+
+ 73         548 LOAD_FAST                0 (self)
+            550 LOAD_ATTR               23 (typeLabel)
+            552 LOAD_METHOD             15 (setStyleSheet)
+            554 LOAD_FAST               12 (indigo)
+            556 CALL_METHOD              1
+            558 POP_TOP
+
+ 74         560 LOAD_FAST                0 (self)
+            562 LOAD_ATTR               23 (typeLabel)
+            564 LOAD_METHOD             10 (setText)
+            566 LOAD_CONST              27 ('其他')
+            568 CALL_METHOD              1
+            570 POP_TOP
+
+ 76     >>  572 LOAD_GLOBAL              4 (QWidget)
+            574 CALL_FUNCTION            0
+            576 LOAD_FAST                0 (self)
+            578 STORE_ATTR              26 (rightWidget)
+
+ 77         580 LOAD_FAST                0 (self)
+            582 LOAD_ATTR               26 (rightWidget)
+            584 LOAD_METHOD              7 (setFixedHeight)
+            586 LOAD_CONST              11 (65)
+            588 CALL_METHOD              1
+            590 POP_TOP
+
+ 78         592 LOAD_GLOBAL             27 (QVBoxLayout)
+            594 CALL_FUNCTION            0
+            596 LOAD_FAST                0 (self)
+            598 STORE_ATTR              28 (vbox2)
+
+ 79         600 LOAD_FAST                0 (self)
+            602 LOAD_ATTR               28 (vbox2)
+            604 LOAD_METHOD             29 (addWidget)
+            606 LOAD_FAST                0 (self)
+            608 LOAD_ATTR               13 (balanceLabel)
+            610 LOAD_CONST              13 (0)
+            612 LOAD_GLOBAL             30 (Qt)
+            614 LOAD_ATTR               31 (AlignTop)
+            616 LOAD_GLOBAL             30 (Qt)
+            618 LOAD_ATTR               32 (AlignCenter)
+            620 BINARY_OR
+            622 CALL_METHOD              3
+            624 POP_TOP
+
+ 80         626 LOAD_FAST                1 (balanceRecord)
+            628 LOAD_ATTR               24 (type)
+            630 LOAD_CONST              13 (0)
+            632 COMPARE_OP               2 (==)
+            634 EXTENDED_ARG             2
+            636 POP_JUMP_IF_TRUE       674
+            638 LOAD_FAST                1 (balanceRecord)
+            640 LOAD_ATTR               24 (type)
+            642 LOAD_CONST              22 (1)
+            644 COMPARE_OP               2 (==)
+            646 EXTENDED_ARG             2
+            648 POP_JUMP_IF_TRUE       674
+            650 LOAD_FAST                1 (balanceRecord)
+            652 LOAD_ATTR               24 (type)
+            654 LOAD_CONST              24 (2)
+            656 COMPARE_OP               2 (==)
+            658 EXTENDED_ARG             2
+            660 POP_JUMP_IF_TRUE       674
+            662 LOAD_FAST                1 (balanceRecord)
+            664 LOAD_ATTR               24 (type)
+            666 LOAD_CONST              26 (3)
+            668 COMPARE_OP               2 (==)
+            670 EXTENDED_ARG             2
+            672 POP_JUMP_IF_FALSE      700
+
+ 81     >>  674 LOAD_FAST                0 (self)
+            676 LOAD_ATTR               28 (vbox2)
+            678 LOAD_METHOD             29 (addWidget)
+            680 LOAD_FAST                0 (self)
+            682 LOAD_ATTR               23 (typeLabel)
+            684 LOAD_CONST              13 (0)
+            686 LOAD_GLOBAL             30 (Qt)
+            688 LOAD_ATTR               33 (AlignBottom)
+            690 LOAD_GLOBAL             30 (Qt)
+            692 LOAD_ATTR               32 (AlignCenter)
+            694 BINARY_OR
+            696 CALL_METHOD              3
+            698 POP_TOP
+
+ 82     >>  700 LOAD_FAST                0 (self)
+            702 LOAD_ATTR               26 (rightWidget)
+            704 LOAD_METHOD             34 (setLayout)
+            706 LOAD_FAST                0 (self)
+            708 LOAD_ATTR               28 (vbox2)
+            710 CALL_METHOD              1
+            712 POP_TOP
+
+ 85         714 LOAD_GLOBAL              4 (QWidget)
+            716 CALL_FUNCTION            0
+            718 LOAD_FAST                0 (self)
+            720 STORE_ATTR              35 (line)
+
+ 86         722 LOAD_FAST                0 (self)
+            724 LOAD_ATTR               35 (line)
+            726 LOAD_METHOD              7 (setFixedHeight)
+            728 LOAD_CONST              22 (1)
+            730 CALL_METHOD              1
+            732 POP_TOP
+
+ 87         734 LOAD_FAST                0 (self)
+            736 LOAD_ATTR               35 (line)
+            738 LOAD_METHOD             15 (setStyleSheet)
+            740 LOAD_CONST              28 ('QWidget{background-color:#66CCFF;}')
+            742 CALL_METHOD              1
+            744 POP_TOP
+
+ 89         746 LOAD_GLOBAL             36 (QHBoxLayout)
+            748 CALL_FUNCTION            0
+            750 LOAD_FAST                0 (self)
+            752 STORE_ATTR              37 (hbox)
+
+ 90         754 LOAD_FAST                0 (self)
+            756 LOAD_ATTR               37 (hbox)
+            758 LOAD_METHOD             29 (addWidget)
+            760 LOAD_FAST                0 (self)
+            762 LOAD_ATTR                9 (timeLabel)
+            764 LOAD_CONST              13 (0)
+            766 LOAD_GLOBAL             30 (Qt)
+            768 LOAD_ATTR               38 (AlignLeft)
+            770 LOAD_GLOBAL             30 (Qt)
+            772 LOAD_ATTR               32 (AlignCenter)
+            774 BINARY_OR
+            776 CALL_METHOD              3
+            778 POP_TOP
+
+ 91         780 LOAD_FAST                0 (self)
+            782 LOAD_ATTR               37 (hbox)
+            784 LOAD_METHOD             29 (addWidget)
+            786 LOAD_FAST                0 (self)
+            788 LOAD_ATTR               26 (rightWidget)
+            790 LOAD_CONST              13 (0)
+            792 LOAD_GLOBAL             30 (Qt)
+            794 LOAD_ATTR               39 (AlignRight)
+            796 LOAD_GLOBAL             30 (Qt)
+            798 LOAD_ATTR               32 (AlignCenter)
+            800 BINARY_OR
+            802 CALL_METHOD              3
+            804 POP_TOP
+
+ 92         806 LOAD_FAST                0 (self)
+            808 LOAD_ATTR                6 (widget)
+            810 LOAD_METHOD             34 (setLayout)
+            812 LOAD_FAST                0 (self)
+            814 LOAD_ATTR               37 (hbox)
+            816 CALL_METHOD              1
+            818 POP_TOP
+
+ 94         820 LOAD_GLOBAL             27 (QVBoxLayout)
+            822 CALL_FUNCTION            0
+            824 LOAD_FAST                0 (self)
+            826 STORE_ATTR              40 (vbox1)
+
+ 95         828 LOAD_FAST                0 (self)
+            830 LOAD_ATTR               40 (vbox1)
+            832 LOAD_METHOD             29 (addWidget)
+            834 LOAD_FAST                0 (self)
+            836 LOAD_ATTR                6 (widget)
+            838 LOAD_CONST              13 (0)
+            840 LOAD_GLOBAL             30 (Qt)
+            842 LOAD_ATTR               31 (AlignTop)
+            844 CALL_METHOD              3
+            846 POP_TOP
+
+ 96         848 LOAD_FAST                0 (self)
+            850 LOAD_ATTR               40 (vbox1)
+            852 LOAD_METHOD             29 (addWidget)
+            854 LOAD_FAST                0 (self)
+            856 LOAD_ATTR               35 (line)
+            858 LOAD_CONST              13 (0)
+            860 LOAD_GLOBAL             30 (Qt)
+            862 LOAD_ATTR               33 (AlignBottom)
+            864 CALL_METHOD              3
+            866 POP_TOP
+
+ 98         868 LOAD_FAST                0 (self)
+            870 LOAD_ATTR                5 (wrapper)
+            872 LOAD_METHOD             34 (setLayout)
+            874 LOAD_FAST                0 (self)
+            876 LOAD_ATTR               40 (vbox1)
+            878 CALL_METHOD              1
+            880 POP_TOP
+
+100         882 LOAD_FAST                0 (self)
+            884 LOAD_METHOD             41 (setSizeHint)
+            886 LOAD_FAST                0 (self)
+            888 LOAD_ATTR                5 (wrapper)
+            890 LOAD_METHOD             42 (sizeHint)
+            892 CALL_METHOD              0
+            894 CALL_METHOD              1
+            896 POP_TOP
+            898 LOAD_CONST               0 (None)
+            900 RETURN_VALUE

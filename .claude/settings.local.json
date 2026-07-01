@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(grep -E '\\\\.\\(png|jpg|jpeg|gif|bmp\\)$')"
+      "Bash(grep -E '\\\\.\\(png|jpg|jpeg|gif|bmp\\)$')",
+      "Bash(python -c \"import py_compile; py_compile.compile\\('D:/Program Files/mhxy/jingshi/gui.py', doraise=True\\)\")",
+      "Bash(python -m py_compile \"D:/Program Files/mhxy/jingshi/gui.py\")"
     ]
   }
 }

@@ -1,0 +1,1022 @@
+Module: findstone_thread
+Names: ('time', 'win32gui', 'PyQt5.QtCore', 'QThread', 'pyqtSignal', 'QPoint', 'QTimer', 'datetime', 'timedelta', 'PyQt5.QtWidgets', 'QApplication', 'vmdiff_util', 'mouse_util', 'mouseUtil', 'MouseInfo', 'color_util', 'isStone', 'isStoneText', 'is120PointCount', 'isResultPopShow', 'const', 'stonePointList', 'BuyTime1', 'BuyTime2', 'Buy120140', 'Buy120', 'BuyAuto', 'pointList120_5or6', 'VmXiaoyao', 'GxTimePre', 'time_util', 'getNow', 'perStoneSend', 'perPriceSend', 'perPopSend', 'totalSend', 'FindStoneThread')
+Varnames: ()
+
+Consts:
+  [0]: 0
+  [1]: None
+  [2]: ('QThread', 'pyqtSignal', 'QPoint', 'QTimer')
+  [3]: ('datetime', 'timedelta')
+  [4]: ('QApplication',)
+  [5]: ('mouseUtil', 'MouseInfo')
+  [6]: ('isStone', 'isStoneText', 'is120PointCount', 'isResultPopShow')
+  [7]: ('stonePointList', 'BuyTime1', 'BuyTime2', 'Buy120140', 'Buy120', 'BuyAuto', 'pointList120_5or6', 'VmXiaoyao', 'GxTimePre')
+  [8]: ('getNow',)
+  [9]: 0.05
+  [10]: 0.02
+  [11]: 0.2
+  [12]: 5
+  [13]: <code object FindStoneThread at 0x000002612A6020E0, file "findstone_thread.py", line 26>
+  [14]: 'FindStoneThread'
+
+  1           0 LOAD_CONST               0 (0)
+              2 LOAD_CONST               1 (None)
+              4 IMPORT_NAME              0 (time)
+              6 STORE_NAME               0 (time)
+
+  3           8 LOAD_CONST               0 (0)
+             10 LOAD_CONST               1 (None)
+             12 IMPORT_NAME              1 (win32gui)
+             14 STORE_NAME               1 (win32gui)
+
+  4          16 LOAD_CONST               0 (0)
+             18 LOAD_CONST               2 (('QThread', 'pyqtSignal', 'QPoint', 'QTimer'))
+             20 IMPORT_NAME              2 (PyQt5.QtCore)
+             22 IMPORT_FROM              3 (QThread)
+             24 STORE_NAME               3 (QThread)
+             26 IMPORT_FROM              4 (pyqtSignal)
+             28 STORE_NAME               4 (pyqtSignal)
+             30 IMPORT_FROM              5 (QPoint)
+             32 STORE_NAME               5 (QPoint)
+             34 IMPORT_FROM              6 (QTimer)
+             36 STORE_NAME               6 (QTimer)
+             38 POP_TOP
+
+  5          40 LOAD_CONST               0 (0)
+             42 LOAD_CONST               3 (('datetime', 'timedelta'))
+             44 IMPORT_NAME              7 (datetime)
+             46 IMPORT_FROM              7 (datetime)
+             48 STORE_NAME               7 (datetime)
+             50 IMPORT_FROM              8 (timedelta)
+             52 STORE_NAME               8 (timedelta)
+             54 POP_TOP
+
+  7          56 LOAD_CONST               0 (0)
+             58 LOAD_CONST               4 (('QApplication',))
+             60 IMPORT_NAME              9 (PyQt5.QtWidgets)
+             62 IMPORT_FROM             10 (QApplication)
+             64 STORE_NAME              10 (QApplication)
+             66 POP_TOP
+
+  9          68 LOAD_CONST               0 (0)
+             70 LOAD_CONST               1 (None)
+             72 IMPORT_NAME             11 (vmdiff_util)
+             74 STORE_NAME              11 (vmdiff_util)
+
+ 10          76 LOAD_CONST               0 (0)
+             78 LOAD_CONST               5 (('mouseUtil', 'MouseInfo'))
+             80 IMPORT_NAME             12 (mouse_util)
+             82 IMPORT_FROM             13 (mouseUtil)
+             84 STORE_NAME              13 (mouseUtil)
+             86 IMPORT_FROM             14 (MouseInfo)
+             88 STORE_NAME              14 (MouseInfo)
+             90 POP_TOP
+
+ 11          92 LOAD_CONST               0 (0)
+             94 LOAD_CONST               6 (('isStone', 'isStoneText', 'is120PointCount', 'isResultPopShow'))
+             96 IMPORT_NAME             15 (color_util)
+             98 IMPORT_FROM             16 (isStone)
+            100 STORE_NAME              16 (isStone)
+            102 IMPORT_FROM             17 (isStoneText)
+            104 STORE_NAME              17 (isStoneText)
+            106 IMPORT_FROM             18 (is120PointCount)
+            108 STORE_NAME              18 (is120PointCount)
+            110 IMPORT_FROM             19 (isResultPopShow)
+            112 STORE_NAME              19 (isResultPopShow)
+            114 POP_TOP
+
+ 13         116 LOAD_CONST               0 (0)
+            118 LOAD_CONST               7 (('stonePointList', 'BuyTime1', 'BuyTime2', 'Buy120140', 'Buy120', 'BuyAuto', 'pointList120_5or6', 'VmXiaoyao', 'GxTimePre'))
+            120 IMPORT_NAME             20 (const)
+            122 IMPORT_FROM             21 (stonePointList)
+            124 STORE_NAME              21 (stonePointList)
+            126 IMPORT_FROM             22 (BuyTime1)
+            128 STORE_NAME              22 (BuyTime1)
+            130 IMPORT_FROM             23 (BuyTime2)
+            132 STORE_NAME              23 (BuyTime2)
+            134 IMPORT_FROM             24 (Buy120140)
+            136 STORE_NAME              24 (Buy120140)
+            138 IMPORT_FROM             25 (Buy120)
+            140 STORE_NAME              25 (Buy120)
+            142 IMPORT_FROM             26 (BuyAuto)
+            144 STORE_NAME              26 (BuyAuto)
+            146 IMPORT_FROM             27 (pointList120_5or6)
+            148 STORE_NAME              27 (pointList120_5or6)
+            150 IMPORT_FROM             28 (VmXiaoyao)
+            152 STORE_NAME              28 (VmXiaoyao)
+            154 IMPORT_FROM             29 (GxTimePre)
+            156 STORE_NAME              29 (GxTimePre)
+            158 POP_TOP
+
+ 15         160 LOAD_CONST               0 (0)
+            162 LOAD_CONST               8 (('getNow',))
+            164 IMPORT_NAME             30 (time_util)
+            166 IMPORT_FROM             31 (getNow)
+            168 STORE_NAME              31 (getNow)
+            170 POP_TOP
+
+ 18         172 LOAD_CONST               9 (0.05)
+            174 STORE_NAME              32 (perStoneSend)
+
+ 20         176 LOAD_CONST              10 (0.02)
+            178 STORE_NAME              33 (perPriceSend)
+
+ 22         180 LOAD_CONST              11 (0.2)
+            182 STORE_NAME              34 (perPopSend)
+
+ 24         184 LOAD_CONST              12 (5)
+            186 STORE_NAME              35 (totalSend)
+
+ 26         188 LOAD_BUILD_CLASS
+            190 LOAD_CONST              13 (<code object FindStoneThread at 0x000002612A6020E0, file "findstone_thread.py", line 26>)
+            192 LOAD_CONST              14 ('FindStoneThread')
+            194 MAKE_FUNCTION            0
+            196 LOAD_CONST              14 ('FindStoneThread')
+            198 LOAD_NAME                3 (QThread)
+            200 CALL_FUNCTION            3
+            202 STORE_NAME              36 (FindStoneThread)
+            204 LOAD_CONST               1 (None)
+            206 RETURN_VALUE
+
+Disassembly of <code object FindStoneThread at 0x000002612A6020E0, file "findstone_thread.py", line 26>:
+ 26           0 LOAD_NAME                0 (__name__)
+              2 STORE_NAME               1 (__module__)
+              4 LOAD_CONST               0 ('FindStoneThread')
+              6 STORE_NAME               2 (__qualname__)
+
+ 27           8 LOAD_NAME                3 (pyqtSignal)
+             10 CALL_FUNCTION            0
+             12 STORE_NAME               4 (fail_res_signal)
+
+ 28          14 LOAD_NAME                3 (pyqtSignal)
+             16 CALL_FUNCTION            0
+             18 STORE_NAME               5 (succ_res_signal)
+
+ 29          20 LOAD_NAME                3 (pyqtSignal)
+             22 LOAD_NAME                6 (str)
+             24 CALL_FUNCTION            1
+             26 STORE_NAME               7 (log_signal)
+
+ 31          28 LOAD_CLOSURE             0 (__class__)
+             30 BUILD_TUPLE              1
+             32 LOAD_CONST               1 (<code object __init__ at 0x000002612A152660, file "findstone_thread.py", line 31>)
+             34 LOAD_CONST               2 ('FindStoneThread.__init__')
+             36 MAKE_FUNCTION            8 (closure)
+             38 STORE_NAME               8 (__init__)
+
+ 45          40 LOAD_CONST               3 (<code object initBuyTime at 0x000002612A5ECB30, file "findstone_thread.py", line 45>)
+             42 LOAD_CONST               4 ('FindStoneThread.initBuyTime')
+             44 MAKE_FUNCTION            0
+             46 STORE_NAME               9 (initBuyTime)
+
+ 51          48 LOAD_CONST               5 (<code object run at 0x000002612A5ECBE0, file "findstone_thread.py", line 51>)
+             50 LOAD_CONST               6 ('FindStoneThread.run')
+             52 MAKE_FUNCTION            0
+             54 STORE_NAME              10 (run)
+
+ 83          56 LOAD_CONST               7 (<code object dealFindStone at 0x000002612A5ECC90, file "findstone_thread.py", line 83>)
+             58 LOAD_CONST               8 ('FindStoneThread.dealFindStone')
+             60 MAKE_FUNCTION            0
+             62 STORE_NAME              11 (dealFindStone)
+
+ 96          64 LOAD_CONST               9 (<code object find120AndBuy at 0x000002612A5ECD40, file "findstone_thread.py", line 96>)
+             66 LOAD_CONST              10 ('FindStoneThread.find120AndBuy')
+             68 MAKE_FUNCTION            0
+             70 STORE_NAME              12 (find120AndBuy)
+
+129          72 LOAD_CONST              11 (<code object clickStoneBuy at 0x000002612A5ECDF0, file "findstone_thread.py", line 129>)
+             74 LOAD_CONST              12 ('FindStoneThread.clickStoneBuy')
+             76 MAKE_FUNCTION            0
+             78 STORE_NAME              13 (clickStoneBuy)
+
+152          80 LOAD_CONST              13 (<code object getStones at 0x000002612A5ECEA0, file "findstone_thread.py", line 152>)
+             82 LOAD_CONST              14 ('FindStoneThread.getStones')
+             84 MAKE_FUNCTION            0
+             86 STORE_NAME              14 (getStones)
+
+178          88 LOAD_CONST              15 (<code object getClickHwnd at 0x000002612A5ECF50, file "findstone_thread.py", line 178>)
+             90 LOAD_CONST              16 ('FindStoneThread.getClickHwnd')
+             92 MAKE_FUNCTION            0
+             94 STORE_NAME              15 (getClickHwnd)
+             96 LOAD_CLOSURE             0 (__class__)
+             98 DUP_TOP
+            100 STORE_NAME              16 (__classcell__)
+            102 RETURN_VALUE
+
+Disassembly of <code object __init__ at 0x000002612A152660, file "findstone_thread.py", line 31>:
+ 32           0 LOAD_GLOBAL              0 (super)
+              2 LOAD_GLOBAL              1 (FindStoneThread)
+              4 LOAD_FAST                0 (self)
+              6 CALL_FUNCTION            2
+              8 LOAD_METHOD              2 (__init__)
+             10 CALL_METHOD              0
+             12 POP_TOP
+
+ 33          14 LOAD_FAST                1 (vm)
+             16 LOAD_ATTR                3 (parent)
+             18 LOAD_FAST                0 (self)
+             20 STORE_ATTR               3 (parent)
+
+ 34          22 LOAD_FAST                1 (vm)
+             24 LOAD_ATTR                4 (child)
+             26 LOAD_FAST                0 (self)
+             28 STORE_ATTR               4 (child)
+
+ 36          30 LOAD_CONST               1 (0)
+             32 LOAD_FAST                0 (self)
+             34 STORE_ATTR               5 (curFindSend)
+
+ 37          36 LOAD_FAST                1 (vm)
+             38 LOAD_ATTR                6 (winName)
+             40 LOAD_FAST                1 (vm)
+             42 LOAD_ATTR                7 (vmType)
+             44 LOAD_GLOBAL              8 (VmXiaoyao)
+             46 COMPARE_OP               2 (==)
+             48 POP_JUMP_IF_FALSE       54
+             50 LOAD_CONST               2 ('[逍]')
+             52 JUMP_FORWARD             2 (to 56)
+        >>   54 LOAD_CONST               3 ('[雷]')
+        >>   56 BINARY_ADD
+             58 LOAD_FAST                0 (self)
+             60 STORE_ATTR               6 (winName)
+
+ 38          62 LOAD_CONST               4 (0.11)
+             64 LOAD_FAST                0 (self)
+             66 STORE_ATTR               9 (buyTime)
+
+ 39          68 LOAD_FAST                1 (vm)
+             70 LOAD_ATTR                7 (vmType)
+             72 LOAD_FAST                0 (self)
+             74 STORE_ATTR               7 (vmType)
+
+ 40          76 LOAD_FAST                0 (self)
+             78 LOAD_METHOD             10 (initBuyTime)
+             80 LOAD_FAST                2 (buyTime)
+             82 CALL_METHOD              1
+             84 POP_TOP
+
+ 41          86 LOAD_FAST                3 (buyType)
+             88 LOAD_FAST                0 (self)
+             90 STORE_ATTR              11 (buyType)
+
+ 42          92 LOAD_FAST                4 (gxTimeMs)
+             94 LOAD_FAST                0 (self)
+             96 STORE_ATTR              12 (gxTimeMs)
+
+ 43          98 LOAD_GLOBAL             13 (datetime)
+            100 LOAD_METHOD             14 (now)
+            102 CALL_METHOD              0
+            104 LOAD_FAST                0 (self)
+            106 STORE_ATTR              15 (startFindT)
+            108 LOAD_CONST               0 (None)
+            110 RETURN_VALUE
+
+Disassembly of <code object initBuyTime at 0x000002612A5ECB30, file "findstone_thread.py", line 45>:
+ 46           0 LOAD_FAST                1 (buyTime)
+              2 LOAD_GLOBAL              0 (BuyTime1)
+              4 COMPARE_OP               2 (==)
+              6 POP_JUMP_IF_FALSE       30
+
+ 47           8 LOAD_FAST                0 (self)
+             10 LOAD_ATTR                1 (vmType)
+             12 LOAD_GLOBAL              2 (VmXiaoyao)
+             14 COMPARE_OP               2 (==)
+             16 POP_JUMP_IF_FALSE       22
+             18 LOAD_CONST               1 (0.08)
+             20 JUMP_FORWARD             2 (to 24)
+        >>   22 LOAD_CONST               2 (0.11)
+        >>   24 LOAD_FAST                0 (self)
+             26 STORE_ATTR               3 (buyTime)
+             28 JUMP_FORWARD            28 (to 58)
+
+ 48     >>   30 LOAD_FAST                1 (buyTime)
+             32 LOAD_GLOBAL              4 (BuyTime2)
+             34 COMPARE_OP               2 (==)
+             36 POP_JUMP_IF_FALSE       58
+
+ 49          38 LOAD_FAST                0 (self)
+             40 LOAD_ATTR                1 (vmType)
+             42 LOAD_GLOBAL              2 (VmXiaoyao)
+             44 COMPARE_OP               2 (==)
+             46 POP_JUMP_IF_FALSE       52
+             48 LOAD_CONST               2 (0.11)
+             50 JUMP_FORWARD             2 (to 54)
+        >>   52 LOAD_CONST               3 (0.15)
+        >>   54 LOAD_FAST                0 (self)
+             56 STORE_ATTR               3 (buyTime)
+        >>   58 LOAD_CONST               0 (None)
+             60 RETURN_VALUE
+
+Disassembly of <code object run at 0x000002612A5ECBE0, file "findstone_thread.py", line 51>:
+ 52           0 LOAD_GLOBAL              0 (getNow)
+              2 CALL_FUNCTION            0
+              4 STORE_FAST               1 (nowTime)
+
+ 53           6 LOAD_GLOBAL              1 (datetime)
+              8 LOAD_METHOD              2 (strptime)
+             10 LOAD_GLOBAL              3 (str)
+             12 LOAD_FAST                1 (nowTime)
+             14 LOAD_METHOD              4 (date)
+             16 CALL_METHOD              0
+             18 LOAD_ATTR                5 (year)
+             20 CALL_FUNCTION            1
+             22 LOAD_CONST               1 ('-')
+             24 BINARY_ADD
+             26 LOAD_GLOBAL              3 (str)
+             28 LOAD_FAST                1 (nowTime)
+             30 LOAD_METHOD              4 (date)
+             32 CALL_METHOD              0
+             34 LOAD_ATTR                6 (month)
+             36 CALL_FUNCTION            1
+             38 BINARY_ADD
+             40 LOAD_CONST               1 ('-')
+             42 BINARY_ADD
+             44 LOAD_GLOBAL              3 (str)
+
+ 54          46 LOAD_FAST                1 (nowTime)
+             48 LOAD_METHOD              4 (date)
+             50 CALL_METHOD              0
+             52 LOAD_ATTR                7 (day)
+
+ 53          54 CALL_FUNCTION            1
+             56 BINARY_ADD
+
+ 54          58 LOAD_GLOBAL              8 (GxTimePre)
+
+ 53          60 BINARY_ADD
+
+ 54          62 LOAD_GLOBAL              3 (str)
+             64 LOAD_FAST                0 (self)
+             66 LOAD_ATTR                9 (gxTimeMs)
+             68 CALL_FUNCTION            1
+
+ 53          70 BINARY_ADD
+
+ 54          72 LOAD_CONST               2 ('Z')
+
+ 53          74 BINARY_ADD
+
+ 54          76 LOAD_CONST               3 ('%Y-%m-%d %H:%M:%S.%fZ')
+
+ 53          78 CALL_METHOD              2
+             80 STORE_FAST               2 (clickGxTime)
+
+ 57          82 LOAD_FAST                2 (clickGxTime)
+             84 LOAD_FAST                1 (nowTime)
+             86 BINARY_SUBTRACT
+             88 LOAD_METHOD             10 (total_seconds)
+             90 CALL_METHOD              0
+             92 STORE_FAST               3 (gx_start_time)
+
+ 58          94 LOAD_FAST                0 (self)
+             96 LOAD_ATTR               11 (log_signal)
+             98 LOAD_METHOD             12 (emit)
+            100 LOAD_FAST                0 (self)
+            102 LOAD_ATTR               13 (winName)
+            104 LOAD_CONST               4 ('距离抢购时间')
+            106 BINARY_ADD
+            108 LOAD_GLOBAL              8 (GxTimePre)
+            110 BINARY_ADD
+            112 LOAD_GLOBAL              3 (str)
+            114 LOAD_FAST                0 (self)
+            116 LOAD_ATTR                9 (gxTimeMs)
+            118 CALL_FUNCTION            1
+            120 BINARY_ADD
+            122 LOAD_CONST               2 ('Z')
+            124 BINARY_ADD
+            126 LOAD_CONST               5 ('还剩：')
+            128 BINARY_ADD
+            130 LOAD_GLOBAL              3 (str)
+            132 LOAD_CONST               6 ('%.3f')
+            134 LOAD_FAST                3 (gx_start_time)
+            136 BINARY_MODULO
+            138 CALL_FUNCTION            1
+            140 BINARY_ADD
+            142 LOAD_CONST               7 ('秒，请等待...')
+            144 BINARY_ADD
+            146 CALL_METHOD              1
+            148 POP_TOP
+
+ 60         150 LOAD_FAST                3 (gx_start_time)
+            152 LOAD_CONST               8 (0)
+            154 COMPARE_OP               4 (>)
+            156 POP_JUMP_IF_FALSE      168
+
+ 61         158 LOAD_GLOBAL             14 (time)
+            160 LOAD_METHOD             15 (sleep)
+            162 LOAD_FAST                3 (gx_start_time)
+            164 CALL_METHOD              1
+            166 POP_TOP
+
+ 62     >>  168 LOAD_CONST               9 ('{}点击兑换功勋')
+            170 LOAD_METHOD             16 (format)
+            172 LOAD_FAST                0 (self)
+            174 LOAD_ATTR               13 (winName)
+            176 CALL_METHOD              1
+            178 STORE_FAST               4 (tip)
+
+ 63         180 LOAD_GLOBAL             17 (mouseUtil)
+            182 LOAD_METHOD             18 (click)
+            184 LOAD_FAST                0 (self)
+            186 LOAD_METHOD             19 (getClickHwnd)
+            188 CALL_METHOD              0
+            190 LOAD_GLOBAL             20 (MouseInfo)
+            192 LOAD_GLOBAL             21 (vmdiff_util)
+            194 LOAD_METHOD             22 (VmGxPoint)
+            196 LOAD_FAST                0 (self)
+            198 LOAD_ATTR               23 (vmType)
+            200 CALL_METHOD              1
+            202 LOAD_FAST                4 (tip)
+            204 CALL_FUNCTION            2
+            206 CALL_METHOD              2
+            208 POP_TOP
+
+ 65         210 LOAD_GLOBAL              1 (datetime)
+            212 LOAD_METHOD             24 (now)
+            214 CALL_METHOD              0
+            216 LOAD_FAST                0 (self)
+            218 STORE_ATTR              25 (startFindT)
+
+ 66         220 LOAD_CONST               0 (None)
+            222 STORE_FAST               5 (stonePoints)
+
+ 68     >>  224 LOAD_FAST                0 (self)
+            226 LOAD_METHOD             26 (getStones)
+            228 LOAD_FAST                0 (self)
+            230 LOAD_ATTR               27 (parent)
+            232 CALL_METHOD              1
+            234 STORE_FAST               5 (stonePoints)
+
+ 69         236 LOAD_FAST                5 (stonePoints)
+            238 LOAD_CONST               0 (None)
+            240 COMPARE_OP               9 (is not)
+            242 POP_JUMP_IF_FALSE      248
+
+ 70         244 EXTENDED_ARG             1
+            246 JUMP_ABSOLUTE          320
+
+ 72     >>  248 LOAD_FAST                0 (self)
+            250 DUP_TOP
+            252 LOAD_ATTR               28 (curFindSend)
+            254 LOAD_GLOBAL             29 (perStoneSend)
+            256 INPLACE_ADD
+            258 ROT_TWO
+            260 STORE_ATTR              28 (curFindSend)
+
+ 73         262 LOAD_GLOBAL             14 (time)
+            264 LOAD_METHOD             15 (sleep)
+            266 LOAD_GLOBAL             29 (perStoneSend)
+            268 CALL_METHOD              1
+            270 POP_TOP
+
+ 75         272 LOAD_FAST                0 (self)
+            274 LOAD_ATTR               28 (curFindSend)
+            276 LOAD_GLOBAL             30 (totalSend)
+            278 COMPARE_OP               4 (>)
+            280 POP_JUMP_IF_FALSE      224
+
+ 76         282 LOAD_FAST                0 (self)
+            284 LOAD_ATTR               11 (log_signal)
+            286 LOAD_METHOD             12 (emit)
+            288 LOAD_CONST              10 ('{}超过{}s未发现晶石')
+            290 LOAD_METHOD             16 (format)
+            292 LOAD_FAST                0 (self)
+            294 LOAD_ATTR               13 (winName)
+            296 LOAD_GLOBAL             30 (totalSend)
+            298 CALL_METHOD              2
+            300 CALL_METHOD              1
+            302 POP_TOP
+
+ 77         304 LOAD_FAST                0 (self)
+            306 LOAD_ATTR               31 (fail_res_signal)
+            308 LOAD_METHOD             12 (emit)
+            310 CALL_METHOD              0
+            312 POP_TOP
+
+ 78         314 EXTENDED_ARG             1
+            316 JUMP_ABSOLUTE          320
+            318 JUMP_ABSOLUTE          224
+
+ 80     >>  320 LOAD_FAST                5 (stonePoints)
+            322 LOAD_CONST               0 (None)
+            324 COMPARE_OP               9 (is not)
+            326 EXTENDED_ARG             1
+            328 POP_JUMP_IF_FALSE      340
+
+ 81         330 LOAD_FAST                0 (self)
+            332 LOAD_METHOD             32 (dealFindStone)
+            334 LOAD_FAST                5 (stonePoints)
+            336 CALL_METHOD              1
+            338 POP_TOP
+        >>  340 LOAD_CONST               0 (None)
+            342 RETURN_VALUE
+
+Disassembly of <code object dealFindStone at 0x000002612A5ECC90, file "findstone_thread.py", line 83>:
+ 84           0 LOAD_FAST                0 (self)
+              2 LOAD_ATTR                0 (buyType)
+              4 LOAD_GLOBAL              1 (Buy120140)
+              6 COMPARE_OP               2 (==)
+              8 POP_JUMP_IF_FALSE       30
+
+ 85          10 LOAD_FAST                0 (self)
+             12 LOAD_ATTR                2 (clickStoneBuy)
+             14 LOAD_FAST                1 (stonePoints)
+             16 LOAD_CONST               1 (0)
+             18 BINARY_SUBSCR
+             20 LOAD_CONST               2 (True)
+             22 LOAD_CONST               3 (('needClickStone',))
+             24 CALL_FUNCTION_KW         2
+             26 POP_TOP
+             28 JUMP_FORWARD            86 (to 116)
+
+ 87     >>   30 LOAD_FAST                0 (self)
+             32 LOAD_ATTR                0 (buyType)
+             34 LOAD_GLOBAL              3 (Buy120)
+             36 COMPARE_OP               2 (==)
+             38 POP_JUMP_IF_FALSE       52
+
+ 88          40 LOAD_FAST                0 (self)
+             42 LOAD_METHOD              4 (find120AndBuy)
+             44 LOAD_FAST                1 (stonePoints)
+             46 CALL_METHOD              1
+             48 POP_TOP
+             50 JUMP_FORWARD            64 (to 116)
+
+ 90     >>   52 LOAD_FAST                0 (self)
+             54 LOAD_ATTR                0 (buyType)
+             56 LOAD_GLOBAL              5 (BuyAuto)
+             58 COMPARE_OP               2 (==)
+             60 POP_JUMP_IF_FALSE      116
+
+ 91          62 LOAD_GLOBAL              6 (len)
+             64 LOAD_FAST                1 (stonePoints)
+             66 CALL_FUNCTION            1
+             68 LOAD_CONST               4 (1)
+             70 COMPARE_OP               2 (==)
+             72 POP_JUMP_IF_FALSE       94
+
+ 92          74 LOAD_FAST                0 (self)
+             76 LOAD_ATTR                2 (clickStoneBuy)
+             78 LOAD_FAST                1 (stonePoints)
+             80 LOAD_CONST               1 (0)
+             82 BINARY_SUBSCR
+             84 LOAD_CONST               2 (True)
+             86 LOAD_CONST               3 (('needClickStone',))
+             88 CALL_FUNCTION_KW         2
+             90 POP_TOP
+             92 JUMP_FORWARD            22 (to 116)
+
+ 93     >>   94 LOAD_GLOBAL              6 (len)
+             96 LOAD_FAST                1 (stonePoints)
+             98 CALL_FUNCTION            1
+            100 LOAD_CONST               4 (1)
+            102 COMPARE_OP               4 (>)
+            104 POP_JUMP_IF_FALSE      116
+
+ 94         106 LOAD_FAST                0 (self)
+            108 LOAD_METHOD              4 (find120AndBuy)
+            110 LOAD_FAST                1 (stonePoints)
+            112 CALL_METHOD              1
+            114 POP_TOP
+        >>  116 LOAD_CONST               0 (None)
+            118 RETURN_VALUE
+
+Disassembly of <code object find120AndBuy at 0x000002612A5ECD40, file "findstone_thread.py", line 96>:
+ 97           0 LOAD_CONST               1 (0)
+              2 STORE_FAST               2 (curFindPriceSend)
+
+ 98           4 LOAD_FAST                1 (stonePoints)
+              6 LOAD_CONST               1 (0)
+              8 BINARY_SUBSCR
+             10 STORE_FAST               3 (stonePoint)
+
+ 99          12 LOAD_GLOBAL              0 (datetime)
+             14 LOAD_METHOD              1 (now)
+             16 CALL_METHOD              0
+             18 STORE_FAST               4 (startT)
+
+100          20 LOAD_CONST               2 ('{}花费{}ms发现{}个晶石,选中判断120({},{})')
+             22 LOAD_METHOD              2 (format)
+             24 LOAD_FAST                0 (self)
+             26 LOAD_ATTR                3 (winName)
+             28 LOAD_GLOBAL              0 (datetime)
+             30 LOAD_METHOD              1 (now)
+             32 CALL_METHOD              0
+             34 LOAD_FAST                0 (self)
+             36 LOAD_ATTR                4 (startFindT)
+             38 BINARY_SUBTRACT
+             40 LOAD_CONST               3 (1000)
+             42 BINARY_TRUE_DIVIDE
+             44 LOAD_ATTR                5 (microseconds)
+             46 LOAD_GLOBAL              6 (len)
+             48 LOAD_FAST                1 (stonePoints)
+             50 CALL_FUNCTION            1
+             52 LOAD_FAST                3 (stonePoint)
+             54 LOAD_METHOD              7 (x)
+             56 CALL_METHOD              0
+             58 LOAD_FAST                3 (stonePoint)
+             60 LOAD_METHOD              8 (y)
+             62 CALL_METHOD              0
+             64 CALL_METHOD              5
+             66 STORE_FAST               5 (tip)
+
+101          68 LOAD_GLOBAL              9 (mouseUtil)
+             70 LOAD_METHOD             10 (click)
+             72 LOAD_FAST                0 (self)
+             74 LOAD_METHOD             11 (getClickHwnd)
+             76 CALL_METHOD              0
+             78 LOAD_GLOBAL             12 (MouseInfo)
+             80 LOAD_FAST                3 (stonePoint)
+             82 LOAD_FAST                5 (tip)
+             84 CALL_FUNCTION            2
+             86 CALL_METHOD              2
+             88 POP_TOP
+
+103     >>   90 LOAD_GLOBAL             13 (QApplication)
+             92 LOAD_METHOD             14 (primaryScreen)
+             94 CALL_METHOD              0
+             96 STORE_FAST               6 (screen)
+
+104          98 LOAD_FAST                6 (screen)
+            100 LOAD_METHOD             15 (grabWindow)
+            102 LOAD_FAST                0 (self)
+            104 LOAD_ATTR               16 (parent)
+            106 CALL_METHOD              1
+            108 LOAD_METHOD             17 (toImage)
+            110 CALL_METHOD              0
+            112 STORE_FAST               7 (img)
+
+105         114 LOAD_GLOBAL             18 (is120PointCount)
+            116 LOAD_FAST                7 (img)
+            118 LOAD_FAST                0 (self)
+            120 LOAD_ATTR               19 (vmType)
+            122 CALL_FUNCTION            2
+            124 STORE_FAST               8 (pointCount_120)
+
+107         126 LOAD_FAST                8 (pointCount_120)
+            128 LOAD_CONST               1 (0)
+            130 COMPARE_OP               4 (>)
+            132 EXTENDED_ARG             1
+            134 POP_JUMP_IF_FALSE      264
+
+108         136 LOAD_FAST                8 (pointCount_120)
+            138 LOAD_GLOBAL              6 (len)
+            140 LOAD_GLOBAL             20 (pointList120_5or6)
+            142 CALL_FUNCTION            1
+            144 COMPARE_OP               5 (>=)
+            146 STORE_FAST               9 (is120)
+
+109         148 LOAD_FAST                9 (is120)
+            150 POP_JUMP_IF_FALSE      156
+            152 LOAD_CONST               4 ('120')
+            154 JUMP_FORWARD             2 (to 158)
+        >>  156 LOAD_CONST               5 ('140')
+        >>  158 STORE_FAST              10 (levelTip)
+
+110         160 LOAD_FAST                0 (self)
+            162 LOAD_ATTR               21 (log_signal)
+            164 LOAD_METHOD             22 (emit)
+
+111         166 LOAD_CONST               6 ('{}花费{}ms读取到价格为{}')
+            168 LOAD_METHOD              2 (format)
+            170 LOAD_FAST                0 (self)
+            172 LOAD_ATTR                3 (winName)
+            174 LOAD_GLOBAL              0 (datetime)
+            176 LOAD_METHOD              1 (now)
+            178 CALL_METHOD              0
+            180 LOAD_FAST                4 (startT)
+            182 BINARY_SUBTRACT
+            184 LOAD_CONST               3 (1000)
+            186 BINARY_TRUE_DIVIDE
+            188 LOAD_ATTR                5 (microseconds)
+
+112         190 LOAD_FAST               10 (levelTip)
+
+111         192 CALL_METHOD              3
+
+110         194 CALL_METHOD              1
+            196 POP_TOP
+
+113         198 LOAD_FAST                9 (is120)
+            200 POP_JUMP_IF_FALSE      218
+
+114         202 LOAD_FAST                0 (self)
+            204 LOAD_ATTR               23 (clickStoneBuy)
+            206 LOAD_FAST                3 (stonePoint)
+            208 LOAD_CONST               7 (False)
+            210 LOAD_CONST               8 (('needClickStone',))
+            212 CALL_FUNCTION_KW         2
+            214 POP_TOP
+            216 JUMP_FORWARD            42 (to 260)
+
+116     >>  218 LOAD_GLOBAL              6 (len)
+            220 LOAD_FAST                1 (stonePoints)
+            222 CALL_FUNCTION            1
+            224 LOAD_CONST               9 (1)
+            226 COMPARE_OP               4 (>)
+            228 POP_JUMP_IF_FALSE      250
+
+117         230 LOAD_FAST                0 (self)
+            232 LOAD_ATTR               23 (clickStoneBuy)
+            234 LOAD_FAST                1 (stonePoints)
+            236 LOAD_CONST               9 (1)
+            238 BINARY_SUBSCR
+            240 LOAD_CONST              10 (True)
+            242 LOAD_CONST               8 (('needClickStone',))
+            244 CALL_FUNCTION_KW         2
+            246 POP_TOP
+            248 JUMP_FORWARD            10 (to 260)
+
+119     >>  250 LOAD_FAST                0 (self)
+            252 LOAD_ATTR               24 (fail_res_signal)
+            254 LOAD_METHOD             22 (emit)
+            256 CALL_METHOD              0
+            258 POP_TOP
+
+120     >>  260 EXTENDED_ARG             1
+            262 JUMP_ABSOLUTE          326
+
+122     >>  264 LOAD_FAST                2 (curFindPriceSend)
+            266 LOAD_GLOBAL             25 (perPriceSend)
+            268 INPLACE_ADD
+            270 STORE_FAST               2 (curFindPriceSend)
+
+123         272 LOAD_GLOBAL             26 (time)
+            274 LOAD_METHOD             27 (sleep)
+            276 LOAD_GLOBAL             25 (perPriceSend)
+            278 CALL_METHOD              1
+            280 POP_TOP
+
+124         282 LOAD_FAST                2 (curFindPriceSend)
+            284 LOAD_CONST               9 (1)
+            286 COMPARE_OP               4 (>)
+            288 POP_JUMP_IF_FALSE       90
+
+125         290 LOAD_FAST                0 (self)
+            292 LOAD_ATTR               21 (log_signal)
+            294 LOAD_METHOD             22 (emit)
+            296 LOAD_CONST              11 ('{}花费1s未获取到价格')
+            298 LOAD_METHOD              2 (format)
+            300 LOAD_FAST                0 (self)
+            302 LOAD_ATTR                3 (winName)
+            304 CALL_METHOD              1
+            306 CALL_METHOD              1
+            308 POP_TOP
+
+126         310 LOAD_FAST                0 (self)
+            312 LOAD_ATTR               24 (fail_res_signal)
+            314 LOAD_METHOD             22 (emit)
+            316 CALL_METHOD              0
+            318 POP_TOP
+
+127         320 EXTENDED_ARG             1
+            322 JUMP_ABSOLUTE          326
+            324 JUMP_ABSOLUTE           90
+        >>  326 LOAD_CONST               0 (None)
+            328 RETURN_VALUE
+
+Disassembly of <code object clickStoneBuy at 0x000002612A5ECDF0, file "findstone_thread.py", line 129>:
+130           0 LOAD_FAST                2 (needClickStone)
+              2 POP_JUMP_IF_FALSE       76
+
+131           4 LOAD_FAST                1 (stonePoint)
+              6 LOAD_METHOD              0 (x)
+              8 CALL_METHOD              0
+             10 STORE_FAST               3 (stoneX)
+
+132          12 LOAD_FAST                1 (stonePoint)
+             14 LOAD_METHOD              1 (y)
+             16 CALL_METHOD              0
+             18 STORE_FAST               4 (stoneY)
+
+133          20 LOAD_CONST               1 ('{}点击石头({},{})')
+             22 LOAD_METHOD              2 (format)
+             24 LOAD_FAST                0 (self)
+             26 LOAD_ATTR                3 (winName)
+             28 LOAD_FAST                3 (stoneX)
+             30 LOAD_FAST                4 (stoneY)
+             32 CALL_METHOD              3
+             34 STORE_FAST               5 (tip)
+
+134          36 LOAD_GLOBAL              4 (mouseUtil)
+             38 LOAD_METHOD              5 (click)
+             40 LOAD_FAST                0 (self)
+             42 LOAD_METHOD              6 (getClickHwnd)
+             44 CALL_METHOD              0
+             46 LOAD_GLOBAL              7 (MouseInfo)
+             48 LOAD_GLOBAL              8 (QPoint)
+             50 LOAD_FAST                3 (stoneX)
+             52 LOAD_FAST                4 (stoneY)
+             54 CALL_FUNCTION            2
+             56 LOAD_FAST                5 (tip)
+             58 CALL_FUNCTION            2
+             60 CALL_METHOD              2
+             62 POP_TOP
+
+135          64 LOAD_GLOBAL              9 (time)
+             66 LOAD_METHOD             10 (sleep)
+             68 LOAD_FAST                0 (self)
+             70 LOAD_ATTR               11 (buyTime)
+             72 CALL_METHOD              1
+             74 POP_TOP
+
+137     >>   76 LOAD_CONST               2 ('{}点击够买')
+             78 LOAD_METHOD              2 (format)
+             80 LOAD_FAST                0 (self)
+             82 LOAD_ATTR                3 (winName)
+             84 CALL_METHOD              1
+             86 STORE_FAST               5 (tip)
+
+138          88 LOAD_GLOBAL              4 (mouseUtil)
+             90 LOAD_METHOD              5 (click)
+             92 LOAD_FAST                0 (self)
+             94 LOAD_METHOD              6 (getClickHwnd)
+             96 CALL_METHOD              0
+             98 LOAD_GLOBAL              7 (MouseInfo)
+            100 LOAD_GLOBAL             12 (vmdiff_util)
+            102 LOAD_METHOD             13 (VmBuyPoint)
+            104 LOAD_FAST                0 (self)
+            106 LOAD_ATTR               14 (vmType)
+            108 CALL_METHOD              1
+            110 LOAD_FAST                5 (tip)
+            112 CALL_FUNCTION            2
+            114 CALL_METHOD              2
+            116 POP_TOP
+
+141     >>  118 LOAD_GLOBAL             15 (QApplication)
+            120 LOAD_METHOD             16 (primaryScreen)
+            122 CALL_METHOD              0
+            124 STORE_FAST               6 (screen)
+
+142         126 LOAD_FAST                6 (screen)
+            128 LOAD_METHOD             17 (grabWindow)
+            130 LOAD_FAST                0 (self)
+            132 LOAD_ATTR               18 (parent)
+            134 CALL_METHOD              1
+            136 LOAD_METHOD             19 (toImage)
+            138 CALL_METHOD              0
+            140 STORE_FAST               7 (img)
+
+144         142 LOAD_GLOBAL             20 (isResultPopShow)
+            144 LOAD_FAST                7 (img)
+            146 LOAD_FAST                0 (self)
+            148 LOAD_ATTR               14 (vmType)
+            150 CALL_FUNCTION            2
+            152 POP_JUMP_IF_FALSE      190
+
+145         154 LOAD_GLOBAL             21 (isStoneText)
+            156 LOAD_FAST                7 (img)
+            158 LOAD_FAST                0 (self)
+            160 LOAD_ATTR               14 (vmType)
+            162 CALL_FUNCTION            2
+            164 POP_JUMP_IF_FALSE      178
+
+146         166 LOAD_FAST                0 (self)
+            168 LOAD_ATTR               22 (succ_res_signal)
+            170 LOAD_METHOD             23 (emit)
+            172 CALL_METHOD              0
+            174 POP_TOP
+            176 JUMP_ABSOLUTE          202
+
+148     >>  178 LOAD_FAST                0 (self)
+            180 LOAD_ATTR               24 (fail_res_signal)
+            182 LOAD_METHOD             23 (emit)
+            184 CALL_METHOD              0
+            186 POP_TOP
+
+149         188 JUMP_ABSOLUTE          202
+
+150     >>  190 LOAD_GLOBAL              9 (time)
+            192 LOAD_METHOD             10 (sleep)
+            194 LOAD_GLOBAL             25 (perPopSend)
+            196 CALL_METHOD              1
+            198 POP_TOP
+            200 JUMP_ABSOLUTE          118
+        >>  202 LOAD_CONST               0 (None)
+            204 RETURN_VALUE
+
+Disassembly of <code object getStones at 0x000002612A5ECEA0, file "findstone_thread.py", line 152>:
+153           0 LOAD_GLOBAL              0 (win32gui)
+              2 LOAD_METHOD              1 (IsWindow)
+              4 LOAD_FAST                1 (hwnd)
+              6 CALL_METHOD              1
+              8 POP_JUMP_IF_FALSE      172
+
+154          10 LOAD_GLOBAL              2 (QApplication)
+             12 LOAD_METHOD              3 (primaryScreen)
+             14 CALL_METHOD              0
+             16 STORE_FAST               2 (screen)
+
+155          18 LOAD_FAST                2 (screen)
+             20 LOAD_METHOD              4 (grabWindow)
+             22 LOAD_FAST                1 (hwnd)
+             24 CALL_METHOD              1
+             26 LOAD_METHOD              5 (toImage)
+             28 CALL_METHOD              0
+             30 STORE_FAST               3 (img)
+
+157          32 LOAD_FAST                0 (self)
+             34 LOAD_ATTR                6 (buyType)
+             36 LOAD_GLOBAL              7 (Buy120140)
+             38 COMPARE_OP               2 (==)
+             40 POP_JUMP_IF_FALSE       88
+
+158          42 LOAD_GLOBAL              8 (stonePointList)
+             44 GET_ITER
+        >>   46 FOR_ITER                36 (to 84)
+             48 STORE_FAST               4 (point)
+
+159          50 LOAD_GLOBAL              9 (isStone)
+             52 LOAD_FAST                3 (img)
+             54 LOAD_FAST                4 (point)
+             56 LOAD_GLOBAL             10 (vmdiff_util)
+             58 LOAD_METHOD             11 (VmPointOffset)
+             60 LOAD_FAST                0 (self)
+             62 LOAD_ATTR               12 (vmType)
+             64 CALL_METHOD              1
+             66 BINARY_ADD
+             68 CALL_FUNCTION            2
+             70 POP_JUMP_IF_FALSE       46
+
+160          72 LOAD_FAST                4 (point)
+             74 BUILD_LIST               1
+             76 ROT_TWO
+             78 POP_TOP
+             80 RETURN_VALUE
+             82 JUMP_ABSOLUTE           46
+
+161     >>   84 LOAD_CONST               0 (None)
+             86 RETURN_VALUE
+
+164     >>   88 BUILD_LIST               0
+             90 STORE_FAST               5 (resPoints)
+
+165          92 LOAD_GLOBAL              8 (stonePointList)
+             94 GET_ITER
+        >>   96 FOR_ITER                52 (to 150)
+             98 STORE_FAST               4 (point)
+
+166         100 LOAD_GLOBAL              9 (isStone)
+            102 LOAD_FAST                3 (img)
+            104 LOAD_FAST                4 (point)
+            106 LOAD_GLOBAL             10 (vmdiff_util)
+            108 LOAD_METHOD             11 (VmPointOffset)
+            110 LOAD_FAST                0 (self)
+            112 LOAD_ATTR               12 (vmType)
+            114 CALL_METHOD              1
+            116 BINARY_ADD
+            118 CALL_FUNCTION            2
+            120 POP_JUMP_IF_FALSE       96
+
+167         122 LOAD_FAST                5 (resPoints)
+            124 LOAD_METHOD             13 (append)
+            126 LOAD_FAST                4 (point)
+            128 CALL_METHOD              1
+            130 POP_TOP
+
+168         132 LOAD_GLOBAL             14 (len)
+            134 LOAD_FAST                5 (resPoints)
+            136 CALL_FUNCTION            1
+            138 LOAD_CONST               1 (1)
+            140 COMPARE_OP               4 (>)
+            142 POP_JUMP_IF_FALSE       96
+
+169         144 POP_TOP
+            146 JUMP_ABSOLUTE          150
+            148 JUMP_ABSOLUTE           96
+
+171     >>  150 LOAD_GLOBAL             14 (len)
+            152 LOAD_FAST                5 (resPoints)
+            154 CALL_FUNCTION            1
+            156 LOAD_CONST               2 (0)
+            158 COMPARE_OP               4 (>)
+            160 POP_JUMP_IF_FALSE      166
+
+172         162 LOAD_FAST                5 (resPoints)
+            164 RETURN_VALUE
+
+174     >>  166 LOAD_CONST               0 (None)
+            168 RETURN_VALUE
+            170 JUMP_FORWARD             4 (to 176)
+
+176     >>  172 LOAD_CONST               0 (None)
+            174 RETURN_VALUE
+        >>  176 LOAD_CONST               0 (None)
+            178 RETURN_VALUE
+
+Disassembly of <code object getClickHwnd at 0x000002612A5ECF50, file "findstone_thread.py", line 178>:
+179           0 LOAD_FAST                0 (self)
+              2 LOAD_ATTR                0 (vmType)
+              4 LOAD_GLOBAL              1 (VmXiaoyao)
+              6 COMPARE_OP               2 (==)
+              8 POP_JUMP_IF_FALSE       16
+
+180          10 LOAD_FAST                0 (self)
+             12 LOAD_ATTR                2 (parent)
+             14 RETURN_VALUE
+
+182     >>   16 LOAD_FAST                0 (self)
+             18 LOAD_ATTR                3 (child)
+             20 RETURN_VALUE
+             22 LOAD_CONST               0 (None)
+             24 RETURN_VALUE

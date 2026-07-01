@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "D:\Program Files\mhxy\stoneclient\extracted\source_v2\index.py", line 270, in moreUserInfoClick
+    self.userInfoWin = MoreUserInfoWin(self.geometry().x() + self.geometry().width(), self.geometry().y())
+  File "D:\Program Files\mhxy\stoneclient\extracted\source_v2\more_userinfo.py", line 41, in __init__
+    self.getMyBalance()
+  File "D:\Program Files\mhxy\stoneclient\extracted\source_v2\more_userinfo.py", line 49, in getMyBalance
+    myBalanceList = dict2BalanceRecordList(response.json()["objs"])
+KeyError: 'objs'

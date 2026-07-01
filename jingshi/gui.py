@@ -358,7 +358,13 @@ class JingshiGUI:
             return
         
         self.logger.info(f"窗口已提前激活，{wait_log_suffix}")
-        
+
+        # 提前加载所有模板缓存，不在关键路径上做 I/O
+        self.image_recognizer.load_template("EXCHANGE")
+        self.image_recognizer.load_template("JINGSHI")
+        self.image_recognizer.load_template("BUY")
+        self.image_recognizer.load_template_grayscale("LEVEL_120")
+
         while True:
             now = self.get_beijing_time()
             remaining = (self.scheduled_target_time - now).total_seconds()
@@ -510,6 +516,25 @@ class JingshiGUI:
         self.start_button.config(text="开始抢晶石", bg="#4CAF50")
         self.status_label.config(text="状态：已停止", fg="#666666")
     
+    def _check_level_120_from_pil(self, region_img):
+        """从区域 PIL 截图检测是否为 120 级（避免全屏截图和 OpenCV 转换）"""
+        try:
+            template = self.image_recognizer.load_template_grayscale("LEVEL_120")
+            if template is None:
+                return False
+
+            # PIL → 灰度 numpy（跳过 BGR 中间转换）
+            gray = np.array(region_img.convert("L"))
+
+            if gray.shape[0] < template.shape[0] or gray.shape[1] < template.shape[1]:
+                return False
+
+            result = cv2.matchTemplate(gray, template, cv2.TM_CCOEFF_NORMED)
+            return result.max() >= 0.76
+        except Exception as e:
+            self.logger.error(f"等级检测失败：{e}")
+            return False
+
     def run_jingshi_buyer_fast(self):
         """快速运行晶石购买逻辑（窗口已提前激活）"""
         import time
@@ -527,107 +552,113 @@ class JingshiGUI:
 
         try:
             self.logger.info("开始购买晶石（快速模式）")
-            
-            # 直接截图找兑换按钮（窗口已激活）
-            screenshot = self.window_manager.capture_window()
-            if not screenshot:
-                self.logger.error("无法截图窗口")
-                return False
-            
-            exchange_pos = self.image_recognizer.find_image_with_retry(screenshot, "EXCHANGE")
-            if not exchange_pos:
-                self.logger.error("未找到兑换按钮")
-                return False
-            log_stage("查找兑换按钮")
-            
+
+            # 一次获取窗口信息，反复使用
             window_rect = self.window_manager.get_window_rect()
             if not window_rect:
                 self.logger.error("无法获取窗口位置")
                 return False
-            
-            left, top, _, _ = window_rect
+            left, top, win_w, win_h = window_rect
+
+            # 截图找兑换按钮（单次匹配，模板已在等待阶段预热缓存）
+            screenshot = self.window_manager.capture_window()
+            if not screenshot:
+                self.logger.error("无法截图窗口")
+                return False
+
+            exchange_pos = self.image_recognizer.find_image(screenshot, "EXCHANGE")
+            if not exchange_pos:
+                self.logger.error("未找到兑换按钮")
+                return False
+            log_stage("查找兑换按钮")
+
             if not self.mouse_controller.click_target(left, top, exchange_pos[0], exchange_pos[1]):
                 self.logger.error("点击兑换按钮失败")
                 return False
             log_stage("点击兑换按钮")
-            
-            # 循环查找晶石图标（限制尝试次数，避免卡太久）
+
+            # 循环查找晶石图标（最多 5 次，每次截图后立即识别）
             jingshi_pos = None
-            for _ in range(8):
-                screenshot = self.window_manager.capture_window()
-                if not screenshot:
+            jingshi_screenshot = None
+            for _ in range(5):
+                jingshi_screenshot = self.window_manager.capture_window()
+                if not jingshi_screenshot:
                     continue
 
-                jingshi_pos = self.image_recognizer.find_image(screenshot, "JINGSHI")
+                jingshi_pos = self.image_recognizer.find_image(jingshi_screenshot, "JINGSHI")
                 if jingshi_pos:
                     break
-            
+
             if not jingshi_pos:
                 self.logger.error("未找到晶石")
                 return False
             log_stage("查找晶石图标")
-            
+
             if not self.mouse_controller.click_target(left, top, jingshi_pos[0], jingshi_pos[1]):
                 self.logger.error("点击晶石失败")
                 return False
             log_stage("点击晶石")
-            
-            # 如果是全部抢模式，直接点击购买，不识别等级
+
+            # 全部抢模式：不检测等级，直接购买
             if self.price_mode.get() == "all":
-                buy_pos = self.image_recognizer.find_image_with_retry(screenshot, "BUY", max_attempts=1)
+                buy_pos = self.image_recognizer.find_image(jingshi_screenshot, "BUY")
                 if not buy_pos:
                     self.logger.error("未找到购买按钮")
                     return False
-                
-                if not self.mouse_controller.click_target(left, top, buy_pos[0], buy_pos[1]):
-                    self.logger.error("点击购买按钮失败")
-                    return False
-                
-                total_time = (time.perf_counter() - start_time) * 1000
-                self.logger.info(f"晶石购买完成（全部抢模式），总耗时：{total_time:.0f}ms")
+                self.mouse_controller.click_target(left, top, buy_pos[0], buy_pos[1])
+                self.update_status("购买成功")
                 return True
-            
-            # 只抢 120 模式：点击晶石后预判移动鼠标到购买按钮位置
-            # 先找购买按钮位置（预判）
-            buy_pos = self.image_recognizer.find_image(screenshot, "BUY")
+
+            # 只抢 120 模式
+
+            # 在旧截图中预找购买按钮（兑换窗口已完全打开，按钮应可见）
+            buy_pos = self.image_recognizer.find_image(jingshi_screenshot, "BUY")
             if buy_pos:
                 self.mouse_controller.move_to_target(left, top, buy_pos[0], buy_pos[1])
-            
-            # 循环识别 120 级，限制尝试时长（目标 2 秒内）
+
+            # 区域截图检测 120 级（只截取等级名称区域，避免全屏截图）
+            region_x = int(win_w * 0.35)
+            region_y = int(win_h * 0.20)
+            region_w = int(win_w * 0.30)
+            region_h = int(win_h * 0.25)
+
             is_120 = False
             detect_deadline = time.time() + 0.45
             while time.time() < detect_deadline:
-                screenshot = self.window_manager.capture_window()
-                if not screenshot:
+                region_img = self.window_manager.capture_window(
+                    region=(region_x, region_y, region_w, region_h)
+                )
+                if not region_img:
                     continue
 
-                is_120 = self.recognize_price(screenshot)
+                is_120 = self._check_level_120_from_pil(region_img)
                 if is_120:
                     break
             log_stage("120级识别")
-            
-            # 根据模式判断是否购买
-            if self.price_mode.get() == "120":
-                if is_120:
-                    if not buy_pos:
-                        buy_pos = self.image_recognizer.find_image_with_retry(screenshot, "BUY", max_attempts=1)
-                    
-                    if buy_pos:
-                        if not self.mouse_controller.click_target(left, top, buy_pos[0], buy_pos[1]):
+
+            if is_120:
+                if buy_pos:
+                    if not self.mouse_controller.click_target(left, top, buy_pos[0], buy_pos[1]):
+                        return False
+                    log_stage("点击购买按钮")
+                else:
+                    # 之前没找到购买按钮，重新全屏截图找一次
+                    fallback = self.window_manager.capture_window()
+                    if fallback:
+                        buy_pos = self.image_recognizer.find_image(fallback, "BUY")
+                        if buy_pos:
+                            self.mouse_controller.click_target(left, top, buy_pos[0], buy_pos[1])
+                            log_stage("点击购买按钮")
+                        else:
                             return False
-                        log_stage("点击购买按钮")
                     else:
                         return False
-                else:
-                    return True
-            else:
-                pass
-            
+
             total_time = (time.perf_counter() - start_time) * 1000
             self.logger.info(f"晶石购买流程完成，总耗时：{total_time:.0f}ms")
             self.update_status("购买成功！")
             return True
-            
+
         except Exception as e:
             total_time = (time.perf_counter() - start_time) * 1000
             self.logger.error(f"执行过程中出现异常：{e}，已耗时：{total_time:.0f}ms")

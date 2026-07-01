@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>打卡数据 - XLSX 导入工具</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; padding: 20px; max-width: 1200px; margin: 0 auto; background: #f5f5f5; }
+  h2 { color: #E91E63; }
+  .card { background: #fff; border-radius: 8px; padding: 16px; margin: 12px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .card h3 { margin-top: 0; color: #333; }
+  label { display: block; margin: 8px 0; font-weight: bold; }
+  input[type="file"] { margin: 10px 0; }
+  select { margin: 0 4px; padding: 4px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border: 1px solid #ddd; padding: 4px 8px; text-align: center; }
+  th { background: #f9f9f9; position: sticky; top: 0; }
+  .scrollable { max-height: 400px; overflow: auto; border: 1px solid #ddd; border-radius: 4px; }
+  textarea { width: 100%; min-height: 200px; font-family: monospace; font-size: 12px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+  button { background: #E91E63; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-size: 14px; margin: 8px 0; }
+  button:hover { background: #C2185B; }
+  button.secondary { background: #666; }
+  button.secondary:hover { background: #444; }
+  .success { color: #4CAF50; font-weight: bold; }
+  .error { color: #f44336; }
+  .mapping-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; flex-wrap: wrap; }
+  .mapping-row label { margin: 0; min-width: 100px; }
+  .file-list { display: flex; flex-direction: column; gap: 8px; }
+  .file-item { background: #f9f9f9; border: 1px solid #ddd; border-radius: 4px; padding: 10px; }
+  .file-item .status { float: right; }
+  #backupCode { margin-top: 12px; }
+  .tab { display: inline-block; padding: 8px 16px; cursor: pointer; border: 1px solid #ddd; border-radius: 4px 4px 0 0; background: #eee; margin-right: 2px; }
+  .tab.active { background: #fff; border-bottom: 2px solid #E91E63; }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+  .month-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+</style>
+</head>
+<body>
+
+<h2>打卡数据导入工具</h2>
+<p>选择 xlsx 文件（本程序在浏览器内运行，数据不会上传到任何服务器）</p>
+
+<div class="card">
+  <h3>1. 选择文件</h3>
+  <input type="file" id="fileInput" accept=".xlsx,.xls" multiple>
+  <div id="fileStatus"></div>
+</div>
+
+<div class="card">
+  <h3>2. 列映射配置</h3>
+  <p>选择每一列对应的字段（基于第一个文件的第一个数据 sheet 自动检测）</p>
+  <div id="mappingConfig"></div>
+</div>
+
+<div class="card" id="previewCard" style="display:none">
+  <h3>3. 数据预览</h3>
+  <div id="tabs"></div>
+  <div id="tabContents"></div>
+</div>
+
+<div class="card" id="backupCard" style="display:none">
+  <h3>4. 生成的备份码</h3>
+  <p class="success">数据已解析完成！请复制下方备份码，在小程序「设置 → 导入备份码」中粘贴导入。</p>
+  <button id="copyBtn">复制备份码</button>
+  <button id="refreshBtn" class="secondary">重新生成</button>
+  <textarea id="backupCode" readonly></textarea>
+</div>
+
+<script>
+// ====== 全局状态 ======
+let allWorkbooks = {};       // filename -> workbook
+let allRecords = {};         // 最终 records
+let columnMapping = {        // 默认列映射（从 0 开始）
+  date: 0,
+  points: 1,
+  isVacation: -1,
+  holidayWorkSubsidy: -1,
+  vacationSubsidy: -1,
+  tipAmount: -1,
+  remark: -1
+};
+let allSheetData = {};       // filename -> { sheetName -> rows[] }
+
+// ====== 默认设置 ======
+const DEFAULT_SETTINGS = {
+  pricePerPoint: 18.6,
+  quickSelectPoints: [8, 8.5, 9, 4, 3.5],
+  halfDayPoints: 4,
+  workDays: [1, 2, 3, 4, 5],
+  enableReminder: false,
+  reminderTime: "09:00",
+  monthlyGoal: 0,
+  goalMonths: 12,
+  autoBackup: true
+};
+
+// ====== 主流程 ======
+document.getElementById('fileInput').addEventListener('change', function(e) {
+  var files = e.target.files;
+  if (!files.length) return;
+
+  allWorkbooks = {};
+  allSheetData = {};
+  allRecords = {};
+
+  var statusDiv = document.getElementById('fileStatus');
+  statusDiv.innerHTML = '';
+  document.getElementById('previewCard').style.display = 'none';
+  document.getElementById('backupCard').style.display = 'none';
+
+  var loaded = 0;
+  var total = files.length;
+
+  for (var i = 0; i < files.length; i++) {
+    (function(file) {
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          var data = new Uint8Array(e.target.result);
+          var wb = XLSX.read(data, {type: 'array'});
+          allWorkbooks[file.name] = wb;
+
+          // Parse all sheets
+          var fileData = {};
+          wb.SheetNames.forEach(function(name) {
+            var sheet = wb.Sheets[name];
+            fileData[name] = XLSX.utils.sheet_to_json(sheet, {header: 1, defval: ''});
+          });
+          allSheetData[file.name] = fileData;
+
+          loaded++;
+          statusDiv.innerHTML += '<div class="success">✓ ' + file.name + ' 加载成功 (' + wb.SheetNames.length + ' 个 sheet)</div>';
+
+          if (loaded === total) {
+            // 自动检测列映射
+            autoDetectMapping();
+            renderMappingConfig();
+            renderTabView();
+            document.getElementById('previewCard').style.display = 'block';
+          }
+        } catch(err) {
+          statusDiv.innerHTML += '<div class="error">✗ ' + file.name + ' 加载失败: ' + err.message + '</div>';
+          loaded++;
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    })(files[i]);
+  }
+});
+
+// ====== 自动检测列映射 ======
+function autoDetectMapping() {
+  var firstFile = Object.keys(allSheetData)[0];
+  if (!firstFile) return;
+  var fileData = allSheetData[firstFile];
+  var firstSheet = fileData[Object.keys(fileData)[0]];
+  if (!firstSheet || firstSheet.length < 2) return;
+
+  // 用第一行（表头）和第二行（数据）检测
+  var headerRow = firstSheet[0] || [];
+  var dataRow = firstSheet[1] || [];
+
+  var newMapping = { date: 0, points: 1, isVacation: -1, holidayWorkSubsidy: -1, vacationSubsidy: -1, tipAmount: -1, remark: -1 };
+
+  for (var i = 0; i < headerRow.length; i++) {
+    var h = String(headerRow[i]).trim();
+    var hl = h.toLowerCase();
+    if (hl.indexOf('日期') >= 0 || hl.indexOf('date') >= 0 || hl === '日' || hl === '时间') newMapping.date = i;
+    else if (hl.indexOf('点数') >= 0 || hl.indexOf('points') >= 0 || hl.indexOf('积分') >= 0 || hl.indexOf('分值') >= 0 || hl === '点') newMapping.points = i;
+    else if (hl.indexOf('休假') >= 0 || hl.indexOf('请假') >= 0 || hl.indexOf('vacation') >= 0 || hl.indexOf('休息') >= 0 || hl === '假') newMapping.isVacation = i;
+    else if (hl.indexOf('节日') >= 0 || hl.indexOf('假日') >= 0 || hl.indexOf('holiday') >= 0) {
+      if (hl.indexOf('补助') >= 0 || hl.indexOf('subsidy') >= 0 || hl.indexOf('补贴') >= 0) newMapping.holidayWorkSubsidy = i;
+      else newMapping.isVacation = i;
+    }
+    else if (hl.indexOf('补助') >= 0 || hl.indexOf('补贴') >= 0 || hl.indexOf('subsidy') >= 0) {
+      if (hl.indexOf('节日') >= 0 || hl.indexOf('假日') >= 0 || hl.indexOf('holiday') >= 0) newMapping.holidayWorkSubsidy = i;
+      else newMapping.vacationSubsidy = i;
+    }
+    else if (hl.indexOf('小费') >= 0 || hl.indexOf('tip') >= 0 || hl.indexOf('额外') >= 0 || hl.indexOf('奖金') >= 0) newMapping.tipAmount = i;
+    else if (hl.indexOf('备注') >= 0 || hl.indexOf('remark') >= 0 || hl.indexOf('说明') >= 0 || hl.indexOf('note') >= 0) newMapping.remark = i;
+  }
+
+  columnMapping = newMapping;
+}
+
+// ====== 渲染映射配置 ======
+function renderMappingConfig() {
+  var div = document.getElementById('mappingConfig');
+  var firstFile = Object.keys(allSheetData)[0];
+  if (!firstFile) { div.innerHTML = '<p>请先加载文件</p>'; return; }
+  var fileData = allSheetData[firstFile];
+  var firstSheetName = Object.keys(fileData)[0];
+  var rows = fileData[firstSheetName];
+  var numCols = 0;
+  if (rows.length > 0) {
+    numCols = Math.max.apply(null, rows[0].map(function(c) { return String(c).trim() ? true : false; }).length);
+    // simpler: find max length
+    for (var r = 0; r < rows.length; r++) {
+      if (rows[r].length > numCols) numCols = rows[r].length;
+    }
+  }
+  // limit to detect
+  if (numCols < 2) numCols = 10;
+
+  var headerRow = rows[0] || [];
+  var colOptions = '';
+  for (var i = 0; i < Math.max(numCols, 3); i++) {
+    var label = headerRow[i] ? String(headerRow[i]).trim() : ('列 ' + (i+1));
+    colOptions += '<option value="' + i + '">' + label + ' (列' + (i+1) + ')</option>';
+  }
+  colOptions += '<option value="-1">- 不使用 -</option>';
+
+  var fields = [
+    { key: 'date', label: '日期列' },
+    { key: 'points', label: '点数列' },
+    { key: 'isVacation', label: '是否休假列' },
+    { key: 'holidayWorkSubsidy', label: '节日上班补助列' },
+    { key: 'vacationSubsidy', label: '休假补助列' },
+    { key: 'tipAmount', label: '小费/额外列' },
+    { key: 'remark', label: '备注列' }
+  ];
+
+  var html = '<div class="mapping-row">';
+  fields.forEach(function(f) {
+    html += '<label>' + f.label + ': <select id="map_' + f.key + '">' + colOptions.replace('value="' + columnMapping[f.key] + '"', 'value="' + columnMapping[f.key] + '" selected') + '</select></label>';
+  });
+  html += '</div><button onclick="applyMapping()">应用映射 & 生成备份码</button>';
+  div.innerHTML = html;
+}
+
+// ====== 应用映射 ======
+function applyMapping() {
+  var keys = ['date', 'points', 'isVacation', 'holidayWorkSubsidy', 'vacationSubsidy', 'tipAmount', 'remark'];
+  keys.forEach(function(k) {
+    var sel = document.getElementById('map_' + k);
+    if (sel) columnMapping[k] = parseInt(sel.value);
+  });
+
+  generateBackupCode();
+}
+
+// ====== 渲染标签页视图 ======
+function renderTabView() {
+  var tabsDiv = document.getElementById('tabs');
+  var contentDiv = document.getElementById('tabContents');
+  tabsDiv.innerHTML = '';
+  contentDiv.innerHTML = '';
+
+  var fileNames = Object.keys(allSheetData);
+
+  fileNames.forEach(function(fname, fi) {
+    var tab = document.createElement('span');
+    tab.className = 'tab' + (fi === 0 ? ' active' : '');
+    tab.textContent = fname;
+    tab.onclick = function() { switchTab(fname); };
+    tabsDiv.appendChild(tab);
+
+    var content = document.createElement('div');
+    content.className = 'tab-content' + (fi === 0 ? ' active' : '');
+    content.id = 'tab_' + fname.replace(/[^a-zA-Z0-9]/g, '_');
+
+    var html = '';
+    var fileData = allSheetData[fname];
+    Object.keys(fileData).forEach(function(sname) {
+      html += '<h4>Sheet: ' + sname + '</h4>';
+      html += '<div class="scrollable"><table><thead><tr>';
+      var rows = fileData[sname];
+      if (rows.length > 0) {
+        rows[0].forEach(function(cell) {
+          html += '<th>' + String(cell).trim() + '</th>';
+        });
+        html += '</tr></thead><tbody>';
+        for (var r = 1; r < rows.length; r++) {
+          html += '<tr>';
+          for (var c = 0; c < rows[r].length; c++) {
+            html += '<td>' + String(rows[r][c]).trim() + '</td>';
+          }
+          html += '</tr>';
+        }
+        html += '</tbody></table></div>';
+      }
+    });
+    content.innerHTML = html;
+    contentDiv.appendChild(content);
+  });
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(function(t) { t.className = 'tab'; });
+  document.querySelectorAll('.tab-content').forEach(function(t) { t.className = 'tab-content'; });
+  var tabs = document.querySelectorAll('.tab');
+  var contents = document.querySelectorAll('.tab-content');
+  var fileNames = Object.keys(allSheetData);
+  var idx = fileNames.indexOf(name);
+  if (idx >= 0 && tabs[idx]) tabs[idx].className = 'tab active';
+  if (idx >= 0 && contents[idx]) contents[idx].className = 'tab-content active';
+}
+
+// ====== 生成备份码 ======
+function generateBackupCode() {
+  allRecords = {};
+
+  var fileNames = Object.keys(allSheetData);
+
+  fileNames.forEach(function(fname) {
+    var fileData = allSheetData[fname];
+
+    Object.keys(fileData).forEach(function(sname) {
+      var rows = fileData[sname];
+      if (rows.length < 2) return; // header only or empty
+
+      // Skip the summary sheet (汇总/汇总表)
+      if (sname.indexOf('汇总') >= 0 || sname.indexOf('合计') >= 0 || sname.indexOf('Summary') >= 0) return;
+
+      // Try to find date column and parse records
+      for (var r = 1; r < rows.length; r++) {
+        var row = rows[r];
+        if (!row || row.length === 0) continue;
+
+        var dateVal = row[columnMapping.date];
+        if (dateVal === undefined || dateVal === null || String(dateVal).trim() === '') continue;
+
+        var dateStr = parseDate(dateVal);
+        if (!dateStr) continue;
+
+        var points = parseFloat(row[columnMapping.points]) || 0;
+        var isVacation = false;
+        var holidayWorkSubsidy = 0;
+        var vacationSubsidy = 0;
+        var tipAmount = 0;
+        var remark = '';
+
+        if (columnMapping.isVacation >= 0 && columnMapping.isVacation < row.length) {
+          var v = String(row[columnMapping.isVacation]).trim().toLowerCase();
+          isVacation = (v === '是' || v === 'yes' || v === 'true' || v === '1' || v === '休假' || v === '请假');
+        }
+        if (columnMapping.holidayWorkSubsidy >= 0 && columnMapping.holidayWorkSubsidy < row.length) {
+          holidayWorkSubsidy = parseFloat(row[columnMapping.holidayWorkSubsidy]) || 0;
+        }
+        if (columnMapping.vacationSubsidy >= 0 && columnMapping.vacationSubsidy < row.length) {
+          vacationSubsidy = parseFloat(row[columnMapping.vacationSubsidy]) || 0;
+        }
+        if (columnMapping.tipAmount >= 0 && columnMapping.tipAmount < row.length) {
+          tipAmount = parseFloat(row[columnMapping.tipAmount]) || 0;
+        }
+        if (columnMapping.remark >= 0 && columnMapping.remark < row.length) {
+          remark = String(row[columnMapping.remark]).trim();
+        }
+
+        var ts = new Date(dateStr + 'T00:00:00+08:00').getTime();
+
+        allRecords[dateStr] = {
+          points: points,
+          isVacation: isVacation,
+          holidayWorkSubsidy: holidayWorkSubsidy,
+          vacationSubsidy: vacationSubsidy,
+          tipAmount: tipAmount,
+          remark: remark,
+          updatedAt: ts
+        };
+      }
+    });
+  });
+
+  // Build the backup payload
+  var payload = {
+    magic: "WORK_POINTS_BACKUP",
+    version: 1,
+    exportedAt: Date.now(),
+    data: {
+      settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),
+      records: allRecords,
+      goals: {},
+      ledgers: [{ id: "default", name: "默认账本", count: 0 }],
+      templates: ["早退", "加班", "半天"],
+      reminders: {},
+      currentLedger: "default"
+    }
+  };
+
+  var backupText = 'WPB1:' + JSON.stringify(payload);
+
+  document.getElementById('backupCode').value = backupText;
+  document.getElementById('backupCard').style.display = 'block';
+
+  // Show stats
+  var dates = Object.keys(allRecords).sort();
+  var totalPoints = 0;
+  var vacationDays = 0;
+  var monthStats = {};
+  dates.forEach(function(d) {
+    totalPoints += allRecords[d].points;
+    if (allRecords[d].isVacation) vacationDays++;
+    var m = d.substring(0, 7);
+    if (!monthStats[m]) monthStats[m] = { points: 0, days: 0, vacationDays: 0 };
+    monthStats[m].points += allRecords[d].points;
+    monthStats[m].days++;
+    if (allRecords[d].isVacation) monthStats[m].vacationDays++;
+  });
+
+  var statsHtml = '<div class="card" style="background:#e8f5e9"><h3>📊 数据统计</h3>';
+  statsHtml += '<p>共解析 <strong>' + dates.length + '</strong> 条记录，总点数: <strong>' + totalPoints.toFixed(2) + '</strong>，休假天数: <strong>' + vacationDays + '</strong></p>';
+  Object.keys(monthStats).sort().forEach(function(m) {
+    var s = monthStats[m];
+    statsHtml += '<p>' + m + ': ' + s.days + ' 天, ' + s.points.toFixed(2) + ' 点, 休假 ' + s.vacationDays + ' 天</p>';
+  });
+  statsHtml += '</div>';
+
+  document.getElementById('backupCard').insertAdjacentHTML('afterbegin', statsHtml);
+}
+
+// ====== 日期解析 ======
+function parseDate(val) {
+  if (!val && val !== 0) return null;
+
+  // Excel serial date number
+  if (typeof val === 'number' && val > 40000 && val < 80000) {
+    var d = new Date((val - 25569) * 86400 * 1000);
+    return formatDate(d);
+  }
+
+  var s = String(val).trim();
+
+  // Try various formats
+  // YYYY-MM-DD or YYYY/MM/DD
+  var m = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  if (m) return m[1] + '-' + pad(m[2]) + '-' + pad(m[3]);
+
+  // MM-DD or M-D (assumes 2026)
+  m = s.match(/^(\d{1,2})[-/](\d{1,2})$/);
+  if (m) return '2026-' + pad(m[1]) + '-' + pad(m[2]);
+
+  // MDD or M.D (like 1.1 or 1/1)
+  m = s.match(/^(\d{1,2})[./](\d{1,2})$/);
+  if (m) return '2026-' + pad(m[1]) + '-' + pad(m[2]);
+
+  // DD日 (like "1日" or "1号")
+  m = s.match(/^(\d{1,2})[日号]$/);
+  if (m) return null; // needs month context
+
+  return null;
+}
+
+function formatDate(d) {
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+}
+
+function pad(n) {
+  return ('0' + String(n)).slice(-2);
+}
+
+// ====== 复制 ======
+document.getElementById('copyBtn').addEventListener('click', function() {
+  var textarea = document.getElementById('backupCode');
+  textarea.select();
+  document.execCommand('copy');
+  this.textContent = '已复制 ✓';
+  var self = this;
+  setTimeout(function() { self.textContent = '复制备份码'; }, 2000);
+});
+
+document.getElementById('refreshBtn').addEventListener('click', function() {
+  // Remove stats card if exists
+  var statsCard = document.querySelector('#backupCard .card');
+  if (statsCard) statsCard.remove();
+  generateBackupCode();
+});
+</script>
+</body>
+</html>
