@@ -193,18 +193,33 @@ class FindStoneThread(QThread):
         screen = QApplication.primaryScreen()
         img = screen.grabWindow(hwnd).toImage()
 
+        # ??????????? 800x600 ??????
+        try:
+            rect = win32gui.GetWindowRect(hwnd)
+            w = rect[2] - rect[0]
+            h = rect[3] - rect[1]
+            sx = w / 800.0
+            sy = h / 600.0
+        except:
+            sx = 1.0
+            sy = 1.0
+
         if self.buyType == Buy120140:
             for point in stonePointList:
                 offset = vmdiff_util.VmPointOffset(self.vmType)
-                if isStone(img, point + offset):
-                    return [point]
+                check_x = int(point.x() * sx) + offset.x()
+                check_y = int(point.y() * sy) + offset.y()
+                if isStone(img, QPoint(check_x, check_y)):
+                    return [QPoint(check_x, check_y)]
             return None
 
         resPoints = []
         for point in stonePointList:
             offset = vmdiff_util.VmPointOffset(self.vmType)
-            if isStone(img, point + offset):
-                resPoints.append(point)
+            check_x = int(point.x() * sx) + offset.x()
+            check_y = int(point.y() * sy) + offset.y()
+            if isStone(img, QPoint(check_x, check_y)):
+                resPoints.append(QPoint(check_x, check_y))
                 if len(resPoints) > 1:
                     break
 

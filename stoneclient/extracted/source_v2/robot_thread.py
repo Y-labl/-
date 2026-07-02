@@ -87,21 +87,26 @@ class RobotThread(QThread):
         mouseUtil.click(self.parent, MouseInfo(QPoint(650, 84), ""))
 
     def openGx(self):
-        mouseUtil.click(self.parent, MouseInfo(QPoint(24, 181), ""))
+        from vmdiff_util import VmGxPoint, VmBuyPoint
+        from const import VmXiaoyao, VmXiaoyaoOtherType, VmLeidian, VmScrcpy
+        class_name = win32gui.GetClassName(self.parent)
+        if class_name in (VmXiaoyao, VmXiaoyaoOtherType, VmLeidian, VmScrcpy):
+            vm_type = class_name
+        else:
+            vm_type = VmScrcpy
+        # 逍遥模拟器：多步导航
+        if class_name in (VmXiaoyao, VmXiaoyaoOtherType):
+            mouseUtil.click(self.parent, MouseInfo(QPoint(24, 181), ""))
+            time.sleep(2)
+            mouseUtil.click(self.parent, MouseInfo(QPoint(28, 408), ""))
+            time.sleep(2)
+        # 点击兑换功勋按钮（使用实测坐标，不缩放）
+        gx_point = VmGxPoint(vm_type)
+        time.sleep(0.5)  # 等待窗口焦点
+        mouseUtil.click(self.parent, MouseInfo(gx_point, "兑换功勋(" + str(gx_point.x()) + "," + str(gx_point.y()) + ")"))
         time.sleep(2)
-        mouseUtil.click(self.parent, MouseInfo(QPoint(28, 408), ""))
-        time.sleep(2)
-        mouseUtil.click(self.parent, MouseInfo(QPoint(262, 174), ""))
-        time.sleep(3)
-        mouseUtil.click(self.parent, MouseInfo(QPoint(666, 183), ""))
-        time.sleep(2)
-        mouseUtil.click(self.parent, MouseInfo(QPoint(666, 239), ""))
-        time.sleep(3)
-        mouseUtil.click(self.parent, MouseInfo(QPoint(717, 83), ""))
-        time.sleep(2)
-        mouseUtil.click(self.parent, MouseInfo(QPoint(262, 174), ""))
-        time.sleep(3)
-        mouseUtil.click(self.parent, MouseInfo(QPoint(666, 183), ""))
+        # 注意：不自动点确认，因为弹窗坐标和主界面不同
+        # 请使用"测试点击确认按钮"来单独测试确认位置
 
     def openPackage(self):
         mouseUtil.click(self.parent, MouseInfo(QPoint(712, 476), ""))
