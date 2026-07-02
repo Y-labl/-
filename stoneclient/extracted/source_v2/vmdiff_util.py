@@ -28,7 +28,7 @@ def VmGxPoint(vmType):
     if vmType == VmXiaoyao:
         return QPoint(680, 235)
     if vmType == VmScrcpy:
-        return QPoint(680, 235)  # scrcpy 与逍遥坐标一致
+        return QPoint(850, 180)  # scrcpy 投屏实测 abs(1170,650)
     return QPoint(680, 204)
 
 
@@ -36,5 +36,5 @@ def VmBuyPoint(vmType):
     if vmType == VmXiaoyao:
         return QPoint(580, 435)
     if vmType == VmScrcpy:
-        return QPoint(580, 435)  # scrcpy 与逍遥坐标一致
+        return QPoint(639, 525)  # scrcpy 投屏实测坐标
     return QPoint(580, 404)

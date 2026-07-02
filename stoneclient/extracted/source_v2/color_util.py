@@ -5,26 +5,33 @@ from const import stoneTextPointList, pointList120_5or6, resultPopShowPoints, lv
 
 
 def isStone(img: QImage, point: QPoint):
-    y = point.y()
-    isStoneColorCount = 0
+    # 十字检测：竖线+横线各7像素，都>=3匹配才判定晶石
+    x, y = point.x(), point.y()
+    # 竖线
+    v_match = 0
     for i in range(7):
-        color = img.pixelColor(point.x(), y + i)
-        if __isStoneColor(color):
-            isStoneColorCount += 1
-        if isStoneColorCount >= 3:
-            print("命中{}个像素".format(isStoneColorCount))
-            return True
-    return isStoneColorCount >= 3
+        if __isStoneColor(img.pixelColor(x, y + i)):
+            v_match += 1
+    if v_match < 5:
+        return False
+    # 横线
+    h_match = 0
+    for i in range(-3, 4):
+        if __isStoneColor(img.pixelColor(x + i, y + 3)):
+            h_match += 1
+    if h_match >= 5:
+        return True
+    return False
 
 
 def __isStoneColor(color: QColor):
     red = color.red()
     green = color.green()
     blue = color.blue()
-    if 49 < red < 110:
-        if 28 < green < 108:
-            if 183 < blue < 219:
-                return True
+    # 晶石紫色：蓝主导，红中等，绿低
+    if blue > 180 and blue - red > 60 and blue - green > 90:
+        if red > 30 and red < 230 and green < 190:
+            return True
     return False
 
 
