@@ -8,15 +8,17 @@ from PySide6.QtWidgets import (
     QPushButton, QComboBox, QLabel, QTableWidget, QTableWidgetItem,
     QHeaderView, QSpinBox, QGroupBox, QTextEdit, QStatusBar,
     QMessageBox, QApplication, QCheckBox, QMenu, QFileDialog,
-    QScrollArea, QSizePolicy, QTabWidget
+    QScrollArea, QSizePolicy, QTabWidget, QDialog, QFrame
 )
-from PySide6.QtCore import Qt, QTimer, QSize, Signal
+from PySide6.QtCore import Qt, QTimer, QSize, Signal, QThread
 from PySide6.QtGui import (
+    QIcon,
     QPixmap, QImage, QPainter, QColor, QPen, QFont,
     QMouseEvent, QClipboard, QCursor, QAction
 )
 
 from modules.window_binder import WindowBinder, WindowInfo, get_window_under_cursor
+from modules.adb_scanner import AdbScanner
 from modules.screenshot import ScreenCapture
 from modules.color_picker import ColorPicker, ColorPoint
 from modules.color_verifier import ColorVerifier
@@ -460,6 +462,8 @@ class MainWindow(QMainWindow):
         self._template_image = None  # PIL Image: 当前选取的模板
         self._template_region_start = None  # (x, y): 模板选取起点
         self._custom_screenshot_start = None  # (x, y): 区域截图框选起点
+        self.adb_scanner = AdbScanner(self)
+        self._adb_serial = None  # ADB 绑定的设备序列号
 
         self._setup_ui()
         self._setup_connections()
@@ -494,11 +498,14 @@ class MainWindow(QMainWindow):
         self._lbl_bound_info.setStyleSheet("color: #888; padding: 0 8px;")
         self._btn_enum_children = QPushButton("子窗口")
         self._btn_enum_children.setToolTip("枚举选中窗口的子窗口")
+        self._btn_adb = QPushButton("ADB扫描")
+        self._btn_adb.setToolTip("扫描 ADB 连接的 Android 设备")
 
         bind_layout.addWidget(self._btn_refresh)
         bind_layout.addWidget(self._combo_windows)
         bind_layout.addWidget(self._btn_pick)
         bind_layout.addWidget(self._btn_enum_children)
+        bind_layout.addWidget(self._btn_adb)
         bind_layout.addWidget(self._btn_bind)
         bind_layout.addWidget(self._btn_unbind)
         bind_layout.addWidget(self._lbl_bound_info)
@@ -876,6 +883,8 @@ class MainWindow(QMainWindow):
         self._btn_unbind.clicked.connect(self._on_unbind_window)
         self._btn_pick.clicked.connect(self._on_pick_window)
         self._btn_enum_children.clicked.connect(self._on_enum_children)
+        self._btn_adb.clicked.connect(self._on_scan_adb_devices)
+        self.adb_scanner.devices_found.connect(self._on_adb_devices_found)
 
         self.binder.window_list_updated.connect(self._on_window_list)
         self.binder.window_bound.connect(self._on_bound)
@@ -1052,6 +1061,24 @@ class MainWindow(QMainWindow):
     # ═══ 截图 ═══
 
     def _on_full_screenshot(self):
+        # ADB 设备截图优先（直接走 adb screencap）
+        if self._adb_serial:
+            self._log(f"正在通过 ADB 截取设备 {self._adb_serial} 画面...")
+            try:
+                from adbutils import adb
+                from io import BytesIO
+                from PIL import Image
+                d = adb.device(self._adb_serial)
+                data = d.screenshot()  # PIL Image
+                if data:
+                    self.capture._cached_image = data
+                    self.capture.screenshot_taken.emit(data)
+                    return
+                else:
+                    self._log("ADB 截图返回空，回退到窗口截图")
+            except Exception as e:
+                self._log(f"ADB 截图失败: {e}，回退到窗口截图")
+        # 窗口截图
         if not self.binder.is_bound:
             self._log("请先绑定目标窗口")
             QMessageBox.warning(self, "提示", "请先绑定目标窗口")
@@ -1740,6 +1767,389 @@ class MainWindow(QMainWindow):
         self._screenshot_label.set_annotations([])
         self._log("已清空匹配结果")
 
-    def closeEvent(self, event):
+
+    # ============================================================
+    # ADB 扫描与绑定 (投屏窗口)
+    # ============================================================
+
+    def _on_scan_adb_devices(self):
+        """扫描 ADB 设备"""
+        self._btn_adb.setEnabled(False)
+        self._btn_adb.setText("扫描中...")
+        self._log("正在扫描 ADB 设备...")
+        self.adb_scanner.scan()
+
+    def _on_adb_devices_found(self, devices):
+        """ADB 设备扫描完成 - 弹出设备选择对话框"""
+        self._btn_adb.setEnabled(True)
+        self._btn_adb.setText("ADB扫描")
+        if not devices:
+            self._log("未发现 ADB 设备")
+            QMessageBox.information(self, "ADB 扫描", "未检测到已连接的 Android 设备\n请确认 USB 调试已开启且已通过 USB 连接")
+            return
+
+        self._log(f"发现 {len(devices)} 台 ADB 设备")
+
+        # 弹出设备选择对话框
+        dialog = _AdbDeviceDialog(devices, self)
+        if dialog.exec() == QMessageBox.Accepted and dialog.selected_device:
+            self._bind_adb_device(dialog.selected_device)
+
+    def _bind_adb_device(self, device):
+        """绑定 ADB 设备: 自动识别投屏窗口并设置裁剪区域"""
+        serial = device["serial"]
+        self._adb_serial = serial  # 记录 ADB 设备，截图时走 ADB
+        resolution = device.get("resolution", "")
+        self._log(f"正在绑定设备: {serial}")
+
+        import win32gui
+        target_hwnd = [None]
+        target_info = [None]
+        all_candidates = []
+
+        def find_cb(hwnd, _):
+            try:
+                title = win32gui.GetWindowText(hwnd)
+                cls = win32gui.GetClassName(hwnd)
+                if not win32gui.IsWindowVisible(hwnd):
+                    return True
+                rect = win32gui.GetWindowRect(hwnd)
+                w, h = rect[2] - rect[0], rect[3] - rect[1]
+                if w < 200 or h < 200:
+                    return True
+                title_lower = title.lower()
+                cls_lower = cls.lower()
+                matched = False
+                if any(kw in title for kw in ["投屏", "镜像", "scrcpy", "QtScrcpy", "android"]):
+                    matched = True
+                if "tauri window" in cls_lower:
+                    matched = True
+                if "qt" in cls_lower and "qwindow" in cls_lower:
+                    if any(kw in title_lower for kw in ["投屏", "镜像", "scrcpy"]):
+                        matched = True
+                if matched:
+                    all_candidates.append((hwnd, title, cls, w, h))
+                    if not target_hwnd[0]:
+                        target_hwnd[0] = hwnd
+                        target_info[0] = (hwnd, title, cls, w, h)
+                return True
+            except:
+                return True
+
+        win32gui.EnumWindows(find_cb, None)
+
+        if not target_hwnd[0]:
+            self._log(f"未找到投屏窗口，候选窗口 {len(all_candidates)} 个")
+            for hwnd, title, cls, w, h in all_candidates:
+                self._log(f"  候选: [{cls}] {title!r} {w}x{h}")
+            QMessageBox.warning(self, "提示",
+                "未找到投屏窗口\n请先启动 scrcpy 或其他投屏工具")
+            return
+
+        hwnd, title, cls, w, h = target_info[0]
+        self._log(f"投屏窗口: [{cls}] {title!r} {w}x{h}")
+
+        # 子窗口检测 - 自动裁剪区域
+        child_windows = self.binder.enumerate_child_windows(hwnd)
+        phone_child = None
+        for child in child_windows:
+            cw, ch = child.width, child.height
+            if cw > 200 and ch > 200:
+                if phone_child is None or (cw * ch) > (phone_child.width * phone_child.height):
+                    phone_child = child
+                self._log(f"  子窗口: [{child.class_name}] {child.title!r} {cw}x{ch} "
+                         f"pos=({child.rect[0]},{child.rect[1]})")
+
+        # 自动绑定 + 拉到前台确保截图可见
+        self.binder.bind_window(hwnd)
+        try:
+            win32gui.SetForegroundWindow(hwnd)
+            time.sleep(0.2)
+            self._log("已将投屏窗口拉到前台")
+        except Exception:
+            pass
+
+        # 子窗口 / 分辨率信息
+        if phone_child:
+            main_rect = win32gui.GetWindowRect(hwnd)
+            offset_x = phone_child.rect[0] - main_rect[0]
+            offset_y = phone_child.rect[1] - main_rect[1]
+            self._log(f"检测到子窗口区域: offset=({offset_x},{offset_y}) "
+                     f"size={phone_child.width}x{phone_child.height}")
+        elif resolution and "x" in resolution.lower():
+            self._log(f"设备分辨率: {resolution}")
+
+        self._log(f"ADB设备绑定完成! 序列号: {serial}")
+
+class _ScreenshotLoader(QThread):
+    """后台逐个加载设备截图，避免多设备同时 ADB 冲突"""
+    screenshot_ready = Signal(str, object)  # serial, PIL Image or None
+
+    def __init__(self, serials):
+        super().__init__()
+        self.serials = serials
+
+    def run(self):
+        import time
+        from adbutils import adb
+        for serial in self.serials:
+            try:
+                d = adb.device(serial)
+                # 尝试唤醒屏幕
+                try:
+                    power_info = d.shell("dumpsys power")
+                    if "mWakefulness=Asleep" in power_info:
+                        d.shell("input keyevent 26")
+                        time.sleep(0.5)
+                except:
+                    pass
+                img = d.screenshot()  # 返回 PIL Image
+                self.screenshot_ready.emit(serial, img)
+            except Exception:
+                self.screenshot_ready.emit(serial, None)
+
+
+class _AdbDeviceDialog(QDialog):
+    """ADB 设备选择对话框 — 截图异步加载"""
+
+    def __init__(self, devices, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("选择 ADB 设备")
+        self.setMinimumWidth(580)
+        self.setMinimumHeight(420)
+        self.selected_device = None
+        self._cards = {}
+        self._thumb_labels = {}
+        self._loader = None
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(10)
+
+        # 标题
+        title = QLabel(f"发现 <b>{len(devices)}</b> 台 ADB 设备，点击选中要绑定的设备:")
+        title.setTextFormat(Qt.RichText)
+        layout.addWidget(title)
+
+        # 滚动区域
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea { border: 1px solid #444; background: #1a1a1a; border-radius: 6px; }")
+        scroll_widget = QWidget()
+        self._scroll_layout = QVBoxLayout(scroll_widget)
+        self._scroll_layout.setContentsMargins(4, 4, 4, 4)
+        self._scroll_layout.setSpacing(6)
+        self._scroll_layout.addStretch()
+        scroll.setWidget(scroll_widget)
+        layout.addWidget(scroll, 1)
+
+        # 状态标签
+        self._lbl_status = QLabel("正在加载设备截图...")
+        self._lbl_status.setStyleSheet("color: #888; font-size: 12px;")
+        layout.addWidget(self._lbl_status)
+
+        # 底部按钮
+        footer = QHBoxLayout()
+        footer.addStretch()
+        cancel_btn = QPushButton("取消")
+        cancel_btn.clicked.connect(self._on_cancel)
+        footer.addWidget(cancel_btn)
+        self._btn_confirm = QPushButton("确认绑定")
+        self._btn_confirm.setObjectName("btnPrimary")
+        self._btn_confirm.setEnabled(False)
+        self._btn_confirm.clicked.connect(self._on_confirm)
+        footer.addWidget(self._btn_confirm)
+        layout.addLayout(footer)
+
+        # 创建设备卡片
+        for d in devices:
+            card = self._create_device_card(d)
+            self._scroll_layout.insertWidget(self._scroll_layout.count() - 1, card)
+
+        # 启动截图加载线程
+        serials = [d["serial"] for d in devices]
+        if serials:
+            self._loader = _ScreenshotLoader(serials)
+            self._loader.screenshot_ready.connect(self._on_screenshot_loaded)
+            self._loader.finished.connect(self._on_all_loaded)
+            self._loader.start()
+
+    def _create_device_card(self, dev):
+        card = QFrame()
+        card.setObjectName("deviceCard")
+        card.setFixedHeight(90)
+        card.setCursor(Qt.PointingHandCursor)
+        card.setStyleSheet(
+            "QFrame#deviceCard { background: #252525; border: 2px solid #444; border-radius: 8px; }"
+            'QFrame#deviceCard[selected="true"] { border: 2px solid #4FC3F7; background: #1e2d3d; }'
+        )
+        card.setProperty("device_serial", dev["serial"])
+
+        layout = QHBoxLayout(card)
+        layout.setContentsMargins(12, 6, 12, 6)
+        layout.setSpacing(12)
+
+        # 缩略图占位
+        thumb = QLabel("加载中...")
+        thumb.setFixedSize(120, 72)
+        thumb.setAlignment(Qt.AlignCenter)
+        thumb.setStyleSheet(
+            "background: #1a1a1a; border: 1px solid #333; border-radius: 4px;"
+            "color: #666; font-size: 11px;"
+        )
+        layout.addWidget(thumb)
+
+        # 设备信息
+        info_layout = QVBoxLayout()
+        info_layout.setSpacing(2)
+        lbl_serial = QLabel(dev["serial"])
+        lbl_serial.setStyleSheet("color: #4FC3F7; font-weight: bold; font-size: 13px;")
+        info_layout.addWidget(lbl_serial)
+
+        if dev.get("resolution"):
+            lbl_res = QLabel(f"分辨率: {dev['resolution']}")
+            lbl_res.setStyleSheet("color: #999; font-size: 12px;")
+            info_layout.addWidget(lbl_res)
+
+        lbl_hint = QLabel("点击选中此设备")
+        lbl_hint.setStyleSheet("color: #666; font-size: 11px;")
+        info_layout.addWidget(lbl_hint)
+        info_layout.addStretch()
+        layout.addLayout(info_layout, 1)
+
+        # 选中标记
+        lbl_check = QLabel("○")
+        lbl_check.setFixedWidth(30)
+        lbl_check.setAlignment(Qt.AlignCenter)
+        lbl_check.setStyleSheet("color: #555; font-size: 22px; font-weight: bold;")
+        layout.addWidget(lbl_check)
+
+        # 点击卡片选中
+        card.mousePressEvent = lambda e, s=dev["serial"]: self._select_device(s)
+
+        # 缩略图点击 → 大图预览
+        thumb.mousePressEvent = lambda e, s=dev["serial"]: self._show_preview(s)
+
+        self._cards[dev["serial"]] = card
+        self._thumb_labels[dev["serial"]] = thumb
+        card.setProperty("check_label", lbl_check)
+        return card
+
+    def _on_screenshot_loaded(self, serial, img):
+        if serial not in self._thumb_labels:
+            return
+        thumb = self._thumb_labels[serial]
+        if img is not None:
+            try:
+                from io import BytesIO
+                buf = BytesIO()
+                img.save(buf, format="PNG")
+                pix = QPixmap()
+                pix.loadFromData(buf.getvalue())
+                scaled = pix.scaled(118, 70, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                thumb.setPixmap(scaled)
+                thumb.setStyleSheet(
+                    "background: #111; border: 1px solid #333; border-radius: 4px;"
+                )
+                # 保存原始图片供预览
+                self._thumb_labels[serial + "_full"] = img
+            except Exception:
+                thumb.setText("加载失败")
+                thumb.setStyleSheet(
+                    "background: #1a1a1a; border: 1px solid #333; border-radius: 4px;"
+                    "color: #ff6666; font-size: 11px;"
+                )
+        else:
+            thumb.setText("无画面")
+            thumb.setStyleSheet(
+                "background: #1a1a1a; border: 1px solid #333; border-radius: 4px;"
+                "color: #ffaa00; font-size: 11px;"
+            )
+
+    def _on_all_loaded(self):
+        loaded = sum(1 for k in self._thumb_labels if not k.endswith("_full") and not self._thumb_labels[k].text())
+        self._lbl_status.setText("截图加载完成，请选择设备")
+        self._lbl_status.setStyleSheet("color: #6a6; font-size: 12px;")
+
+    def _select_device(self, serial):
+        """选中某台设备"""
+        self.selected_device = None
+        self._btn_confirm.setEnabled(True)
+        for s, card in self._cards.items():
+            chk = card.property("check_label")
+            if s == serial:
+                self.selected_device = {"serial": s}
+                card.setProperty("selected", "true")
+                card.setStyleSheet(
+                    'QFrame#deviceCard[selected="true"]'
+                    "{ border: 2px solid #4FC3F7; background: #1e2d3d; border-radius: 8px; }"
+                )
+                if chk:
+                    chk.setText("●")
+                    chk.setStyleSheet("color: #4FC3F7; font-size: 22px; font-weight: bold;")
+            else:
+                card.setProperty("selected", "false")
+                card.setStyleSheet(
+                    "QFrame#deviceCard { background: #252525; border: 2px solid #444; border-radius: 8px; }"
+                )
+                if chk:
+                    chk.setText("○")
+                    chk.setStyleSheet("color: #555; font-size: 22px; font-weight: bold;")
+
+    def _show_preview(self, serial):
+        """弹出大图预览"""
+        full_key = serial + "_full"
+        if full_key not in self._thumb_labels:
+            return
+        img = self._thumb_labels[full_key]
+        if img is None:
+            return
+        try:
+            from io import BytesIO
+            buf = BytesIO()
+            img.save(buf, format="PNG")
+            pix = QPixmap()
+            pix.loadFromData(buf.getvalue())
+
+            preview = QDialog(self)
+            preview.setWindowTitle(f"设备截图 - {serial}")
+            preview.setMinimumSize(300, 200)
+
+            layout = QVBoxLayout(preview)
+            layout.setContentsMargins(8, 8, 8, 8)
+
+            scr = QScrollArea()
+            scr.setWidgetResizable(False)
+            scr.setStyleSheet("QScrollArea { border: none; background: #111; }")
+
+            img_label = QLabel()
+            screen = QApplication.primaryScreen()
+            if screen:
+                max_w = int(screen.availableGeometry().width() * 0.85)
+                max_h = int(screen.availableGeometry().height() * 0.85)
+                if pix.width() > max_w or pix.height() > max_h:
+                    pix = pix.scaled(max_w, max_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            img_label.setPixmap(pix)
+            img_label.setAlignment(Qt.AlignCenter)
+            scr.setWidget(img_label)
+            layout.addWidget(scr)
+
+            close_btn = QPushButton("关闭")
+            close_btn.clicked.connect(preview.accept)
+            layout.addWidget(close_btn, 0, Qt.AlignCenter)
+
+            preview.exec()
+        except Exception:
+            pass
+
+    def _on_confirm(self):
+        if self.selected_device:
+            self.accept()
+
+    def _on_cancel(self):
+        if self._loader and self._loader.isRunning():
+            self._loader.terminate()
+        self.reject()
+def closeEvent(self, event):
         self.tracker.stop_tracking()
         super().closeEvent(event)
