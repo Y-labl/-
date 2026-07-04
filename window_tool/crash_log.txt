@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "D:\Program Files\mhxy-project\window_tool\ui\main_window.py", line 1777, in _on_adb_devices_found
+    self._bind_adb_device(dialog.selected_device)
+  File "D:\Program Files\mhxy-project\window_tool\ui\main_window.py", line 1851, in _bind_adb_device
+    self._spin_crop_x.setValue(max(0, offset_x))
+AttributeError: 'MainWindow' object has no attribute '_spin_crop_x'

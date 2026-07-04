@@ -12,6 +12,7 @@ class CoordinateTracker(QObject):
     tracking_stopped = Signal()
     status_message = Signal(str)
     right_click_captured = Signal(int, int)  # 右键捕获坐标
+    auto_save_coord = Signal(int, int)       # 停留3秒自动保存
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -19,6 +20,11 @@ class CoordinateTracker(QObject):
         self._tracking = False
         self._right_click_enabled = False
         self._rbutton_pressed = False
+        # 停留检测：鼠标在同位置超过3秒自动保存
+        self._idle_x = -1
+        self._idle_y = -1
+        self._idle_start = 0.0
+        self._idle_saved = False
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._poll_mouse)
 
@@ -32,6 +38,9 @@ class CoordinateTracker(QObject):
         if self._tracking:
             return
         self._tracking = True
+        self._idle_x = -1
+        self._idle_y = -1
+        self._idle_saved = False
         self._timer.start(33)
         self.tracking_started.emit()
         self.status_message.emit("坐标追踪已启动")
@@ -53,6 +62,18 @@ class CoordinateTracker(QObject):
             rel_x = screen_x - rect[0]
             rel_y = screen_y - rect[1]
             self.mouse_position.emit(rel_x, rel_y)
+
+            # 停留检测：鼠标在同一位置超过3秒自动保存
+            now = time.time()
+            if rel_x == self._idle_x and rel_y == self._idle_y:
+                if not self._idle_saved and now - self._idle_start >= 3.0:
+                    self._idle_saved = True
+                    self.auto_save_coord.emit(rel_x, rel_y)
+            else:
+                self._idle_x = rel_x
+                self._idle_y = rel_y
+                self._idle_start = now
+                self._idle_saved = False
 
             # 右键保存坐标：检测右键按下边沿
             if self._right_click_enabled:
@@ -94,12 +115,12 @@ class CoordinateTracker(QObject):
                     time.sleep(0.01)
                     win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
                     time.sleep(0.05)
-                self.status_message.emit(f"测试双击 → ({x}, {y}) 完成")
+                self.status_message.emit(f"测试双击 -> ({x}, {y}) 完成")
             else:
                 win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
                 time.sleep(0.02)
                 win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
-                self.status_message.emit(f"测试点击 → ({x}, {y}) 完成")
+                self.status_message.emit(f"测试点击 -> ({x}, {y}) 完成")
             return True
         except Exception as e:
             self.status_message.emit(f"测试点击失败: {e}")

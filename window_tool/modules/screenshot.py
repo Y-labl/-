@@ -1,34 +1,32 @@
-"""截图模块 - 统一使用逻辑像素坐标系（自动处理 Windows DPI 缩放）"""
-import os, io, ctypes
+"""截图模块 - 纯 ctypes 实现"""
+import os, ctypes
 from datetime import datetime
-from typing import Optional, Tuple
 from PIL import Image
 from PySide6.QtCore import QObject, Signal, QThread
 
-try:
-    import mss, mss.tools
-    HAS_MSS = True
-except ImportError:
-    HAS_MSS = False
+user32 = ctypes.windll.user32
+gdi32 = ctypes.windll.gdi32
 
-try:
-    import win32gui, win32ui, win32con, win32api
-    HAS_WIN32 = True
-except ImportError:
-    HAS_WIN32 = False
+SRCCOPY = 0x00CC0020
+CAPTUREBLT = 0x40000000
+LOGPIXELSX = 88
 
+def _debug(msg):
+    try:
+        with open("_screenshot_debug.txt", "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}\n")
+    except:
+        pass
 
 def _get_screen_dpr() -> float:
-    """获取主屏幕的 DPI 缩放比例 (1.0 = 100%, 1.25 = 125%, 1.5 = 150%)"""
     try:
-        # Win8.1+ Per-Monitor DPI
-        hdc = ctypes.windll.user32.GetDC(0)
+        hdc = user32.GetDC(0)
         if hdc:
             try:
-                dpi_x = ctypes.windll.gdi32.GetDeviceCaps(hdc, 88)  # LOGPIXELSX
+                dpi_x = gdi32.GetDeviceCaps(hdc, LOGPIXELSX)
                 return dpi_x / 96.0
             finally:
-                ctypes.windll.user32.ReleaseDC(0, hdc)
+                user32.ReleaseDC(0, hdc)
     except Exception:
         pass
     return 1.0
@@ -64,81 +62,97 @@ class ScreenCapture(QObject):
 
     @staticmethod
     def capture_region(region=None):
-        """截取屏幕区域，返回 PIL Image (RGB)，已缩放到逻辑像素"""
         dpr = _get_screen_dpr()
-        raw_img = None
-        use_mss = True
+        _debug(f"capture_region: region={region}, dpr={dpr}")
 
-        if HAS_MSS:
-            try:
-                raw_img = ScreenCapture._capture_mss(region)
-            except Exception:
-                pass
-        if raw_img is None and HAS_WIN32:
-            try:
-                raw_img = ScreenCapture._capture_gdi(region)
-                use_mss = False
-            except Exception:
-                pass
-        if raw_img is None:
-            return None
-
-        # 如果 DPI 缩放不是 100%，将物理像素图像缩放到逻辑像素
-        # 这样 Qt 显示、鼠标坐标、模板匹配都在统一的逻辑像素空间
-        if dpr > 1.001:
-            new_w = int(raw_img.width / dpr)
-            new_h = int(raw_img.height / dpr)
-            if new_w > 0 and new_h > 0:
-                raw_img = raw_img.resize((new_w, new_h), Image.LANCZOS)
-
-        return raw_img
-
-    @staticmethod
-    def _capture_mss(region=None):
-        with mss.mss() as sct:
-            if region:
-                left, top, right, bottom = region
-                monitor = {"top": top, "left": left, "width": right - left, "height": bottom - top}
-            else:
-                monitor = sct.monitors[0]
-            screenshot = sct.grab(monitor)
-            return Image.frombytes("RGB", screenshot.size, screenshot.bgra, "raw", "BGRX")
-
-    @staticmethod
-    def _capture_gdi(region=None):
-        from ctypes import windll
-        hwnd_desktop = win32gui.GetDesktopWindow()
-        hdc_desktop = win32gui.GetWindowDC(hwnd_desktop)
-        hdc_mem = win32gui.CreateCompatibleDC(hdc_desktop)
         try:
-            if region:
-                left, top, right, bottom = region
-                width, height = right - left, bottom - top
-            else:
-                left = win32api.GetSystemMetrics(win32con.SM_XVIRTUALSCREEN)
-                top = win32api.GetSystemMetrics(win32con.SM_YVIRTUALSCREEN)
-                width = win32api.GetSystemMetrics(win32con.SM_CXVIRTUALSCREEN)
-                height = win32api.GetSystemMetrics(win32con.SM_CYVIRTUALSCREEN)
-            bmp = win32ui.CreateBitmap()
-            bmp.CreateCompatibleBitmap(hdc_desktop, width, height)
-            hdc_mem.SelectObject(bmp)
-            windll.gdi32.BitBlt(hdc_mem.GetSafeHdc(), 0, 0, width, height,
-                                 hdc_desktop.GetSafeHdc(), left, top,
-                                 win32con.SRCCOPY | 0x40000000)
-            bmp_bytes = bmp.GetBitmapBits(True)
-            bmp_info = bmp.GetInfo()
-            return Image.frombuffer("RGB", (bmp_info["bmWidth"], bmp_info["bmHeight"]),
-                                     bmp_bytes, "raw", "BGRX", 0, 1)
-        finally:
-            hdc_mem.DeleteDC()
-            win32gui.ReleaseDC(hwnd_desktop, hdc_desktop)
+            hwnd_desktop = user32.GetDesktopWindow()
+            _debug(f"  GetDesktopWindow={hwnd_desktop}")
+            
+            hdc_screen = user32.GetWindowDC(hwnd_desktop)
+            _debug(f"  GetWindowDC={hdc_screen}")
+            
+            hdc_mem = gdi32.CreateCompatibleDC(hdc_screen)
+            _debug(f"  CreateCompatibleDC={hdc_mem}")
+
+            try:
+                if region:
+                    left, top, right, bottom = region
+                    width, height = right - left, bottom - top
+                else:
+                    left = user32.GetSystemMetrics(0)
+                    top = user32.GetSystemMetrics(1)
+                    width = user32.GetSystemMetrics(78)
+                    height = user32.GetSystemMetrics(79)
+
+                _debug(f"  rect: ({left},{top}) {width}x{height}")
+
+                if width <= 0 or height <= 0:
+                    _debug(f"  BAD SIZE, returning None")
+                    return None
+
+                bmp = gdi32.CreateCompatibleBitmap(hdc_screen, width, height)
+                gdi32.SelectObject(hdc_mem, bmp)
+                gdi32.BitBlt(hdc_mem, 0, 0, width, height, hdc_screen, left, top, SRCCOPY | CAPTUREBLT)
+
+                class BITMAPINFOHEADER(ctypes.Structure):
+                    _fields_ = [
+                        ("biSize", ctypes.c_uint32), ("biWidth", ctypes.c_int32),
+                        ("biHeight", ctypes.c_int32), ("biPlanes", ctypes.c_uint16),
+                        ("biBitCount", ctypes.c_uint16), ("biCompression", ctypes.c_uint32),
+                        ("biSizeImage", ctypes.c_uint32), ("biXPelsPerMeter", ctypes.c_int32),
+                        ("biYPelsPerMeter", ctypes.c_int32), ("biClrUsed", ctypes.c_uint32),
+                        ("biClrImportant", ctypes.c_uint32),
+                    ]
+
+                bi = BITMAPINFOHEADER()
+                bi.biSize = ctypes.sizeof(BITMAPINFOHEADER)
+                bi.biWidth = width
+                bi.biHeight = -height
+                bi.biPlanes = 1
+                bi.biBitCount = 32
+                bi.biCompression = 0
+
+                buf = ctypes.create_string_buffer(width * height * 4)
+                gdi32.GetDIBits(hdc_mem, bmp, 0, height, buf, ctypes.byref(bi), 0)
+
+                raw_img = Image.frombuffer("RGB", (width, height), buf, "raw", "BGRX", 0, 1)
+                _debug(f"  frombuffer OK: {width}x{height}")
+
+                gdi32.DeleteObject(bmp)
+            finally:
+                gdi32.DeleteDC(hdc_mem)
+                user32.ReleaseDC(hwnd_desktop, hdc_screen)
+
+            if dpr > 1.001:
+                new_w = int(raw_img.width / dpr)
+                new_h = int(raw_img.height / dpr)
+                if new_w > 0 and new_h > 0:
+                    raw_img = raw_img.resize((new_w, new_h), Image.LANCZOS)
+
+            _debug(f"  SUCCESS: {raw_img.size}")
+            return raw_img
+        except Exception as e:
+            import traceback
+            err = traceback.format_exc()
+            _debug(f"  EXCEPTION: {err}")
+            try:
+                with open("crash_log.txt", "a", encoding="utf-8") as f:
+                    f.write(err)
+            except:
+                pass
+            print(err)
+            return None
 
     def capture_window(self, hwnd, client_area=True):
         from modules.window_binder import get_window_rect_screen
+        import win32gui
+        _debug(f"capture_window: hwnd={hwnd}, client_area={client_area}")
         if client_area:
             rect = get_window_rect_screen(hwnd)
         else:
             rect = win32gui.GetWindowRect(hwnd)
+        _debug(f"  rect={rect}")
         img = ScreenCapture.capture_region(rect)
         if img is not None:
             self._cached_image = img

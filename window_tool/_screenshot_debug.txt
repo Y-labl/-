@@ -1,0 +1,153 @@
+[23:56:41] capture_window: hwnd=4196482, client_area=True
+[23:56:41]   rect=(148, 181, 1679, 1489)
+[23:56:41] capture_region: region=(148, 181, 1679, 1489), dpr=1.0
+[23:56:41]   GetDesktopWindow=65548
+[23:56:41]   GetWindowDC=1963004592
+[23:56:41]   CreateCompatibleDC=1895896347
+[23:56:41]   rect: (148,181) 1531x1308
+[23:56:41]   frombuffer OK: 1531x1308
+[23:56:41]   SUCCESS: (1531, 1308)
+[23:57:37] capture_window: hwnd=4196482, client_area=True
+[23:57:37]   rect=(148, 181, 1679, 1489)
+[23:57:37] capture_region: region=(148, 181, 1679, 1489), dpr=1.0
+[23:57:37]   GetDesktopWindow=65548
+[23:57:37]   GetWindowDC=1963004592
+[23:57:37]   CreateCompatibleDC=-603909446
+[23:57:37]   rect: (148,181) 1531x1308
+[23:57:37]   frombuffer OK: 1531x1308
+[23:57:37]   SUCCESS: (1531, 1308)
+[23:57:45] capture_window: hwnd=4196482, client_area=True
+[23:57:45]   rect=(148, 181, 1679, 1489)
+[23:57:45] capture_region: region=(148, 181, 1679, 1489), dpr=1.0
+[23:57:45]   GetDesktopWindow=65548
+[23:57:45]   GetWindowDC=1963004592
+[23:57:45]   CreateCompatibleDC=-335473725
+[23:57:45]   rect: (148,181) 1531x1308
+[23:57:45]   frombuffer OK: 1531x1308
+[23:57:45]   SUCCESS: (1531, 1308)
+[23:57:50] capture_window: hwnd=4196482, client_area=True
+[23:57:50]   rect=(148, 181, 1679, 1489)
+[23:57:50] capture_region: region=(148, 181, 1679, 1489), dpr=1.0
+[23:57:50]   GetDesktopWindow=65548
+[23:57:50]   GetWindowDC=1963004592
+[23:57:50]   CreateCompatibleDC=-1543434326
+[23:57:50]   rect: (148,181) 1531x1308
+[23:57:50]   frombuffer OK: 1531x1308
+[23:57:50]   SUCCESS: (1531, 1308)
+[23:57:57] capture_window: hwnd=4196482, client_area=True
+[23:57:57]   rect=(148, 181, 1679, 1489)
+[23:57:57] capture_region: region=(148, 181, 1679, 1489), dpr=1.0
+[23:57:57]   GetDesktopWindow=65548
+[23:57:57]   GetWindowDC=1459688615
+[23:57:57]   CreateCompatibleDC=-1526656998
+[23:57:57]   rect: (148,181) 1531x1308
+[23:57:57]   frombuffer OK: 1531x1308
+[23:57:57]   SUCCESS: (1531, 1308)
+[23:58:06] capture_window: hwnd=4196482, client_area=True
+[23:58:06]   rect=(148, 181, 1679, 1489)
+[23:58:06] capture_region: region=(148, 181, 1679, 1489), dpr=1.0
+[23:58:06]   GetDesktopWindow=65548
+[23:58:06]   GetWindowDC=1963004592
+[23:58:06]   CreateCompatibleDC=335615223
+[23:58:06]   rect: (148,181) 1531x1308
+[23:58:06]   frombuffer OK: 1531x1308
+[23:58:06]   SUCCESS: (1531, 1308)
+[23:58:12] capture_window: hwnd=4196482, client_area=True
+[23:58:12]   rect=(148, 181, 1679, 1489)
+[23:58:12] capture_region: region=(148, 181, 1679, 1489), dpr=1.0
+[23:58:12]   GetDesktopWindow=65548
+[23:58:12]   GetWindowDC=1459688615
+[23:58:12]   CreateCompatibleDC=-1442769535
+[23:58:12]   rect: (148,181) 1531x1308
+[23:58:12]   frombuffer OK: 1531x1308
+[23:58:12]   SUCCESS: (1531, 1308)
+[23:58:18] capture_window: hwnd=4196482, client_area=True
+[23:58:18]   rect=(148, 181, 1679, 1489)
+[23:58:18] capture_region: region=(148, 181, 1679, 1489), dpr=1.0
+[23:58:18]   GetDesktopWindow=65548
+[23:58:18]   GetWindowDC=1963004592
+[23:58:18]   CreateCompatibleDC=-1056894108
+[23:58:18]   rect: (148,181) 1531x1308
+[23:58:18]   frombuffer OK: 1531x1308
+[23:58:18]   SUCCESS: (1531, 1308)
+[23:58:25] capture_window: hwnd=4196482, client_area=True
+[23:58:25]   rect=(148, 181, 1679, 1489)
+[23:58:25] capture_region: region=(148, 181, 1679, 1489), dpr=1.0
+[23:58:25]   GetDesktopWindow=65548
+[23:58:25]   GetWindowDC=1459688615
+[23:58:25]   CreateCompatibleDC=-1576988438
+[23:58:25]   rect: (148,181) 1531x1308
+[23:58:26]   frombuffer OK: 1531x1308
+[23:58:26]   SUCCESS: (1531, 1308)
+[23:58:31] capture_window: hwnd=4196482, client_area=True
+[23:58:31]   rect=(148, 181, 1679, 1489)
+[23:58:31] capture_region: region=(148, 181, 1679, 1489), dpr=1.0
+[23:58:31]   GetDesktopWindow=65548
+[23:58:31]   GetWindowDC=1459688615
+[23:58:31]   CreateCompatibleDC=1224807399
+[23:58:31]   rect: (148,181) 1531x1308
+[23:58:31]   frombuffer OK: 1531x1308
+[23:58:31]   SUCCESS: (1531, 1308)
+[23:58:38] capture_window: hwnd=4196482, client_area=True
+[23:58:38]   rect=(148, 181, 1679, 1489)
+[23:58:38] capture_region: region=(148, 181, 1679, 1489), dpr=1.0
+[23:58:38]   GetDesktopWindow=65548
+[23:58:38]   GetWindowDC=1963004592
+[23:58:38]   CreateCompatibleDC=1493241882
+[23:58:38]   rect: (148,181) 1531x1308
+[23:58:38]   frombuffer OK: 1531x1308
+[23:58:38]   SUCCESS: (1531, 1308)
+[23:58:57] capture_window: hwnd=4196482, client_area=True
+[23:58:57]   rect=(148, 181, 1679, 1489)
+[23:58:57] capture_region: region=(148, 181, 1679, 1489), dpr=1.0
+[23:58:57]   GetDesktopWindow=65548
+[23:58:57]   GetWindowDC=1459688615
+[23:58:57]   CreateCompatibleDC=469832235
+[23:58:57]   rect: (148,181) 1531x1308
+[23:58:57]   frombuffer OK: 1531x1308
+[23:58:57]   SUCCESS: (1531, 1308)
+[14:51:53] capture_window: hwnd=1313336, client_area=True
+[14:51:53]   rect=(5, 45, 1380, 1170)
+[14:51:53] capture_region: region=(5, 45, 1380, 1170), dpr=1.25
+[14:51:53]   GetDesktopWindow=65548
+[14:51:53]   GetWindowDC=1493244608
+[14:51:53]   CreateCompatibleDC=2063668347
+[14:51:53]   rect: (5,45) 1375x1125
+[14:51:53]   frombuffer OK: 1375x1125
+[14:51:53]   SUCCESS: (1100, 900)
+[17:52:21] capture_window: hwnd=1114238, client_area=True
+[17:52:21]   rect=(7, 38, 1105, 937)
+[17:52:21] capture_region: region=(7, 38, 1105, 937), dpr=1.0
+[17:52:21]   GetDesktopWindow=65548
+[17:52:21]   GetWindowDC=587271651
+[17:52:21]   CreateCompatibleDC=2113998329
+[17:52:21]   rect: (7,38) 1098x899
+[17:52:21]   frombuffer OK: 1098x899
+[17:52:21]   SUCCESS: (1098, 899)
+[18:03:12] capture_window: hwnd=1114238, client_area=True
+[18:03:12]   rect=(251, 55, 1349, 954)
+[18:03:12] capture_region: region=(251, 55, 1349, 954), dpr=1.0
+[18:03:12]   GetDesktopWindow=65548
+[18:03:12]   GetWindowDC=-1409217294
+[18:03:12]   CreateCompatibleDC=1979780531
+[18:03:12]   rect: (251,55) 1098x899
+[18:03:12]   frombuffer OK: 1098x899
+[18:03:12]   SUCCESS: (1098, 899)
+[18:03:38] capture_window: hwnd=1114238, client_area=True
+[18:03:38]   rect=(251, 55, 1349, 954)
+[18:03:38] capture_region: region=(251, 55, 1349, 954), dpr=1.0
+[18:03:38]   GetDesktopWindow=65548
+[18:03:38]   GetWindowDC=1493244608
+[18:03:38]   CreateCompatibleDC=-704574365
+[18:03:38]   rect: (251,55) 1098x899
+[18:03:38]   frombuffer OK: 1098x899
+[18:03:38]   SUCCESS: (1098, 899)
+[18:07:01] capture_window: hwnd=1114238, client_area=True
+[18:07:01]   rect=(251, 55, 1349, 954)
+[18:07:01] capture_region: region=(251, 55, 1349, 954), dpr=1.0
+[18:07:01]   GetDesktopWindow=65548
+[18:07:01]   GetWindowDC=989924814
+[18:07:01]   CreateCompatibleDC=1510019274
+[18:07:01]   rect: (251,55) 1098x899
+[18:07:01]   frombuffer OK: 1098x899
+[18:07:01]   SUCCESS: (1098, 899)

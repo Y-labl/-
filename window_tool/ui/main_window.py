@@ -1096,12 +1096,12 @@ class MainWindow(QMainWindow):
                 self.capture.screenshot_taken.emit(img)
 
     def _on_screenshot(self, img):
-        if img.mode == "RGBA":
-            qimg = QImage(img.tobytes("raw", "RGBA"),
-                           img.width, img.height, QImage.Format_RGBA8888)
-        else:
-            qimg = QImage(img.tobytes("raw", "RGB"),
-                           img.width, img.height, QImage.Format_RGB888)
+        # 使用 PNG 编码/解码，避免 raw bytes 格式不匹配导致变形
+        from io import BytesIO
+        buf = BytesIO()
+        img.save(buf, format="PNG")
+        qimg = QImage()
+        qimg.loadFromData(buf.getvalue())
         pixmap = QPixmap.fromImage(qimg)
         self._screenshot_label.set_image(pixmap)
         self._log(f"截图成功: {img.width}x{img.height}")
@@ -1111,8 +1111,25 @@ class MainWindow(QMainWindow):
         if img is None:
             QMessageBox.warning(self, "提示", "没有可保存的截图")
             return
-        path = self.capture.save_screenshot(img)
-        self._log(f"截图已保存: {path}")
+
+        from datetime import datetime
+        default_name = f"screenshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        filters = "PNG (*.png);;JPEG (*.jpg);;BMP (*.bmp);;所有文件 (*.*)"
+        filepath, selected_filter = QFileDialog.getSaveFileName(
+            self, "保存截图", default_name, filters)
+        if not filepath:
+            return  # 用户取消
+
+        # 根据扩展名或过滤器确定格式
+        ext = os.path.splitext(filepath)[1].lower()
+        fmt_map = {".jpg": "JPEG", ".jpeg": "JPEG", ".bmp": "BMP", ".png": "PNG"}
+        save_format = fmt_map.get(ext, "PNG")
+
+        try:
+            img.save(filepath, save_format)
+            self._log("截图已保存: " + filepath)
+        except Exception as e:
+            QMessageBox.warning(self, "保存失败", "保存截图失败:\n" + str(e))
 
     def _on_zoom_changed(self, factor: float):
         pct = int(factor * 100)
@@ -1456,12 +1473,11 @@ class MainWindow(QMainWindow):
             self._btn_custom_ss.setChecked(False)
 
             # 更新截图显示
-            if cropped.mode == "RGBA":
-                qimg = QImage(cropped.tobytes("raw", "RGBA"),
-                               cropped.width, cropped.height, QImage.Format_RGBA8888)
-            else:
-                qimg = QImage(cropped.tobytes("raw", "RGB"),
-                               cropped.width, cropped.height, QImage.Format_RGB888)
+            from io import BytesIO
+            buf = BytesIO()
+            cropped.save(buf, format="PNG")
+            qimg = QImage()
+            qimg.loadFromData(buf.getvalue())
             pixmap = QPixmap.fromImage(qimg)
             self._screenshot_label.set_image(pixmap)
             self.capture._cached_image = cropped  # 同步缓存
