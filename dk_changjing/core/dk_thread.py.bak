@@ -1,0 +1,527 @@
+# -*- coding: utf-8 -*-
+"""点卡场景自动化线程 v4 - 基于反编译 v2 完整原版逻辑重构
+
+原版核心流程 (startDuiZhang):
+  1. closePop + hideTaskAndChanel     → 关闭弹窗，隐藏任务栏/频道
+  2. detectPosition                   → 检测当前位置（地图名+坐标）
+  3. 丝绸之路特殊处理                → setCiChouRandomX
+  4. while isRunning:
+     ├── 弹窗处理 (isShowPopColorDK → dismiss)
+     ├── PK检测 (isInPk)
+     ├── 不在PK → 地图导航 (randomClickMap_CiChouZhiLu / goToMapAction)
+     ├── 在PK中 → 战斗操作:
+     │   ├── 四小人 (isShowFourPerson → findFourPersonAndClick)
+     │   ├── [isZhua] 捕捉 → findSideTargetPoints → 妙手空空技能
+     │   ├── [isTou] 偷窃 → getTouTargetImgName → findPics → 最多4次
+     │   ├── [isPkJiNeng] 技能 → getJiNengTargetImgName → findSideTargetPoints
+     │   ├── [isPkPuGong] 普通攻击
+     │   ├── [isPkAuto] 直接自动
+     │   └── [isPkTaoPao] 逃跑
+     ├── 战斗结束 → checkWuYi + checkXueLan
+     └── time.sleep(0.2~0.5)
+
+注意:
+  - 原版使用 pyscrcpy 实时屏幕流 + OpenCV 模板匹配 (findPic/findPics)
+  - 新项目使用 win32gui PrintWindow 截图 + 颜色检测 + 模板匹配
+  - 原版的地图导航依赖 game_action/map_action 模块（需要完整地图参数）
+  - 原版的 NPC 交互依赖 findNpcAndClickLogic（需要完整 NPC 坐标库）
+  - 以下标注 [TODO: 模板资源] 的功能需要补充对应的模板图片文件
+  - 以下标注 [TODO: 地图模块] 的功能需要实现地图导航模块
+"""
+import time, random, threading
+from datetime import datetime
+from core.adb_util import AdbUtil
+from core.click_util import tap, random_sleep
+from core.screenshot import ScreenCapture
+from core.img_util import find_template, get_color, match_colors
+from core import color_util
+from config.dk_config import DKConfig
+
+
+# ---- 丝绸之路随机X偏移范围（原版 setCiChouRandomX） ----
+# curX < 200  → (105, 270)
+# curX < 400  → (290, 465)
+# else        → (480, 690)
+CI_CHOU_X_RANGES = {
+    0: (105, 270),     # curX < 200
+    1: (290, 465),     # 200 <= curX < 400
+    2: (480, 690),     # curX >= 400
+}
+
+
+class DKChangJingThread(threading.Thread):
+    """点卡场景自动化 - 丝绸之路/多地图挂机（基于反编译 v2 原版逻辑）"""
+
+    # 丝绸之路 Y 轴随机范围
+    CI_CHOU_Y_RANGE = (20, 50)
+
+    def __init__(self, serial, config=None, screenshot=None):
+        super().__init__(daemon=True)
+        self.serial = serial
+        self.config = config or DKConfig()
+        self.screenshot = screenshot or ScreenCapture()
+        self._running = False
+        self._state = "INIT"
+        self._battle_count = 0
+        self._ci_chou_random_x = (105, 270)  # 默认范围
+        self._last_nav_time = 0
+        self._last_frame = None
+        self._callbacks = []
+
+    # ---- 回调系统 ----
+    def add_callback(self, name, func):
+        self._callbacks.append((name, func))
+
+    def _emit(self, name, *a):
+        for n, f in self._callbacks:
+            if n == name:
+                try: f(*a)
+                except: pass
+
+    def _log(self, msg):
+        ts = datetime.now().strftime("%H:%M:%S")
+        full = f"[{ts}] {msg}"
+        print(full)
+        self._emit("log", full)
+
+    @property
+    def state(self): return self._state
+    @property
+    def battle_count(self): return self._battle_count
+    @property
+    def running(self): return self._running
+
+    def stop(self):
+        self._running = False
+        self._log("正在停止...")
+
+    # ================================================================
+    # 入口
+    # ================================================================
+
+    def run(self):
+        self._running = True
+        self._log("=== 点卡场景 v4 启动 ===")
+        self._log(f"设备:{self.serial} 区域:丝绸之路")
+        self._log(f"HP阈值:{self.config.role_xue_percent}% MP阈值:{self.config.role_lan_percent}%")
+        self._log(f"捕捉:{self.config.is_zhua} 偷窃:{self.config.is_tou} 巫医:{self.config.is_wuyi}")
+        self._log(f"自动寻路:{self.config.is_duizhang}")
+
+        try:
+            self._start_duizhang()
+        except Exception as e:
+            self._log(f"主循环崩溃: {e}")
+            import traceback
+            self._log(traceback.format_exc())
+        finally:
+            self._running = False
+            self._log("=== 已停止 ===")
+
+    # ================================================================
+    # 主循环 - 参照原版 startDuiZhang 完整逻辑
+    # ================================================================
+
+    def _start_duizhang(self):
+        """主循环（参照原版 startDuiZhang 2364字节码）"""
+        # 步骤1: 初始化清理
+        self._close_pop()
+        self._hide_task_channel()
+
+        # 步骤2: 检测当前位置 [TODO: 地图模块] 需要实现 detectPosition
+        # 原版: area, curX, _ = detectPosition(self.deviceId)
+        # 目前简化: 默认丝绸之路
+        area = "丝绸之路"
+        self._log(f"刷场景地点: {area}")
+
+        if area is None:
+            self._log("无法检测位置，请停止")
+            return
+
+        # 步骤3: 丝绸之路特殊处理 - 根据当前X坐标设置随机范围
+        # 简化: 使用默认X范围，实际应通过 detectPosition 获取 curX
+        self._ci_chou_random_x = CI_CHOU_X_RANGES[2]  # 默认最右侧范围
+
+        # 步骤4: 主循环
+        while self._running:
+            frame = self._get_frame()
+            if frame is None:
+                time.sleep(0.5)
+                continue
+
+            if not self.config.is_duizhang:
+                time.sleep(0.5)
+                continue
+
+            # --- 弹窗处理（最高优先级）---
+            if color_util.is_popup_showing(frame):
+                self._dismiss_popup()
+                time.sleep(0.2)
+                continue
+
+            # --- PK检测 ---
+            in_battle = color_util.is_in_battle(frame)
+
+            if not in_battle:
+                # === 非战斗: 地图导航 ===
+                self._navigate_area(area)
+                time.sleep(random.uniform(0.2, 0.5))
+                continue
+
+            # === 战斗中: 战斗操作 ===
+            self._state = "IN_BATTLE"
+
+            # 弹窗处理（战斗中也可能有弹窗）
+            frame = self._get_frame()
+            if frame is not None and color_util.is_popup_showing(frame):
+                self._dismiss_popup()
+                time.sleep(0.2)
+
+            # 四小人检测
+            if self._check_four_person():
+                time.sleep(0.3)
+                continue
+
+            # 战斗操作
+            self._log("操作战斗")
+            self._do_battle_operations(area)
+
+            # 等待操作生效
+            time.sleep(random.uniform(1, 2))
+
+            # 检测战斗是否结束
+            frame = self._get_frame()
+            if frame is not None and not color_util.is_in_battle(frame):
+                self._battle_count += 1
+                self._log(f"战斗结束! 累计:{self._battle_count}场")
+                self._emit("state_update", self._state, self._battle_count)
+
+                # 取消自动战斗
+                self._cancel_auto_battle()
+
+                # 战后维护: 巫医 + 血蓝
+                if self.config.is_duizhang:
+                    self._check_wuyi(area)
+                    self._check_xue_lan(0)
+
+                self._state = "IDLE"
+
+            time.sleep(random.uniform(0.2, 0.5))
+
+    # ================================================================
+    # 战斗操作 - 参照原版完整逻辑
+    # ================================================================
+
+    def _do_battle_operations(self, area):
+        """战斗中执行操作（参照原版 isZhua/isTou/isPk* 分支）"""
+
+        # ---- 捕捉宝宝 (isZhua) ----
+        if self.config.is_zhua:
+            self._log("PK-捕捉模式")
+            # 原版: findSideTargetPoints(getZhuaTeshuBianYiTargetImgName(area))
+            # 使用妙手空空技能进行捕捉
+            # [TODO: 模板资源] 需要 "妙手空空选中目标", "PK-妙手空空技能" 模板
+            self._do_tap("妙手空空技能", 270, 270)
+            time.sleep(random.uniform(0.5, 0.8))
+            return
+
+        # ---- 偷窃 (isTou) ----
+        if self.config.is_tou:
+            self._log("PK-偷窃模式")
+            # 原版: 先点自动按钮, 然后 getTouTargetImgName(area) → findSideTargetPoints
+            # 最多偷4次, 偷满则逃跑
+            if self.config.is_pk_auto:
+                self._do_tap("自动战斗", 765, 147)
+                time.sleep(random.uniform(0.3, 0.5))
+
+            # [TODO: 模板资源] 需要各地图目标模板 + findSideTargetPoints
+            tou_count = 0  # 原版 hasTouCount
+            if tou_count == 0:
+                self._log("没有合适目标或偷满4次,选择逃跑")
+                self._do_tap("逃跑", 708, 147)
+            return
+
+        # ---- 技能攻击 (isPkJiNeng) ----
+        if self.config.is_pk_jineng:
+            self._log("PK-技能攻击")
+            if self.config.is_pk_auto:
+                self._do_tap("自动战斗", 765, 147)
+                time.sleep(random.uniform(0.3, 0.5))
+            # [TODO: 模板资源] 需要 getJiNengTargetImgName + findSideTargetPoints
+            # 找不到目标则防御
+            self._do_tap("技能", 270, 365)
+            return
+
+        # ---- 普通攻击 (isPkPuGong) ----
+        if self.config.is_pk_pugong:
+            self._log("PK-普通攻击")
+            self._do_tap("普通攻击", 270, 365)
+            return
+
+        # ---- 逃跑 (isPkTaoPao) ----
+        if self.config.is_pk_taopao:
+            self._log("PK-逃跑")
+            self._do_tap("逃跑", 708, 147)
+            return
+
+        # ---- 直接自动战斗 (isPkAuto) ----
+        if self.config.is_pk_auto:
+            self._log("PK-直接自动")
+            self._do_tap("自动战斗", 765, 147)
+            return
+
+        # 默认: 自动战斗
+        self._do_tap("自动战斗", 765, 147)
+
+    # ================================================================
+    # 地图导航 - 参照原版 randomClickMap_CiChouZhiLu
+    # ================================================================
+
+    def _navigate_area(self, area):
+        """地图导航（参照原版: 不在PK时导航）"""
+        now = time.time()
+        if now - self._last_nav_time < 3:
+            return
+
+        self._state = "NAVIGATE"
+
+        if area == "丝绸之路":
+            # 原版: findPic("打开地图") → randomClickMap_CiChouZhiLu
+            # 简化: 直接在指定区域随机点击
+            x_range = self._ci_chou_random_x
+            x = random.randint(*x_range)
+            y = random.randint(*self.CI_CHOU_Y_RANGE)
+            self._do_tap(f"寻路({x},{y})", x, y)
+            self._last_nav_time = now
+        else:
+            # [TODO: 地图模块] 其他地图使用 goToMapAction(self.deviceId, area)
+            self._log(f"暂不支持地图: {area}")
+            self._last_nav_time = now
+
+    # ================================================================
+    # 四小人处理 - 参照原版 isShowFourPerson → findFourPersonAndClick
+    # ================================================================
+
+    def _check_four_person(self):
+        """检测并处理四小人"""
+        frame = self._get_frame()
+        if frame is None:
+            return False
+
+        if color_util.is_four_person_showing(frame):
+            self._log("出现四小人!")
+            # 原版: findFourPersonAndClick → click(targetP)
+            self._do_tap("四小人", 200, 120)
+            time.sleep(random.uniform(0.5, 1.0))
+            return True
+        return False
+
+    # ================================================================
+    # 血蓝检查 - 参照原版 checkXueLan + detectXueLanPercent
+    # ================================================================
+
+    def _check_xue_lan(self, try_t):
+        """血蓝检查与自动补充（参照原版 checkXueLan, 含重试机制）"""
+        if try_t > 6:
+            self._log("血蓝补充重试超过6次, 跳过")
+            return
+
+        # 原版: 如果加血和加蓝都是"秘制"则跳过（秘制自动生效）
+        if self.config.role_add_xue_mode == "秘制" and self.config.role_add_lan_mode == "秘制":
+            return
+
+        frame = self._get_frame()
+        if frame is None:
+            return
+
+        xue_pct, lan_pct, bb_xue_pct = self._detect_xue_lan_percent(frame)
+        self._log(f"血蓝检测: HP={xue_pct:.0f}% MP={lan_pct:.0f}% BB={bb_xue_pct:.0f}%")
+
+        # 宝宝血量补充
+        if bb_xue_pct < int(self.config.role_xue_percent):
+            self._do_tap("宝宝头像", 675, 15)
+            time.sleep(random.uniform(0.5, 0.8))
+            # 原版: findPic("PK-补充气血")
+            self._do_tap("补充宝宝血", 675, 80)
+
+        # 人物血量补充
+        if xue_pct < int(self.config.role_xue_percent):
+            try_t += 1
+            if self.config.role_add_xue_mode == "秘制":
+                self._do_tap("人物头像", 775, 15)
+                time.sleep(random.uniform(0.8, 1.2))
+                # 原版: findPic("PK-补充气血")
+                self._do_tap("补充人物血", 775, 80)
+            elif self.config.role_add_xue_mode == "红碗":
+                # 原版: findPic("PK-使用红碗")
+                self._do_tap("红碗", 775, 80)
+            elif self.config.role_add_xue_mode == "酒肆":
+                # 原版: findPic("PK-酒肆技能") → findPic("PK-酒肆-休息")
+                self._do_tap("酒肆", 775, 80)
+                time.sleep(random.uniform(0.8, 1.2))
+                self._do_tap("酒肆休息", 540, 960)
+            time.sleep(random.uniform(0.8, 1.2))
+            self._check_xue_lan(try_t)
+            return
+
+        # 人物蓝量补充
+        if lan_pct < int(self.config.role_lan_percent):
+            try_t += 1
+            if self.config.role_add_lan_mode == "秘制":
+                self._do_tap("人物头像", 775, 15)
+                time.sleep(random.uniform(0.8, 1.2))
+                # 原版: findPic("PK-补充魔法")
+                self._do_tap("补充人物蓝", 775, 110)
+            elif self.config.role_add_lan_mode == "蓝碗":
+                self._do_tap("蓝碗", 775, 110)
+            elif self.config.role_add_lan_mode == "酒肆":
+                # 原版: findPic("PK-酒肆技能") → findPic("PK-酒肆-休息")
+                self._do_tap("酒肆", 775, 80)
+                time.sleep(random.uniform(0.8, 1.2))
+                self._do_tap("酒肆休息", 540, 960)
+            time.sleep(random.uniform(0.8, 1.2))
+            self._check_xue_lan(try_t)
+
+    def _detect_xue_lan_percent(self, frame):
+        """血蓝百分比检测（参照原版 detectXueLanPercent）
+        
+        原版算法:
+          HP: x∈[756,799], y=6, 条件 R>200, 34<G<98, B<65, 每像素+=2.38
+          MP: x∈[756,799], y=14, 条件 10<R<87, 120<G<175, B>205, 每像素+=2.38
+          BB: x∈[654,697], y=6, 同上HP条件, 每像素+=2.38
+          先检测是否"没带宝宝" (findPic("没带宝宝") is None → isHasBB=True)
+        """
+        xue_percent = 0.0
+        lan_percent = 0.0
+        bb_xue_percent = 0.0
+
+        if frame is None:
+            return (100, 100, 100)
+
+        try:
+            h, w = frame.shape[:2]
+
+            # 人物血量扫描
+            for x in range(756, min(799, w)):
+                r, g, b = get_color(frame, x, 6)
+                if r > 200 and 34 < g < 98 and b < 65:
+                    xue_percent += 2.38
+
+            # 人物蓝量扫描
+            for x in range(756, min(799, w)):
+                r, g, b = get_color(frame, x, 14)
+                if 87 > r > 10 and 120 < g < 175 and b > 205:
+                    lan_percent += 2.38
+
+            # 宝宝血量扫描（原版: isHasBB = findPic("没带宝宝") is None）
+            # [TODO: 模板资源] 需要"没带宝宝"模板来检测是否有宝宝
+            bb_xue_percent = 101  # 原版: 没宝宝时 = 101
+            # 如果有宝宝:
+            # for x in range(654, min(697, w)):
+            #     r, g, b = get_color(frame, x, 6)
+            #     if r > 200 and 34 < g < 98 and b < 65:
+            #         bb_xue_percent += 2.38
+
+        except Exception as e:
+            self._log(f"血蓝检测异常: {e}")
+
+        return (xue_percent, lan_percent, bb_xue_percent)
+
+    # ================================================================
+    # 巫医检查 - 参照原版 checkWuYi (896字节)
+    # ================================================================
+
+    def _check_wuyi(self, area):
+        """巫医检查（参照原版 checkWuYi）
+        
+        原版完整流程:
+          1. 检测"没带宝宝" 和 "小猫-召唤兽忠诚度"
+          2. isNeedWuYiColor 确认颜色
+          3. 打开背包 → 双击"摄妖香" → 关闭背包
+          4. 根据地图找到NPC对话"我要同时补满召唤兽"
+          5. 打开背包 → 双击"洞冥草" → 关闭背包
+        
+        支持地图: 子母河底, 龙窟五层/六层, 凤巢四层, 麒麟山, 小西天, 
+                  小雷音寺, 女娲神迹, 伊阙龙门, 须弥东界, 银华镜, 弥勒山, 丝绸之路
+        """
+        if not self.config.is_wuyi:
+            return
+
+        frame = self._get_frame()
+        if frame is None:
+            return
+
+        # 原版: isShowMaoEnter = findPic("没带宝宝") is None and findPic("小猫-召唤兽忠诚度") is not None
+        # 简化: 使用颜色检测
+        if color_util.is_need_wuyi(frame):
+            self._log("检测到召唤兽需要巫医治疗")
+
+            # [TODO: 模板资源 + NPC交互模块]
+            # 原版完整流程需要:
+            # 1. clickOpenPkg → doubleClickProduct("摄妖香") → clickClosePkg
+            # 2. 根据 area 查找 NPC 坐标并对话
+            # 3. clickOpenPkg → doubleClickProduct("洞冥草") → clickClosePkg
+
+            # 简化版: 直接点击巫医位置
+            wuyi_points = {
+                "丝绸之路": (540, 1700),
+                "子母河底": (540, 1700),
+                "龙窟五层": (540, 1700),
+                "龙窟六层": (540, 1700),
+                "凤巢四层": (540, 1700),
+                "麒麟山": (540, 1700),
+                "小西天": (540, 1700),
+                "小雷音寺": (540, 1700),
+                "女娲神迹": (540, 1700),
+                "伊阙龙门": (540, 1700),
+                "须弥东界": (540, 1700),
+                "银华镜": (540, 1700),
+                "弥勒山": (540, 1700),
+            }
+            wx, wy = wuyi_points.get(area, (540, 1700))
+            self._do_tap("巫医治疗", wx, wy)
+            time.sleep(random.uniform(0.5, 1.0))
+
+    # ================================================================
+    # 辅助方法
+    # ================================================================
+
+    def _get_frame(self):
+        """获取当前截图"""
+        try:
+            frame = self.screenshot.capture_array()
+            if frame is not None:
+                self._last_frame = frame
+            return frame
+        except Exception:
+            return self._last_frame
+
+    def _close_pop(self):
+        """关闭弹窗（参照原版 closePop）"""
+        frame = self._get_frame()
+        if frame is not None and color_util.is_popup_showing(frame):
+            self._dismiss_popup()
+
+    def _hide_task_channel(self):
+        """隐藏任务栏和聊天频道（参照原版 hideTaskAndChanel）"""
+        # 原版随机15%概率执行
+        if random.random() < 0.15:
+            self._do_tap("隐藏任务", 700, 50)
+            time.sleep(random.uniform(0.5, 1.0))
+
+    def _dismiss_popup(self):
+        """关闭弹窗"""
+        x, y = color_util.dismiss_popup_click_pos()
+        self._do_tap("关闭弹窗", x, y)
+        time.sleep(random.uniform(0.2, 0.4))
+
+    def _cancel_auto_battle(self):
+        """取消自动战斗（参照原版: findPic("PK-取消自动战斗")）"""
+        # 原版用模板匹配找到按钮后点击
+        self._do_tap("取消自动战斗", 765, 147)
+        time.sleep(random.uniform(0.3, 0.5))
+
+    def _do_tap(self, label, x, y):
+        """执行点击（带随机偏移）"""
+        ox = random.randint(-5, 5)
+        oy = random.randint(-5, 5)
+        AdbUtil.tap(self.serial, x + ox, y + oy)

@@ -1,0 +1,15 @@
+{
+  "role_add_xue_mode": "酒肆",
+  "role_add_lan_mode": "酒肆",
+  "role_xue_percent": 30,
+  "role_lan_percent": 30,
+  "is_zhua": true,
+  "is_tou": true,
+  "is_pk_jineng": true,
+  "is_pk_pugong": false,
+  "is_pk_fangyu": false,
+  "is_pk_auto": false,
+  "is_pk_taopao": false,
+  "is_duizhang": true,
+  "is_wuyi": true
+}

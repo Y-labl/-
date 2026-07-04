@@ -1,0 +1,232 @@
+# Decompiled from Python 3.8 bytecode
+# Source: map_action.pyc
+
+import math
+import random
+import time
+from PyQt5.QtCore import QPoint
+from loguru import logger
+import const
+from common.util.click_util import click
+from common.util.color_util import isShowPopColorDK
+from common.util.detect_position_util import detectPosition
+from common.util.img_util import checkAtDaoJu, findPic, findPics, waitAssertFuncOk, findOneFromPics
+from common.util.math_util import calculate_per_color, distance_between_points, isframeSame
+from common.util.scrcpy_util import DeviceWidth, DeviceHeight, scrcpyUtil
+from game_action.application_action import openHideAction
+from game_action.unit.common_unit import doubleClickProduct, clickFlyMap, clickOpenPkg, hideMapLocation, clickOpenMap, closePop, clickMapOpenShaiXuan, waitToMapPosition, clickNpcPerson, clickNpcDialog, clickChuanSong, clickNpcTaskPerson
+
+def _jianYeMapIsLightDK(deviceId):
+    r, g, b = calculate_per_color(deviceId, 453, 106, 10, 10)
+    if abs(r - 150) < 20 and abs(g - 163) < 20 and abs(b - 130) < 20:
+        return True
+    return False
+
+def _changAnMapIsLightDK(deviceId):
+    r, g, b = calculate_per_color(deviceId, 295, 190, 10, 10)
+    if abs(r - 181) < 20 and abs(g - 166) < 20 and abs(b - 139) < 20:
+        return True
+    return False
+
+def _changShouCunMapIsLightDK(deviceId):
+    r, g, b = calculate_per_color(deviceId, 365, 155, 5, 1)
+    if abs(r - 224) < 30 and abs(g - 197) < 30 and abs(b - 190) < 30:
+        return True
+    return False
+
+def _xiLiangNvGuoMapIsLightDK(deviceId):
+    r, g, b = calculate_per_color(deviceId, 428, 175, 10, 10)
+    if abs(r - 214) < 20 and abs(g - 199) < 20 and abs(b - 189) < 20:
+        return True
+    return False
+
+def _baoXiangGuoMapIsLightDK(deviceId):
+    r, g, b = calculate_per_color(deviceId, 231, 242, 4, 4)
+    if abs(r - 245) < 20 and abs(g - 209) < 20 and abs(b - 146) < 20:
+        return True
+    return False
+
+def _zhuZiGuoMapIsLightDK(deviceId):
+    r, g, b = calculate_per_color(deviceId, 251, 114, 5, 5)
+    if abs(r - 226) < 20 and abs(g - 187) < 20 and abs(b - 103) < 20:
+        return True
+    return False
+
+def _aoLaiMapIsLightDK(deviceId):
+    r, g, b = calculate_per_color(deviceId, 137, 360, 5, 5)
+    if abs(r - 70) < 20 and abs(g - 165) < 20 and abs(b - 160) < 20:
+        return True
+    return False
+
+def _changShouJiaoWaiMapIsLightDK(deviceId):
+    r, g, b = calculate_per_color(deviceId, 237, 315, 10, 10)
+    if abs(r - 235) < 20 and abs(g - 198) < 20 and abs(b - 150) < 20:
+        return True
+    return False
+
+def _daTangJingWaiMapIsLightDK(deviceId):
+    r, g, b = calculate_per_color(deviceId, 210, 189, 5, 5)
+    if abs(r - 229) < 20 and abs(g - 164) < 20 and abs(b - 84) < 20:
+        return True
+    return False
+
+def _moWangZhaiMapIsLightDK(deviceId):
+    r, g, b = calculate_per_color(deviceId, 339, 294, 5, 5)
+    if abs(r - 185) < 20 and abs(g - 164) < 20 and abs(b - 117) < 20:
+        return True
+    return False
+
+def _zhanSHenShanMapIsLightDK(deviceId):
+    r, g, b = calculate_per_color(deviceId, 340, 108, 5, 5)
+    if abs(r - 254) < 20 and abs(g - 230) < 20 and abs(b - 208) < 20:
+        return True
+    return False
+
+def _shenMuLinMapIsLightDK(deviceId):
+    r, g, b = calculate_per_color(deviceId, 346, 204, 3, 3)
+    if abs(r - 242) < 20 and abs(g - 243) < 20 and abs(b - 230) < 20:
+        return True
+    return False
+
+def _fuRongGuoMapIsLightDK(deviceId):
+    r, g, b = calculate_per_color(deviceId, 481, 335, 4, 4)
+    if abs(r - 250) < 40 and abs(b - 148) < 40:
+        return True
+    return False
+
+def _huaShengSiIsLightDK(deviceId):
+    r, g, b = calculate_per_color(deviceId, 300, 266, 2, 2)
+    if abs(r - 173) < 20 and abs(g - 178) < 20 and abs(b - 133) < 20:
+        return True
+    return False
+
+def _diFuIsLightDK(deviceId):
+    r, g, b = calculate_per_color(deviceId, 341, 312, 2, 2)
+    if abs(r - 222) < 20 and abs(g - 140) < 20 and abs(b - 66) < 20:
+        return True
+    return False
+
+def _daTangGuoJingIsLightDK(deviceId):
+    r, g, b = calculate_per_color(deviceId, 232, 221, 2, 2)
+    if abs(r - 205) < 20 and abs(g - 170) < 20 and abs(b - 107) < 20:
+        return True
+    return False
+
+def _puTuoShanIsLightDK(deviceId):
+    r, g, b = calculate_per_color(deviceId, 362, 94, 2, 2)
+    if abs(r - 150) < 20 and abs(g - 203) < 20 and abs(b - 245) < 20:
+        return True
+    return False
+
+def _jieYangShanIsLightDK(deviceId):
+    r, g, b = calculate_per_color(deviceId, 154, 219, 2, 2)
+    if abs(r - 210) < 20 and abs(g - 232) < 20 and abs(b - 242) < 20:
+        return True
+    return False
+
+def _huaGuoShanIsLightDK(deviceId):
+    r, g, b = calculate_per_color(deviceId, 504, 80, 2, 2)
+    if abs(r - 180) < 20 and abs(g - 220) < 20 and abs(b - 232) < 20:
+        return True
+    return False
+
+def _huanJingHuaGuoShanShanIsLightDK(deviceId):
+    r, g, b = calculate_per_color(deviceId, 177, 371, 2, 2)
+    if abs(r - 235) < 20 and abs(g - 239) < 20 and abs(b - 245) < 20:
+        return True
+    return False
+
+def _wanZiShanShanIsLightDK(deviceId):
+    r, g, b = calculate_per_color(deviceId, 300, 95, 2, 2)
+    if abs(r - 233) < 20 and abs(g - 243) < 20 and abs(b - 245) < 20:
+        return True
+    return False
+
+def _nvErCunIsLightDK(deviceId):
+    r, g, b = calculate_per_color(deviceId, 228, 402, 1, 1)
+    if abs(r - 185) < 20 and abs(g - 224) < 20 and abs(b - 211) < 20:
+        return True
+    return False
+
+def _dongHaiWanIsLightDK(deviceId):
+    r, g, b = calculate_per_color(deviceId, 445, 209, 2, 2)
+    if abs(r - 57) < 20 and abs(g - 187) < 20 and abs(b - 200) < 20:
+        return True
+    return False
+
+def _jiangNanYeWaiIsLightDK(deviceId):
+    r, g, b = calculate_per_color(deviceId, 445, 209, 2, 2)
+    if abs(r - 57) < 20 and abs(g - 187) < 20 and abs(b - 200) < 20:
+        return True
+    return False
+
+def _isReturnTrueFuc(deviceId):
+    return True
+
+class AreaParams:
+    __module__ = __name__
+    __qualname__ = "AreaParams"
+
+    def __init__(self, area, isFlyMap, isLightFunc, mapLeftBottomPoint, xyWidthHeight, xyRange):
+        self.area = area
+        self.isFlyMap = isFlyMap
+        self.isLightFunc = isLightFunc
+        self.mapLeftBottomPoint = mapLeftBottomPoint
+        self.xyWidthHeight = xyWidthHeight
+        self.xyRange = xyRange
+
+
+
+def _changAnMapIsLightCW(deviceId):
+    r, g, b = calculate_per_color(deviceId, 271, 198, 10, 10)
+    if abs(r - 184) < 20 and abs(g - 170) < 20 and abs(b - 143) < 20:
+        return True
+    return False
+
+def _aoLaiMapIsLightCW(deviceId):
+    r, g, b = calculate_per_color(deviceId, 115, 364, 4, 4)
+    if abs(r - 77) < 20 and abs(g - 165) < 20 and abs(b - 159) < 20:
+        return True
+    return False
+
+def _huaGuoShanMapIsLightCW(deviceId):
+    r, g, b = calculate_per_color(deviceId, 521, 354, 4, 4)
+    if abs(r - 14) < 20 and abs(g - 117) < 20 and abs(b - 164) < 20:
+        return True
+    return False
+
+def _beiJuLuZhouMapIsLightCW(deviceId):
+    r, g, b = calculate_per_color(deviceId, 513, 87, 4, 4)
+    if abs(r - 194) < 20 and abs(g - 211) < 20 and abs(b - 234) < 20:
+        return True
+    return False
+
+def _longKuYiCengMapIsLightCW(deviceId):
+    r, g, b = calculate_per_color(deviceId, 93, 140, 2, 2)
+    if abs(r - 240) < 20 and abs(g - 248) < 20 and abs(b - 254) < 20:
+        return True
+    return False
+
+def _pengLaiXianDaoMapIsLightCW(deviceId):
+    r, g, b = calculate_per_color(deviceId, 518, 101, 4, 4)
+    if abs(r - 225) < 20 and abs(g - 232) < 20 and abs(b - 245) < 20:
+        return True
+    return False
+
+def _qiLinShanMapIsLightCW(deviceId):
+    r, g, b = calculate_per_color(deviceId, 360, 102, 2, 2)
+    if abs(r - 220) < 20 and abs(g - 210) < 20 and abs(b - 225) < 20:
+        return True
+    return False
+
+def getMapParams(area):
+    if const.gameType == "�㿨��":
+    for mapParams in mapParamsListDK:
+    if mapParams.area == area:
+    return mapParams
+    else:
+    if const.gameType == "点卡服�":
+    for mapParams in mapParamsListCW:
+    if mapParams.area == area:
+    return mapParams
+

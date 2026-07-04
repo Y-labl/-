@@ -1,0 +1,2557 @@
+319           0 EXTENDED_ARG            18
+              2 SETUP_FINALLY         4610 (to 4614)
+
+320           4 LOAD_GLOBAL              0 (detectPosition)
+              6 LOAD_DEREF               1 (deviceId)
+              8 CALL_FUNCTION            1
+             10 UNPACK_SEQUENCE          3
+             12 STORE_FAST               4 (areaRes)
+             14 STORE_FAST               5 (xRes)
+             16 STORE_FAST               6 (yRes)
+
+321          18 LOAD_DEREF               0 (area)
+             20 LOAD_FAST                4 (areaRes)
+             22 COMPARE_OP               2 (==)
+             24 POP_JUMP_IF_FALSE       66
+
+322          26 LOAD_FAST                2 (flyMapXY)
+             28 LOAD_CONST               0 (None)
+             30 COMPARE_OP               8 (is)
+             32 POP_JUMP_IF_FALSE       40
+
+323          34 POP_BLOCK
+             36 LOAD_CONST               0 (None)
+             38 RETURN_VALUE
+
+325     >>   40 LOAD_GLOBAL              1 (distance_between_points)
+             42 LOAD_GLOBAL              2 (QPoint)
+             44 LOAD_FAST                5 (xRes)
+             46 LOAD_FAST                6 (yRes)
+             48 CALL_FUNCTION            2
+             50 LOAD_FAST                2 (flyMapXY)
+             52 CALL_FUNCTION            2
+             54 LOAD_CONST               1 (100)
+             56 COMPARE_OP               0 (<)
+             58 POP_JUMP_IF_FALSE       66
+
+326          60 POP_BLOCK
+             62 LOAD_CONST               0 (None)
+             64 RETURN_VALUE
+
+327     >>   66 LOAD_GLOBAL              3 (getMapParams)
+             68 LOAD_DEREF               0 (area)
+             70 CALL_FUNCTION            1
+             72 STORE_FAST               7 (mapParams)
+
+328          74 LOAD_FAST                7 (mapParams)
+             76 LOAD_ATTR                4 (isFlyMap)
+             78 POP_JUMP_IF_FALSE      170
+
+329          80 LOAD_GLOBAL              5 (clickOpenPkg)
+             82 LOAD_DEREF               1 (deviceId)
+             84 CALL_FUNCTION            1
+             86 POP_TOP
+
+330          88 LOAD_CONST               2 (False)
+             90 STORE_FAST               8 (isArrive)
+
+331          92 LOAD_FAST                2 (flyMapXY)
+             94 POP_JUMP_IF_FALSE      108
+
+332          96 LOAD_GLOBAL              6 (_feiXingQi)
+             98 LOAD_DEREF               1 (deviceId)
+            100 LOAD_DEREF               0 (area)
+            102 LOAD_FAST                2 (flyMapXY)
+            104 CALL_FUNCTION            3
+            106 STORE_FAST               8 (isArrive)
+
+333     >>  108 LOAD_FAST                8 (isArrive)
+            110 POP_JUMP_IF_TRUE       166
+
+334         112 LOAD_GLOBAL              7 (doubleClickProduct)
+            114 LOAD_DEREF               1 (deviceId)
+            116 LOAD_CONST               3 ('飞行符')
+            118 LOAD_CLOSURE             1 (deviceId)
+            120 BUILD_TUPLE              1
+            122 LOAD_CONST               4 (<code object <lambda> at 0x0000011B9FBF72F0, file "game_action\map_action.py", line 334>)
+            124 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+            126 MAKE_FUNCTION            8 (closure)
+            128 LOAD_CONST               6 ('使用飞行符结果')
+            130 LOAD_CONST               7 (('preImgName', 'preFunc', 'nextImgName'))
+            132 CALL_FUNCTION_KW         4
+            134 POP_TOP
+
+335         136 LOAD_GLOBAL              8 (clickFlyMap)
+            138 LOAD_DEREF               1 (deviceId)
+            140 LOAD_CONST               8 ('飞行符飞')
+            142 LOAD_DEREF               0 (area)
+            144 FORMAT_VALUE             0
+            146 BUILD_STRING             2
+            148 LOAD_CLOSURE             0 (area)
+            150 LOAD_CLOSURE             1 (deviceId)
+            152 BUILD_TUPLE              2
+            154 LOAD_CONST               9 (<code object <lambda> at 0x0000011B9FBF7240, file "game_action\map_action.py", line 335>)
+            156 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+            158 MAKE_FUNCTION            8 (closure)
+            160 LOAD_CONST              10 (('preImgName', 'nextFunc'))
+            162 CALL_FUNCTION_KW         3
+            164 POP_TOP
+        >>  166 EXTENDED_ARG            17
+            168 JUMP_FORWARD          4440 (to 4610)
+
+336     >>  170 LOAD_FAST                7 (mapParams)
+            172 LOAD_ATTR                9 (area)
+            174 LOAD_CONST              11 ('长寿郊外')
+            176 COMPARE_OP               2 (==)
+            178 POP_JUMP_IF_FALSE      246
+
+337         180 LOAD_GLOBAL             10 (goToMapAction)
+            182 LOAD_DEREF               1 (deviceId)
+            184 LOAD_CONST              12 ('长寿村')
+            186 LOAD_GLOBAL              2 (QPoint)
+            188 LOAD_CONST              13 (143)
+            190 LOAD_CONST              14 (5)
+            192 CALL_FUNCTION            2
+            194 LOAD_CONST              15 (('flyMapXY',))
+            196 CALL_FUNCTION_KW         3
+            198 POP_TOP
+
+338         200 LOAD_GLOBAL             11 (goToPositionAction)
+            202 LOAD_DEREF               1 (deviceId)
+            204 LOAD_GLOBAL              3 (getMapParams)
+            206 LOAD_CONST              12 ('长寿村')
+            208 CALL_FUNCTION            1
+            210 LOAD_GLOBAL              2 (QPoint)
+            212 LOAD_CONST              13 (143)
+            214 LOAD_CONST              14 (5)
+            216 CALL_FUNCTION            2
+            218 CALL_FUNCTION            3
+            220 POP_TOP
+
+339         222 LOAD_GLOBAL             12 (clickChuanSong)
+            224 LOAD_DEREF               1 (deviceId)
+            226 LOAD_CLOSURE             1 (deviceId)
+            228 BUILD_TUPLE              1
+            230 LOAD_CONST              16 (<code object <lambda> at 0x0000011B9FC10A80, file "game_action\map_action.py", line 339>)
+            232 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+            234 MAKE_FUNCTION            8 (closure)
+            236 LOAD_CONST              17 (('nextFunc',))
+            238 CALL_FUNCTION_KW         2
+            240 POP_TOP
+            242 EXTENDED_ARG            17
+            244 JUMP_FORWARD          4364 (to 4610)
+
+340     >>  246 LOAD_FAST                7 (mapParams)
+            248 LOAD_ATTR                9 (area)
+            250 LOAD_CONST              18 ('大唐国境')
+            252 COMPARE_OP               2 (==)
+            254 EXTENDED_ARG             1
+            256 POP_JUMP_IF_FALSE      324
+
+341         258 LOAD_GLOBAL             10 (goToMapAction)
+            260 LOAD_DEREF               1 (deviceId)
+            262 LOAD_CONST              19 ('长安城')
+            264 LOAD_GLOBAL              2 (QPoint)
+            266 LOAD_CONST              20 (10)
+            268 LOAD_CONST              21 (3)
+            270 CALL_FUNCTION            2
+            272 LOAD_CONST              15 (('flyMapXY',))
+            274 CALL_FUNCTION_KW         3
+            276 POP_TOP
+
+342         278 LOAD_GLOBAL             11 (goToPositionAction)
+            280 LOAD_DEREF               1 (deviceId)
+            282 LOAD_GLOBAL              3 (getMapParams)
+            284 LOAD_CONST              19 ('长安城')
+            286 CALL_FUNCTION            1
+            288 LOAD_GLOBAL              2 (QPoint)
+            290 LOAD_CONST              20 (10)
+            292 LOAD_CONST              21 (3)
+            294 CALL_FUNCTION            2
+            296 CALL_FUNCTION            3
+            298 POP_TOP
+
+343         300 LOAD_GLOBAL             12 (clickChuanSong)
+            302 LOAD_DEREF               1 (deviceId)
+            304 LOAD_CLOSURE             1 (deviceId)
+            306 BUILD_TUPLE              1
+            308 LOAD_CONST              22 (<code object <lambda> at 0x0000011B9FC10B30, file "game_action\map_action.py", line 343>)
+            310 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+            312 MAKE_FUNCTION            8 (closure)
+            314 LOAD_CONST              17 (('nextFunc',))
+            316 CALL_FUNCTION_KW         2
+            318 POP_TOP
+            320 EXTENDED_ARG            16
+            322 JUMP_FORWARD          4286 (to 4610)
+
+344     >>  324 LOAD_FAST                7 (mapParams)
+            326 LOAD_ATTR                9 (area)
+            328 LOAD_CONST              23 ('江南野外')
+            330 COMPARE_OP               2 (==)
+            332 EXTENDED_ARG             1
+            334 POP_JUMP_IF_FALSE      402
+
+345         336 LOAD_GLOBAL             10 (goToMapAction)
+            338 LOAD_DEREF               1 (deviceId)
+            340 LOAD_CONST              19 ('长安城')
+            342 LOAD_GLOBAL              2 (QPoint)
+            344 LOAD_CONST              24 (541)
+            346 LOAD_CONST              25 (4)
+            348 CALL_FUNCTION            2
+            350 LOAD_CONST              15 (('flyMapXY',))
+            352 CALL_FUNCTION_KW         3
+            354 POP_TOP
+
+346         356 LOAD_GLOBAL             11 (goToPositionAction)
+            358 LOAD_DEREF               1 (deviceId)
+            360 LOAD_GLOBAL              3 (getMapParams)
+            362 LOAD_CONST              19 ('长安城')
+            364 CALL_FUNCTION            1
+            366 LOAD_GLOBAL              2 (QPoint)
+            368 LOAD_CONST              24 (541)
+            370 LOAD_CONST              25 (4)
+            372 CALL_FUNCTION            2
+            374 CALL_FUNCTION            3
+            376 POP_TOP
+
+347         378 LOAD_GLOBAL             12 (clickChuanSong)
+            380 LOAD_DEREF               1 (deviceId)
+            382 LOAD_CLOSURE             1 (deviceId)
+            384 BUILD_TUPLE              1
+            386 LOAD_CONST              26 (<code object <lambda> at 0x0000011B9FC10BE0, file "game_action\map_action.py", line 347>)
+            388 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+            390 MAKE_FUNCTION            8 (closure)
+            392 LOAD_CONST              17 (('nextFunc',))
+            394 CALL_FUNCTION_KW         2
+            396 POP_TOP
+            398 EXTENDED_ARG            16
+            400 JUMP_FORWARD          4208 (to 4610)
+
+348     >>  402 LOAD_FAST                7 (mapParams)
+            404 LOAD_ATTR                9 (area)
+            406 LOAD_CONST              27 ('伊阙龙门')
+            408 COMPARE_OP               2 (==)
+            410 EXTENDED_ARG             2
+            412 POP_JUMP_IF_FALSE      538
+
+349         414 LOAD_GLOBAL             10 (goToMapAction)
+            416 LOAD_DEREF               1 (deviceId)
+            418 LOAD_CONST              19 ('长安城')
+            420 LOAD_GLOBAL              2 (QPoint)
+            422 LOAD_CONST              24 (541)
+            424 LOAD_CONST              25 (4)
+            426 CALL_FUNCTION            2
+            428 LOAD_CONST              15 (('flyMapXY',))
+            430 CALL_FUNCTION_KW         3
+            432 POP_TOP
+
+350         434 LOAD_GLOBAL             11 (goToPositionAction)
+            436 LOAD_DEREF               1 (deviceId)
+            438 LOAD_GLOBAL              3 (getMapParams)
+            440 LOAD_CONST              19 ('长安城')
+            442 CALL_FUNCTION            1
+            444 LOAD_GLOBAL              2 (QPoint)
+            446 LOAD_CONST              24 (541)
+            448 LOAD_CONST              25 (4)
+            450 CALL_FUNCTION            2
+            452 CALL_FUNCTION            3
+            454 POP_TOP
+
+351         456 LOAD_GLOBAL             12 (clickChuanSong)
+            458 LOAD_DEREF               1 (deviceId)
+            460 LOAD_CLOSURE             1 (deviceId)
+            462 BUILD_TUPLE              1
+            464 LOAD_CONST              28 (<code object <lambda> at 0x0000011B9FC10C90, file "game_action\map_action.py", line 351>)
+            466 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+            468 MAKE_FUNCTION            8 (closure)
+            470 LOAD_CONST              17 (('nextFunc',))
+            472 CALL_FUNCTION_KW         2
+            474 POP_TOP
+
+352         476 LOAD_GLOBAL             11 (goToPositionAction)
+            478 LOAD_DEREF               1 (deviceId)
+            480 LOAD_GLOBAL              3 (getMapParams)
+            482 LOAD_CONST              23 ('江南野外')
+            484 CALL_FUNCTION            1
+            486 LOAD_GLOBAL              2 (QPoint)
+            488 LOAD_CONST              29 (146)
+            490 LOAD_CONST              30 (96)
+            492 CALL_FUNCTION            2
+            494 CALL_FUNCTION            3
+            496 POP_TOP
+
+353         498 LOAD_GLOBAL             13 (clickNpcAction)
+            500 LOAD_DEREF               1 (deviceId)
+            502 LOAD_GLOBAL              3 (getMapParams)
+            504 LOAD_CONST              23 ('江南野外')
+            506 CALL_FUNCTION            1
+            508 LOAD_GLOBAL              2 (QPoint)
+            510 LOAD_CONST              29 (146)
+            512 LOAD_CONST              30 (96)
+            514 CALL_FUNCTION            2
+            516 LOAD_CONST              31 ('点NPC对话-送我去伊阙龙门')
+            518 LOAD_CLOSURE             1 (deviceId)
+            520 BUILD_TUPLE              1
+            522 LOAD_CONST              32 (<code object <lambda> at 0x0000011B9FC10D40, file "game_action\map_action.py", line 353>)
+            524 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+            526 MAKE_FUNCTION            8 (closure)
+            528 LOAD_CONST              33 (('assertFunc',))
+            530 CALL_FUNCTION_KW         5
+            532 POP_TOP
+            534 EXTENDED_ARG            15
+            536 JUMP_FORWARD          4072 (to 4610)
+
+354     >>  538 LOAD_FAST                7 (mapParams)
+            540 LOAD_ATTR                9 (area)
+            542 LOAD_CONST              34 ('大唐境外')
+            544 COMPARE_OP               2 (==)
+            546 EXTENDED_ARG             2
+            548 POP_JUMP_IF_FALSE      616
+
+355         550 LOAD_GLOBAL             10 (goToMapAction)
+            552 LOAD_DEREF               1 (deviceId)
+            554 LOAD_CONST              35 ('朱紫国')
+            556 LOAD_GLOBAL              2 (QPoint)
+            558 LOAD_CONST              25 (4)
+            560 LOAD_CONST              25 (4)
+            562 CALL_FUNCTION            2
+            564 LOAD_CONST              15 (('flyMapXY',))
+            566 CALL_FUNCTION_KW         3
+            568 POP_TOP
+
+356         570 LOAD_GLOBAL             11 (goToPositionAction)
+            572 LOAD_DEREF               1 (deviceId)
+            574 LOAD_GLOBAL              3 (getMapParams)
+            576 LOAD_CONST              35 ('朱紫国')
+            578 CALL_FUNCTION            1
+            580 LOAD_GLOBAL              2 (QPoint)
+            582 LOAD_CONST              25 (4)
+            584 LOAD_CONST              25 (4)
+            586 CALL_FUNCTION            2
+            588 CALL_FUNCTION            3
+            590 POP_TOP
+
+357         592 LOAD_GLOBAL             12 (clickChuanSong)
+            594 LOAD_DEREF               1 (deviceId)
+            596 LOAD_CLOSURE             1 (deviceId)
+            598 BUILD_TUPLE              1
+            600 LOAD_CONST              36 (<code object <lambda> at 0x0000011B9FC10DF0, file "game_action\map_action.py", line 357>)
+            602 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+            604 MAKE_FUNCTION            8 (closure)
+            606 LOAD_CONST              17 (('nextFunc',))
+            608 CALL_FUNCTION_KW         2
+            610 POP_TOP
+            612 EXTENDED_ARG            15
+            614 JUMP_FORWARD          3994 (to 4610)
+
+358     >>  616 LOAD_FAST                7 (mapParams)
+            618 LOAD_ATTR                9 (area)
+            620 LOAD_CONST              37 ('天机城')
+            622 COMPARE_OP               2 (==)
+            624 EXTENDED_ARG             2
+            626 POP_JUMP_IF_FALSE      752
+
+359         628 LOAD_GLOBAL             10 (goToMapAction)
+            630 LOAD_DEREF               1 (deviceId)
+            632 LOAD_CONST              35 ('朱紫国')
+            634 LOAD_GLOBAL              2 (QPoint)
+            636 LOAD_CONST              25 (4)
+            638 LOAD_CONST              25 (4)
+            640 CALL_FUNCTION            2
+            642 LOAD_CONST              15 (('flyMapXY',))
+            644 CALL_FUNCTION_KW         3
+            646 POP_TOP
+
+360         648 LOAD_GLOBAL             11 (goToPositionAction)
+            650 LOAD_DEREF               1 (deviceId)
+            652 LOAD_GLOBAL              3 (getMapParams)
+            654 LOAD_CONST              35 ('朱紫国')
+            656 CALL_FUNCTION            1
+            658 LOAD_GLOBAL              2 (QPoint)
+            660 LOAD_CONST              25 (4)
+            662 LOAD_CONST              25 (4)
+            664 CALL_FUNCTION            2
+            666 CALL_FUNCTION            3
+            668 POP_TOP
+
+361         670 LOAD_GLOBAL             12 (clickChuanSong)
+            672 LOAD_DEREF               1 (deviceId)
+            674 LOAD_CLOSURE             1 (deviceId)
+            676 BUILD_TUPLE              1
+            678 LOAD_CONST              38 (<code object <lambda> at 0x0000011B9FC10EA0, file "game_action\map_action.py", line 361>)
+            680 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+            682 MAKE_FUNCTION            8 (closure)
+            684 LOAD_CONST              17 (('nextFunc',))
+            686 CALL_FUNCTION_KW         2
+            688 POP_TOP
+
+362         690 LOAD_GLOBAL             11 (goToPositionAction)
+            692 LOAD_DEREF               1 (deviceId)
+            694 LOAD_GLOBAL              3 (getMapParams)
+            696 LOAD_CONST              34 ('大唐境外')
+            698 CALL_FUNCTION            1
+            700 LOAD_GLOBAL              2 (QPoint)
+            702 LOAD_CONST              39 (190)
+            704 LOAD_CONST              40 (9)
+            706 CALL_FUNCTION            2
+            708 CALL_FUNCTION            3
+            710 POP_TOP
+
+363         712 LOAD_GLOBAL             13 (clickNpcAction)
+            714 LOAD_DEREF               1 (deviceId)
+            716 LOAD_GLOBAL              3 (getMapParams)
+            718 LOAD_CONST              34 ('大唐境外')
+            720 CALL_FUNCTION            1
+            722 LOAD_GLOBAL              2 (QPoint)
+            724 LOAD_CONST              39 (190)
+            726 LOAD_CONST              40 (9)
+            728 CALL_FUNCTION            2
+            730 LOAD_CONST              41 ('点NPC对话-是的我要去')
+            732 LOAD_CLOSURE             1 (deviceId)
+            734 BUILD_TUPLE              1
+            736 LOAD_CONST              42 (<code object <lambda> at 0x0000011B9FC10F50, file "game_action\map_action.py", line 363>)
+            738 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+            740 MAKE_FUNCTION            8 (closure)
+            742 LOAD_CONST              33 (('assertFunc',))
+            744 CALL_FUNCTION_KW         5
+            746 POP_TOP
+            748 EXTENDED_ARG            15
+            750 JUMP_FORWARD          3858 (to 4610)
+
+364     >>  752 LOAD_FAST                7 (mapParams)
+            754 LOAD_ATTR                9 (area)
+            756 LOAD_CONST              43 ('九黎城')
+            758 COMPARE_OP               2 (==)
+            760 EXTENDED_ARG             3
+            762 POP_JUMP_IF_FALSE      888
+
+365         764 LOAD_GLOBAL             10 (goToMapAction)
+            766 LOAD_DEREF               1 (deviceId)
+            768 LOAD_CONST              35 ('朱紫国')
+            770 LOAD_GLOBAL              2 (QPoint)
+            772 LOAD_CONST              25 (4)
+            774 LOAD_CONST              25 (4)
+            776 CALL_FUNCTION            2
+            778 LOAD_CONST              15 (('flyMapXY',))
+            780 CALL_FUNCTION_KW         3
+            782 POP_TOP
+
+366         784 LOAD_GLOBAL             11 (goToPositionAction)
+            786 LOAD_DEREF               1 (deviceId)
+            788 LOAD_GLOBAL              3 (getMapParams)
+            790 LOAD_CONST              35 ('朱紫国')
+            792 CALL_FUNCTION            1
+            794 LOAD_GLOBAL              2 (QPoint)
+            796 LOAD_CONST              25 (4)
+            798 LOAD_CONST              25 (4)
+            800 CALL_FUNCTION            2
+            802 CALL_FUNCTION            3
+            804 POP_TOP
+
+367         806 LOAD_GLOBAL             12 (clickChuanSong)
+            808 LOAD_DEREF               1 (deviceId)
+            810 LOAD_CLOSURE             1 (deviceId)
+            812 BUILD_TUPLE              1
+            814 LOAD_CONST              44 (<code object <lambda> at 0x0000011B9FC25030, file "game_action\map_action.py", line 367>)
+            816 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+            818 MAKE_FUNCTION            8 (closure)
+            820 LOAD_CONST              17 (('nextFunc',))
+            822 CALL_FUNCTION_KW         2
+            824 POP_TOP
+
+368         826 LOAD_GLOBAL             11 (goToPositionAction)
+            828 LOAD_DEREF               1 (deviceId)
+            830 LOAD_GLOBAL              3 (getMapParams)
+            832 LOAD_CONST              34 ('大唐境外')
+            834 CALL_FUNCTION            1
+            836 LOAD_GLOBAL              2 (QPoint)
+            838 LOAD_CONST              45 (171)
+            840 LOAD_CONST              46 (90)
+            842 CALL_FUNCTION            2
+            844 CALL_FUNCTION            3
+            846 POP_TOP
+
+369         848 LOAD_GLOBAL             13 (clickNpcAction)
+            850 LOAD_DEREF               1 (deviceId)
+            852 LOAD_GLOBAL              3 (getMapParams)
+            854 LOAD_CONST              34 ('大唐境外')
+            856 CALL_FUNCTION            1
+            858 LOAD_GLOBAL              2 (QPoint)
+            860 LOAD_CONST              47 (176)
+            862 LOAD_CONST              48 (93)
+            864 CALL_FUNCTION            2
+            866 LOAD_CONST              49 ('点NPC对话-请引领我至九黎城')
+            868 LOAD_CLOSURE             1 (deviceId)
+            870 BUILD_TUPLE              1
+            872 LOAD_CONST              50 (<code object <lambda> at 0x0000011B9FC250E0, file "game_action\map_action.py", line 369>)
+            874 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+            876 MAKE_FUNCTION            8 (closure)
+            878 LOAD_CONST              33 (('assertFunc',))
+            880 CALL_FUNCTION_KW         5
+            882 POP_TOP
+            884 EXTENDED_ARG            14
+            886 JUMP_FORWARD          3722 (to 4610)
+
+370     >>  888 LOAD_FAST                7 (mapParams)
+            890 LOAD_ATTR                9 (area)
+            892 LOAD_CONST              51 ('墨家村')
+            894 COMPARE_OP               2 (==)
+            896 EXTENDED_ARG             4
+            898 POP_JUMP_IF_FALSE     1024
+
+371         900 LOAD_GLOBAL             10 (goToMapAction)
+            902 LOAD_DEREF               1 (deviceId)
+            904 LOAD_CONST              35 ('朱紫国')
+            906 LOAD_GLOBAL              2 (QPoint)
+            908 LOAD_CONST              25 (4)
+            910 LOAD_CONST              25 (4)
+            912 CALL_FUNCTION            2
+            914 LOAD_CONST              15 (('flyMapXY',))
+            916 CALL_FUNCTION_KW         3
+            918 POP_TOP
+
+372         920 LOAD_GLOBAL             11 (goToPositionAction)
+            922 LOAD_DEREF               1 (deviceId)
+            924 LOAD_GLOBAL              3 (getMapParams)
+            926 LOAD_CONST              35 ('朱紫国')
+            928 CALL_FUNCTION            1
+            930 LOAD_GLOBAL              2 (QPoint)
+            932 LOAD_CONST              25 (4)
+            934 LOAD_CONST              25 (4)
+            936 CALL_FUNCTION            2
+            938 CALL_FUNCTION            3
+            940 POP_TOP
+
+373         942 LOAD_GLOBAL             12 (clickChuanSong)
+            944 LOAD_DEREF               1 (deviceId)
+            946 LOAD_CLOSURE             1 (deviceId)
+            948 BUILD_TUPLE              1
+            950 LOAD_CONST              52 (<code object <lambda> at 0x0000011B9FC25190, file "game_action\map_action.py", line 373>)
+            952 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+            954 MAKE_FUNCTION            8 (closure)
+            956 LOAD_CONST              17 (('nextFunc',))
+            958 CALL_FUNCTION_KW         2
+            960 POP_TOP
+
+374         962 LOAD_GLOBAL             11 (goToPositionAction)
+            964 LOAD_DEREF               1 (deviceId)
+            966 LOAD_GLOBAL              3 (getMapParams)
+            968 LOAD_CONST              34 ('大唐境外')
+            970 CALL_FUNCTION            1
+            972 LOAD_GLOBAL              2 (QPoint)
+            974 LOAD_CONST              53 (233)
+            976 LOAD_CONST              54 (110)
+            978 CALL_FUNCTION            2
+            980 CALL_FUNCTION            3
+            982 POP_TOP
+
+375         984 LOAD_GLOBAL             13 (clickNpcAction)
+            986 LOAD_DEREF               1 (deviceId)
+            988 LOAD_GLOBAL              3 (getMapParams)
+            990 LOAD_CONST              34 ('大唐境外')
+            992 CALL_FUNCTION            1
+            994 LOAD_GLOBAL              2 (QPoint)
+            996 LOAD_CONST              55 (238)
+            998 LOAD_CONST              56 (112)
+           1000 CALL_FUNCTION            2
+           1002 LOAD_CONST              57 ('点NPC对话-送我到墨家村')
+           1004 LOAD_CLOSURE             1 (deviceId)
+           1006 BUILD_TUPLE              1
+           1008 LOAD_CONST              58 (<code object <lambda> at 0x0000011B9FC25240, file "game_action\map_action.py", line 375>)
+           1010 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           1012 MAKE_FUNCTION            8 (closure)
+           1014 LOAD_CONST              33 (('assertFunc',))
+           1016 CALL_FUNCTION_KW         5
+           1018 POP_TOP
+           1020 EXTENDED_ARG            14
+           1022 JUMP_FORWARD          3586 (to 4610)
+
+376     >> 1024 LOAD_FAST                7 (mapParams)
+           1026 LOAD_ATTR                9 (area)
+           1028 LOAD_CONST              59 ('大唐官府')
+           1030 COMPARE_OP               2 (==)
+           1032 EXTENDED_ARG             4
+           1034 POP_JUMP_IF_FALSE     1102
+
+377        1036 LOAD_GLOBAL             10 (goToMapAction)
+           1038 LOAD_DEREF               1 (deviceId)
+           1040 LOAD_CONST              19 ('长安城')
+           1042 LOAD_GLOBAL              2 (QPoint)
+           1044 LOAD_CONST              60 (310)
+           1046 LOAD_CONST              61 (273)
+           1048 CALL_FUNCTION            2
+           1050 LOAD_CONST              15 (('flyMapXY',))
+           1052 CALL_FUNCTION_KW         3
+           1054 POP_TOP
+
+378        1056 LOAD_GLOBAL             11 (goToPositionAction)
+           1058 LOAD_DEREF               1 (deviceId)
+           1060 LOAD_GLOBAL              3 (getMapParams)
+           1062 LOAD_CONST              19 ('长安城')
+           1064 CALL_FUNCTION            1
+           1066 LOAD_GLOBAL              2 (QPoint)
+           1068 LOAD_CONST              60 (310)
+           1070 LOAD_CONST              61 (273)
+           1072 CALL_FUNCTION            2
+           1074 CALL_FUNCTION            3
+           1076 POP_TOP
+
+379        1078 LOAD_GLOBAL             12 (clickChuanSong)
+           1080 LOAD_DEREF               1 (deviceId)
+           1082 LOAD_CLOSURE             1 (deviceId)
+           1084 BUILD_TUPLE              1
+           1086 LOAD_CONST              62 (<code object <lambda> at 0x0000011B9FC252F0, file "game_action\map_action.py", line 379>)
+           1088 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           1090 MAKE_FUNCTION            8 (closure)
+           1092 LOAD_CONST              17 (('nextFunc',))
+           1094 CALL_FUNCTION_KW         2
+           1096 POP_TOP
+           1098 EXTENDED_ARG            13
+           1100 JUMP_FORWARD          3508 (to 4610)
+
+380     >> 1102 LOAD_FAST                7 (mapParams)
+           1104 LOAD_ATTR                9 (area)
+           1106 LOAD_CONST              63 ('狮驼岭')
+           1108 COMPARE_OP               2 (==)
+           1110 EXTENDED_ARG             4
+           1112 POP_JUMP_IF_FALSE     1222
+
+381        1114 LOAD_GLOBAL             10 (goToMapAction)
+           1116 LOAD_DEREF               1 (deviceId)
+           1118 LOAD_CONST              35 ('朱紫国')
+           1120 LOAD_GLOBAL              2 (QPoint)
+           1122 LOAD_CONST              25 (4)
+           1124 LOAD_CONST              25 (4)
+           1126 CALL_FUNCTION            2
+           1128 LOAD_CONST              15 (('flyMapXY',))
+           1130 CALL_FUNCTION_KW         3
+           1132 POP_TOP
+
+382        1134 LOAD_GLOBAL             11 (goToPositionAction)
+           1136 LOAD_DEREF               1 (deviceId)
+           1138 LOAD_GLOBAL              3 (getMapParams)
+           1140 LOAD_CONST              35 ('朱紫国')
+           1142 CALL_FUNCTION            1
+           1144 LOAD_GLOBAL              2 (QPoint)
+           1146 LOAD_CONST              25 (4)
+           1148 LOAD_CONST              25 (4)
+           1150 CALL_FUNCTION            2
+           1152 CALL_FUNCTION            3
+           1154 POP_TOP
+
+383        1156 LOAD_GLOBAL             12 (clickChuanSong)
+           1158 LOAD_DEREF               1 (deviceId)
+           1160 LOAD_CLOSURE             1 (deviceId)
+           1162 BUILD_TUPLE              1
+           1164 LOAD_CONST              64 (<code object <lambda> at 0x0000011B9FC253A0, file "game_action\map_action.py", line 383>)
+           1166 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           1168 MAKE_FUNCTION            8 (closure)
+           1170 LOAD_CONST              17 (('nextFunc',))
+           1172 CALL_FUNCTION_KW         2
+           1174 POP_TOP
+
+384        1176 LOAD_GLOBAL             11 (goToPositionAction)
+           1178 LOAD_DEREF               1 (deviceId)
+           1180 LOAD_GLOBAL              3 (getMapParams)
+           1182 LOAD_CONST              34 ('大唐境外')
+           1184 CALL_FUNCTION            1
+           1186 LOAD_GLOBAL              2 (QPoint)
+           1188 LOAD_CONST              65 (8)
+           1190 LOAD_CONST              66 (49)
+           1192 CALL_FUNCTION            2
+           1194 CALL_FUNCTION            3
+           1196 POP_TOP
+
+385        1198 LOAD_GLOBAL             12 (clickChuanSong)
+           1200 LOAD_DEREF               1 (deviceId)
+           1202 LOAD_CLOSURE             1 (deviceId)
+           1204 BUILD_TUPLE              1
+           1206 LOAD_CONST              67 (<code object <lambda> at 0x0000011B9FC25450, file "game_action\map_action.py", line 385>)
+           1208 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           1210 MAKE_FUNCTION            8 (closure)
+           1212 LOAD_CONST              17 (('nextFunc',))
+           1214 CALL_FUNCTION_KW         2
+           1216 POP_TOP
+           1218 EXTENDED_ARG            13
+           1220 JUMP_FORWARD          3388 (to 4610)
+
+386     >> 1222 LOAD_FAST                7 (mapParams)
+           1224 LOAD_ATTR                9 (area)
+           1226 LOAD_CONST              68 ('魔王寨')
+           1228 COMPARE_OP               2 (==)
+           1230 EXTENDED_ARG             5
+           1232 POP_JUMP_IF_FALSE     1342
+
+387        1234 LOAD_GLOBAL             10 (goToMapAction)
+           1236 LOAD_DEREF               1 (deviceId)
+           1238 LOAD_CONST              35 ('朱紫国')
+           1240 LOAD_GLOBAL              2 (QPoint)
+           1242 LOAD_CONST              25 (4)
+           1244 LOAD_CONST              25 (4)
+           1246 CALL_FUNCTION            2
+           1248 LOAD_CONST              15 (('flyMapXY',))
+           1250 CALL_FUNCTION_KW         3
+           1252 POP_TOP
+
+388        1254 LOAD_GLOBAL             11 (goToPositionAction)
+           1256 LOAD_DEREF               1 (deviceId)
+           1258 LOAD_GLOBAL              3 (getMapParams)
+           1260 LOAD_CONST              35 ('朱紫国')
+           1262 CALL_FUNCTION            1
+           1264 LOAD_GLOBAL              2 (QPoint)
+           1266 LOAD_CONST              14 (5)
+           1268 LOAD_CONST              25 (4)
+           1270 CALL_FUNCTION            2
+           1272 CALL_FUNCTION            3
+           1274 POP_TOP
+
+389        1276 LOAD_GLOBAL             12 (clickChuanSong)
+           1278 LOAD_DEREF               1 (deviceId)
+           1280 LOAD_CLOSURE             1 (deviceId)
+           1282 BUILD_TUPLE              1
+           1284 LOAD_CONST              69 (<code object <lambda> at 0x0000011B9FC25500, file "game_action\map_action.py", line 389>)
+           1286 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           1288 MAKE_FUNCTION            8 (closure)
+           1290 LOAD_CONST              17 (('nextFunc',))
+           1292 CALL_FUNCTION_KW         2
+           1294 POP_TOP
+
+390        1296 LOAD_GLOBAL             11 (goToPositionAction)
+           1298 LOAD_DEREF               1 (deviceId)
+           1300 LOAD_GLOBAL              3 (getMapParams)
+           1302 LOAD_CONST              34 ('大唐境外')
+           1304 CALL_FUNCTION            1
+           1306 LOAD_GLOBAL              2 (QPoint)
+           1308 LOAD_CONST              70 (55)
+           1310 LOAD_CONST              56 (112)
+           1312 CALL_FUNCTION            2
+           1314 CALL_FUNCTION            3
+           1316 POP_TOP
+
+391        1318 LOAD_GLOBAL             12 (clickChuanSong)
+           1320 LOAD_DEREF               1 (deviceId)
+           1322 LOAD_CLOSURE             1 (deviceId)
+           1324 BUILD_TUPLE              1
+           1326 LOAD_CONST              71 (<code object <lambda> at 0x0000011B9FC255B0, file "game_action\map_action.py", line 391>)
+           1328 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           1330 MAKE_FUNCTION            8 (closure)
+           1332 LOAD_CONST              17 (('nextFunc',))
+           1334 CALL_FUNCTION_KW         2
+           1336 POP_TOP
+           1338 EXTENDED_ARG            12
+           1340 JUMP_FORWARD          3268 (to 4610)
+
+392     >> 1342 LOAD_FAST                7 (mapParams)
+           1344 LOAD_ATTR                9 (area)
+           1346 LOAD_CONST              72 ('神木林')
+           1348 COMPARE_OP               2 (==)
+           1350 EXTENDED_ARG             5
+           1352 POP_JUMP_IF_FALSE     1478
+
+393        1354 LOAD_GLOBAL             10 (goToMapAction)
+           1356 LOAD_DEREF               1 (deviceId)
+           1358 LOAD_CONST              19 ('长安城')
+           1360 LOAD_GLOBAL              2 (QPoint)
+           1362 LOAD_CONST              73 (349)
+           1364 LOAD_CONST              74 (69)
+           1366 CALL_FUNCTION            2
+           1368 LOAD_CONST              15 (('flyMapXY',))
+           1370 CALL_FUNCTION_KW         3
+           1372 POP_TOP
+
+394        1374 LOAD_GLOBAL             11 (goToPositionAction)
+           1376 LOAD_DEREF               1 (deviceId)
+           1378 LOAD_GLOBAL              3 (getMapParams)
+           1380 LOAD_CONST              19 ('长安城')
+           1382 CALL_FUNCTION            1
+           1384 LOAD_GLOBAL              2 (QPoint)
+           1386 LOAD_CONST              73 (349)
+           1388 LOAD_CONST              74 (69)
+           1390 CALL_FUNCTION            2
+           1392 CALL_FUNCTION            3
+           1394 POP_TOP
+
+395        1396 LOAD_GLOBAL             13 (clickNpcAction)
+           1398 LOAD_DEREF               1 (deviceId)
+           1400 LOAD_GLOBAL              3 (getMapParams)
+           1402 LOAD_CONST              19 ('长安城')
+           1404 CALL_FUNCTION            1
+           1406 LOAD_GLOBAL              2 (QPoint)
+           1408 LOAD_CONST              75 (350)
+           1410 LOAD_CONST              76 (73)
+           1412 CALL_FUNCTION            2
+           1414 LOAD_CONST              77 ('点NPC对话-送我去战神山')
+           1416 LOAD_CLOSURE             1 (deviceId)
+           1418 BUILD_TUPLE              1
+           1420 LOAD_CONST              78 (<code object <lambda> at 0x0000011B9FC25660, file "game_action\map_action.py", line 395>)
+           1422 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           1424 MAKE_FUNCTION            8 (closure)
+           1426 LOAD_CONST              33 (('assertFunc',))
+           1428 CALL_FUNCTION_KW         5
+           1430 POP_TOP
+
+396        1432 LOAD_GLOBAL             11 (goToPositionAction)
+           1434 LOAD_DEREF               1 (deviceId)
+           1436 LOAD_GLOBAL              3 (getMapParams)
+           1438 LOAD_CONST              79 ('战神山')
+           1440 CALL_FUNCTION            1
+           1442 LOAD_GLOBAL              2 (QPoint)
+           1444 LOAD_CONST              80 (17)
+           1446 LOAD_CONST              81 (43)
+           1448 CALL_FUNCTION            2
+           1450 CALL_FUNCTION            3
+           1452 POP_TOP
+
+397        1454 LOAD_GLOBAL             12 (clickChuanSong)
+           1456 LOAD_DEREF               1 (deviceId)
+           1458 LOAD_CLOSURE             1 (deviceId)
+           1460 BUILD_TUPLE              1
+           1462 LOAD_CONST              82 (<code object <lambda> at 0x0000011B9FC25710, file "game_action\map_action.py", line 397>)
+           1464 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           1466 MAKE_FUNCTION            8 (closure)
+           1468 LOAD_CONST              17 (('nextFunc',))
+           1470 CALL_FUNCTION_KW         2
+           1472 POP_TOP
+           1474 EXTENDED_ARG            12
+           1476 JUMP_FORWARD          3132 (to 4610)
+
+398     >> 1478 LOAD_FAST                7 (mapParams)
+           1480 LOAD_ATTR                9 (area)
+           1482 LOAD_CONST              83 ('芙蓉国')
+           1484 COMPARE_OP               2 (==)
+           1486 EXTENDED_ARG             6
+           1488 POP_JUMP_IF_FALSE     1536
+
+399        1490 LOAD_GLOBAL             10 (goToMapAction)
+           1492 LOAD_DEREF               1 (deviceId)
+           1494 LOAD_CONST              19 ('长安城')
+           1496 LOAD_GLOBAL              2 (QPoint)
+           1498 LOAD_CONST              84 (416)
+           1500 LOAD_CONST              85 (270)
+           1502 CALL_FUNCTION            2
+           1504 LOAD_CONST              15 (('flyMapXY',))
+           1506 CALL_FUNCTION_KW         3
+           1508 POP_TOP
+
+400        1510 LOAD_GLOBAL             11 (goToPositionAction)
+           1512 LOAD_DEREF               1 (deviceId)
+           1514 LOAD_GLOBAL              3 (getMapParams)
+           1516 LOAD_CONST              19 ('长安城')
+           1518 CALL_FUNCTION            1
+           1520 LOAD_GLOBAL              2 (QPoint)
+           1522 LOAD_CONST              84 (416)
+           1524 LOAD_CONST              85 (270)
+           1526 CALL_FUNCTION            2
+           1528 CALL_FUNCTION            3
+           1530 POP_TOP
+           1532 EXTENDED_ARG            12
+           1534 JUMP_FORWARD          3074 (to 4610)
+
+401     >> 1536 LOAD_FAST                7 (mapParams)
+           1538 LOAD_ATTR                9 (area)
+           1540 LOAD_CONST              86 ('花果山')
+           1542 COMPARE_OP               2 (==)
+           1544 EXTENDED_ARG             6
+           1546 POP_JUMP_IF_FALSE     1614
+
+402        1548 LOAD_GLOBAL             10 (goToMapAction)
+           1550 LOAD_DEREF               1 (deviceId)
+           1552 LOAD_CONST              87 ('傲来国')
+           1554 LOAD_GLOBAL              2 (QPoint)
+           1556 LOAD_CONST              88 (215)
+           1558 LOAD_CONST              13 (143)
+           1560 CALL_FUNCTION            2
+           1562 LOAD_CONST              15 (('flyMapXY',))
+           1564 CALL_FUNCTION_KW         3
+           1566 POP_TOP
+
+403        1568 LOAD_GLOBAL             11 (goToPositionAction)
+           1570 LOAD_DEREF               1 (deviceId)
+           1572 LOAD_GLOBAL              3 (getMapParams)
+           1574 LOAD_CONST              87 ('傲来国')
+           1576 CALL_FUNCTION            1
+           1578 LOAD_GLOBAL              2 (QPoint)
+           1580 LOAD_CONST              88 (215)
+           1582 LOAD_CONST              13 (143)
+           1584 CALL_FUNCTION            2
+           1586 CALL_FUNCTION            3
+           1588 POP_TOP
+
+404        1590 LOAD_GLOBAL             12 (clickChuanSong)
+           1592 LOAD_DEREF               1 (deviceId)
+           1594 LOAD_CLOSURE             1 (deviceId)
+           1596 BUILD_TUPLE              1
+           1598 LOAD_CONST              89 (<code object <lambda> at 0x0000011B9FC257C0, file "game_action\map_action.py", line 404>)
+           1600 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           1602 MAKE_FUNCTION            8 (closure)
+           1604 LOAD_CONST              17 (('nextFunc',))
+           1606 CALL_FUNCTION_KW         2
+           1608 POP_TOP
+           1610 EXTENDED_ARG            11
+           1612 JUMP_FORWARD          2996 (to 4610)
+
+405     >> 1614 LOAD_FAST                7 (mapParams)
+           1616 LOAD_ATTR                9 (area)
+           1618 LOAD_CONST              90 ('北俱芦洲')
+           1620 COMPARE_OP               2 (==)
+           1622 EXTENDED_ARG             6
+           1624 POP_JUMP_IF_FALSE     1754
+
+406        1626 LOAD_GLOBAL             10 (goToMapAction)
+           1628 LOAD_DEREF               1 (deviceId)
+           1630 LOAD_CONST              87 ('傲来国')
+           1632 LOAD_GLOBAL              2 (QPoint)
+           1634 LOAD_CONST              88 (215)
+           1636 LOAD_CONST              13 (143)
+           1638 CALL_FUNCTION            2
+           1640 LOAD_CONST              15 (('flyMapXY',))
+           1642 CALL_FUNCTION_KW         3
+           1644 POP_TOP
+
+407        1646 LOAD_GLOBAL             11 (goToPositionAction)
+           1648 LOAD_DEREF               1 (deviceId)
+           1650 LOAD_GLOBAL              3 (getMapParams)
+           1652 LOAD_CONST              87 ('傲来国')
+           1654 CALL_FUNCTION            1
+           1656 LOAD_GLOBAL              2 (QPoint)
+           1658 LOAD_CONST              88 (215)
+           1660 LOAD_CONST              13 (143)
+           1662 CALL_FUNCTION            2
+           1664 CALL_FUNCTION            3
+           1666 POP_TOP
+
+408        1668 LOAD_GLOBAL             12 (clickChuanSong)
+           1670 LOAD_DEREF               1 (deviceId)
+           1672 LOAD_CLOSURE             1 (deviceId)
+           1674 BUILD_TUPLE              1
+           1676 LOAD_CONST              91 (<code object <lambda> at 0x0000011B9FC25870, file "game_action\map_action.py", line 408>)
+           1678 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           1680 MAKE_FUNCTION            8 (closure)
+           1682 LOAD_CONST              17 (('nextFunc',))
+           1684 CALL_FUNCTION_KW         2
+           1686 POP_TOP
+
+409        1688 LOAD_GLOBAL             11 (goToPositionAction)
+           1690 LOAD_DEREF               1 (deviceId)
+           1692 LOAD_GLOBAL              3 (getMapParams)
+           1694 LOAD_CONST              86 ('花果山')
+           1696 CALL_FUNCTION            1
+           1698 LOAD_GLOBAL              2 (QPoint)
+           1700 LOAD_CONST              92 (28)
+           1702 LOAD_CONST              93 (98)
+           1704 CALL_FUNCTION            2
+           1706 CALL_FUNCTION            3
+           1708 POP_TOP
+
+410        1710 LOAD_GLOBAL             13 (clickNpcAction)
+           1712 LOAD_DEREF               1 (deviceId)
+           1714 LOAD_GLOBAL              3 (getMapParams)
+           1716 LOAD_CONST              86 ('花果山')
+           1718 CALL_FUNCTION            1
+           1720 LOAD_GLOBAL              2 (QPoint)
+           1722 LOAD_CONST              92 (28)
+           1724 LOAD_CONST              93 (98)
+           1726 CALL_FUNCTION            2
+           1728 LOAD_CONST              41 ('点NPC对话-是的我要去')
+           1730 LOAD_CONST              94 ('点NPC重叠-花果山土地')
+           1732 BUILD_LIST               1
+           1734 LOAD_CLOSURE             1 (deviceId)
+           1736 BUILD_TUPLE              1
+           1738 LOAD_CONST              95 (<code object <lambda> at 0x0000011B9FC25920, file "game_action\map_action.py", line 410>)
+           1740 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           1742 MAKE_FUNCTION            8 (closure)
+           1744 LOAD_CONST              96 (('middleImgNames', 'assertFunc'))
+           1746 CALL_FUNCTION_KW         6
+           1748 POP_TOP
+           1750 EXTENDED_ARG            11
+           1752 JUMP_FORWARD          2856 (to 4610)
+
+411     >> 1754 LOAD_FAST                7 (mapParams)
+           1756 LOAD_ATTR                9 (area)
+           1758 LOAD_CONST              97 ('龙窟一层')
+           1760 COMPARE_OP               2 (==)
+           1762 EXTENDED_ARG             7
+           1764 POP_JUMP_IF_FALSE     1932
+
+412        1766 LOAD_GLOBAL             10 (goToMapAction)
+           1768 LOAD_DEREF               1 (deviceId)
+           1770 LOAD_CONST              87 ('傲来国')
+           1772 LOAD_GLOBAL              2 (QPoint)
+           1774 LOAD_CONST              88 (215)
+           1776 LOAD_CONST              13 (143)
+           1778 CALL_FUNCTION            2
+           1780 LOAD_CONST              15 (('flyMapXY',))
+           1782 CALL_FUNCTION_KW         3
+           1784 POP_TOP
+
+413        1786 LOAD_GLOBAL             11 (goToPositionAction)
+           1788 LOAD_DEREF               1 (deviceId)
+           1790 LOAD_GLOBAL              3 (getMapParams)
+           1792 LOAD_CONST              87 ('傲来国')
+           1794 CALL_FUNCTION            1
+           1796 LOAD_GLOBAL              2 (QPoint)
+           1798 LOAD_CONST              88 (215)
+           1800 LOAD_CONST              13 (143)
+           1802 CALL_FUNCTION            2
+           1804 CALL_FUNCTION            3
+           1806 POP_TOP
+
+414        1808 LOAD_GLOBAL             12 (clickChuanSong)
+           1810 LOAD_DEREF               1 (deviceId)
+           1812 LOAD_CLOSURE             1 (deviceId)
+           1814 BUILD_TUPLE              1
+           1816 LOAD_CONST              98 (<code object <lambda> at 0x0000011B9FC259D0, file "game_action\map_action.py", line 414>)
+           1818 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           1820 MAKE_FUNCTION            8 (closure)
+           1822 LOAD_CONST              17 (('nextFunc',))
+           1824 CALL_FUNCTION_KW         2
+           1826 POP_TOP
+
+415        1828 LOAD_GLOBAL             11 (goToPositionAction)
+           1830 LOAD_DEREF               1 (deviceId)
+           1832 LOAD_GLOBAL              3 (getMapParams)
+           1834 LOAD_CONST              86 ('花果山')
+           1836 CALL_FUNCTION            1
+           1838 LOAD_GLOBAL              2 (QPoint)
+           1840 LOAD_CONST              92 (28)
+           1842 LOAD_CONST              93 (98)
+           1844 CALL_FUNCTION            2
+           1846 CALL_FUNCTION            3
+           1848 POP_TOP
+
+416        1850 LOAD_GLOBAL             13 (clickNpcAction)
+           1852 LOAD_DEREF               1 (deviceId)
+           1854 LOAD_GLOBAL              3 (getMapParams)
+           1856 LOAD_CONST              86 ('花果山')
+           1858 CALL_FUNCTION            1
+           1860 LOAD_GLOBAL              2 (QPoint)
+           1862 LOAD_CONST              92 (28)
+           1864 LOAD_CONST              93 (98)
+           1866 CALL_FUNCTION            2
+           1868 LOAD_CONST              41 ('点NPC对话-是的我要去')
+           1870 LOAD_CLOSURE             1 (deviceId)
+           1872 BUILD_TUPLE              1
+           1874 LOAD_CONST              99 (<code object <lambda> at 0x0000011B9FC25A80, file "game_action\map_action.py", line 416>)
+           1876 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           1878 MAKE_FUNCTION            8 (closure)
+           1880 LOAD_CONST              33 (('assertFunc',))
+           1882 CALL_FUNCTION_KW         5
+           1884 POP_TOP
+
+417        1886 LOAD_GLOBAL             11 (goToPositionAction)
+           1888 LOAD_DEREF               1 (deviceId)
+           1890 LOAD_GLOBAL              3 (getMapParams)
+           1892 LOAD_CONST              90 ('北俱芦洲')
+           1894 CALL_FUNCTION            1
+           1896 LOAD_GLOBAL              2 (QPoint)
+           1898 LOAD_CONST             100 (11)
+           1900 LOAD_CONST             101 (80)
+           1902 CALL_FUNCTION            2
+           1904 CALL_FUNCTION            3
+           1906 POP_TOP
+
+418        1908 LOAD_GLOBAL             12 (clickChuanSong)
+           1910 LOAD_DEREF               1 (deviceId)
+           1912 LOAD_CLOSURE             1 (deviceId)
+           1914 BUILD_TUPLE              1
+           1916 LOAD_CONST             102 (<code object <lambda> at 0x0000011B9FC25B30, file "game_action\map_action.py", line 418>)
+           1918 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           1920 MAKE_FUNCTION            8 (closure)
+           1922 LOAD_CONST              17 (('nextFunc',))
+           1924 CALL_FUNCTION_KW         2
+           1926 POP_TOP
+           1928 EXTENDED_ARG            10
+           1930 JUMP_FORWARD          2678 (to 4610)
+
+419     >> 1932 LOAD_FAST                7 (mapParams)
+           1934 LOAD_ATTR                9 (area)
+           1936 LOAD_CONST             103 ('化生寺')
+           1938 COMPARE_OP               2 (==)
+           1940 EXTENDED_ARG             7
+           1942 POP_JUMP_IF_FALSE     2010
+
+420        1944 LOAD_GLOBAL             10 (goToMapAction)
+           1946 LOAD_DEREF               1 (deviceId)
+           1948 LOAD_CONST              19 ('长安城')
+           1950 LOAD_GLOBAL              2 (QPoint)
+           1952 LOAD_CONST             104 (509)
+           1954 LOAD_CONST              61 (273)
+           1956 CALL_FUNCTION            2
+           1958 LOAD_CONST              15 (('flyMapXY',))
+           1960 CALL_FUNCTION_KW         3
+           1962 POP_TOP
+
+421        1964 LOAD_GLOBAL             11 (goToPositionAction)
+           1966 LOAD_DEREF               1 (deviceId)
+           1968 LOAD_GLOBAL              3 (getMapParams)
+           1970 LOAD_CONST              19 ('长安城')
+           1972 CALL_FUNCTION            1
+           1974 LOAD_GLOBAL              2 (QPoint)
+           1976 LOAD_CONST             104 (509)
+           1978 LOAD_CONST              61 (273)
+           1980 CALL_FUNCTION            2
+           1982 CALL_FUNCTION            3
+           1984 POP_TOP
+
+422        1986 LOAD_GLOBAL             12 (clickChuanSong)
+           1988 LOAD_DEREF               1 (deviceId)
+           1990 LOAD_CLOSURE             1 (deviceId)
+           1992 BUILD_TUPLE              1
+           1994 LOAD_CONST             105 (<code object <lambda> at 0x0000011B9FC25BE0, file "game_action\map_action.py", line 422>)
+           1996 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           1998 MAKE_FUNCTION            8 (closure)
+           2000 LOAD_CONST              17 (('nextFunc',))
+           2002 CALL_FUNCTION_KW         2
+           2004 POP_TOP
+           2006 EXTENDED_ARG            10
+           2008 JUMP_FORWARD          2600 (to 4610)
+
+423     >> 2010 LOAD_FAST                7 (mapParams)
+           2012 LOAD_ATTR                9 (area)
+           2014 LOAD_CONST             106 ('地府')
+           2016 COMPARE_OP               2 (==)
+           2018 EXTENDED_ARG             7
+           2020 POP_JUMP_IF_TRUE      2034
+           2022 LOAD_FAST                7 (mapParams)
+           2024 LOAD_ATTR                9 (area)
+           2026 LOAD_CONST             107 ('鬼市')
+           2028 COMPARE_OP               2 (==)
+           2030 EXTENDED_ARG             8
+           2032 POP_JUMP_IF_FALSE     2156
+
+424     >> 2034 LOAD_GLOBAL             10 (goToMapAction)
+           2036 LOAD_DEREF               1 (deviceId)
+           2038 LOAD_CONST              19 ('长安城')
+           2040 LOAD_GLOBAL              2 (QPoint)
+           2042 LOAD_CONST             108 (274)
+           2044 LOAD_CONST              81 (43)
+           2046 CALL_FUNCTION            2
+           2048 LOAD_CONST              15 (('flyMapXY',))
+           2050 CALL_FUNCTION_KW         3
+           2052 POP_TOP
+
+425        2054 LOAD_GLOBAL             11 (goToPositionAction)
+           2056 LOAD_DEREF               1 (deviceId)
+           2058 LOAD_GLOBAL              3 (getMapParams)
+           2060 LOAD_CONST              19 ('长安城')
+           2062 CALL_FUNCTION            1
+           2064 LOAD_GLOBAL              2 (QPoint)
+           2066 LOAD_CONST             108 (274)
+           2068 LOAD_CONST              81 (43)
+           2070 CALL_FUNCTION            2
+           2072 CALL_FUNCTION            3
+           2074 POP_TOP
+
+426        2076 LOAD_GLOBAL             13 (clickNpcAction)
+           2078 LOAD_DEREF               1 (deviceId)
+           2080 LOAD_GLOBAL              3 (getMapParams)
+           2082 LOAD_CONST              19 ('长安城')
+           2084 CALL_FUNCTION            1
+           2086 LOAD_GLOBAL              2 (QPoint)
+           2088 CALL_FUNCTION            0
+           2090 LOAD_CONST              41 ('点NPC对话-是的我要去')
+           2092 LOAD_CLOSURE             1 (deviceId)
+           2094 BUILD_TUPLE              1
+           2096 LOAD_CONST             109 (<code object <lambda> at 0x0000011B9FC25C90, file "game_action\map_action.py", line 426>)
+           2098 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           2100 MAKE_FUNCTION            8 (closure)
+           2102 LOAD_CONST             110 (True)
+           2104 LOAD_CONST             111 (('assertFunc', 'isYiZhan'))
+           2106 CALL_FUNCTION_KW         6
+           2108 POP_TOP
+
+427        2110 LOAD_GLOBAL             11 (goToPositionAction)
+           2112 LOAD_DEREF               1 (deviceId)
+           2114 LOAD_GLOBAL              3 (getMapParams)
+           2116 LOAD_CONST              18 ('大唐国境')
+           2118 CALL_FUNCTION            1
+           2120 LOAD_GLOBAL              2 (QPoint)
+           2122 LOAD_CONST             112 (48)
+           2124 LOAD_CONST             113 (325)
+           2126 CALL_FUNCTION            2
+           2128 CALL_FUNCTION            3
+           2130 POP_TOP
+
+428        2132 LOAD_GLOBAL             12 (clickChuanSong)
+           2134 LOAD_DEREF               1 (deviceId)
+           2136 LOAD_CLOSURE             1 (deviceId)
+           2138 BUILD_TUPLE              1
+           2140 LOAD_CONST             114 (<code object <lambda> at 0x0000011B9FC25D40, file "game_action\map_action.py", line 428>)
+           2142 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           2144 MAKE_FUNCTION            8 (closure)
+           2146 LOAD_CONST              17 (('nextFunc',))
+           2148 CALL_FUNCTION_KW         2
+           2150 POP_TOP
+           2152 EXTENDED_ARG             9
+           2154 JUMP_FORWARD          2454 (to 4610)
+
+429     >> 2156 LOAD_FAST                7 (mapParams)
+           2158 LOAD_ATTR                9 (area)
+           2160 LOAD_CONST             115 ('凌波城')
+           2162 COMPARE_OP               2 (==)
+           2164 EXTENDED_ARG             9
+           2166 POP_JUMP_IF_FALSE     2306
+
+430        2168 LOAD_GLOBAL             10 (goToMapAction)
+           2170 LOAD_DEREF               1 (deviceId)
+           2172 LOAD_CONST              19 ('长安城')
+           2174 LOAD_GLOBAL              2 (QPoint)
+           2176 LOAD_CONST             108 (274)
+           2178 LOAD_CONST              81 (43)
+           2180 CALL_FUNCTION            2
+           2182 LOAD_CONST              15 (('flyMapXY',))
+           2184 CALL_FUNCTION_KW         3
+           2186 POP_TOP
+
+431        2188 LOAD_GLOBAL             11 (goToPositionAction)
+           2190 LOAD_DEREF               1 (deviceId)
+           2192 LOAD_GLOBAL              3 (getMapParams)
+           2194 LOAD_CONST              19 ('长安城')
+           2196 CALL_FUNCTION            1
+           2198 LOAD_GLOBAL              2 (QPoint)
+           2200 LOAD_CONST             108 (274)
+           2202 LOAD_CONST              81 (43)
+           2204 CALL_FUNCTION            2
+           2206 CALL_FUNCTION            3
+           2208 POP_TOP
+
+432        2210 LOAD_GLOBAL             13 (clickNpcAction)
+           2212 LOAD_DEREF               1 (deviceId)
+           2214 LOAD_GLOBAL              3 (getMapParams)
+           2216 LOAD_CONST              19 ('长安城')
+           2218 CALL_FUNCTION            1
+           2220 LOAD_GLOBAL              2 (QPoint)
+           2222 CALL_FUNCTION            0
+           2224 LOAD_CONST              41 ('点NPC对话-是的我要去')
+           2226 LOAD_CLOSURE             1 (deviceId)
+           2228 BUILD_TUPLE              1
+           2230 LOAD_CONST             116 (<code object <lambda> at 0x0000011B9FC25DF0, file "game_action\map_action.py", line 432>)
+           2232 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           2234 MAKE_FUNCTION            8 (closure)
+           2236 LOAD_CONST             110 (True)
+           2238 LOAD_CONST             111 (('assertFunc', 'isYiZhan'))
+           2240 CALL_FUNCTION_KW         6
+           2242 POP_TOP
+
+433        2244 LOAD_GLOBAL             11 (goToPositionAction)
+           2246 LOAD_DEREF               1 (deviceId)
+           2248 LOAD_GLOBAL              3 (getMapParams)
+           2250 LOAD_CONST              18 ('大唐国境')
+           2252 CALL_FUNCTION            1
+           2254 LOAD_GLOBAL              2 (QPoint)
+           2256 LOAD_CONST             117 (170)
+           2258 LOAD_CONST             118 (263)
+           2260 CALL_FUNCTION            2
+           2262 CALL_FUNCTION            3
+           2264 POP_TOP
+
+434        2266 LOAD_GLOBAL             13 (clickNpcAction)
+           2268 LOAD_DEREF               1 (deviceId)
+           2270 LOAD_GLOBAL              3 (getMapParams)
+           2272 LOAD_CONST              18 ('大唐国境')
+           2274 CALL_FUNCTION            1
+           2276 LOAD_GLOBAL              2 (QPoint)
+           2278 LOAD_CONST             119 (174)
+           2280 LOAD_CONST             120 (260)
+           2282 CALL_FUNCTION            2
+           2284 LOAD_CONST             121 ('点NPC对话-送我到凌波城')
+           2286 LOAD_CLOSURE             1 (deviceId)
+           2288 BUILD_TUPLE              1
+           2290 LOAD_CONST             122 (<code object <lambda> at 0x0000011B9FC25EA0, file "game_action\map_action.py", line 434>)
+           2292 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           2294 MAKE_FUNCTION            8 (closure)
+           2296 LOAD_CONST              33 (('assertFunc',))
+           2298 CALL_FUNCTION_KW         5
+           2300 POP_TOP
+           2302 EXTENDED_ARG             9
+           2304 JUMP_FORWARD          2304 (to 4610)
+
+435     >> 2306 LOAD_FAST                7 (mapParams)
+           2308 LOAD_ATTR                9 (area)
+           2310 LOAD_CONST             123 ('普陀山')
+           2312 COMPARE_OP               2 (==)
+           2314 EXTENDED_ARG             9
+           2316 POP_JUMP_IF_FALSE     2442
+
+436        2318 LOAD_GLOBAL             10 (goToMapAction)
+           2320 LOAD_DEREF               1 (deviceId)
+           2322 LOAD_CONST              19 ('长安城')
+           2324 LOAD_GLOBAL              2 (QPoint)
+           2326 LOAD_CONST              20 (10)
+           2328 LOAD_CONST              21 (3)
+           2330 CALL_FUNCTION            2
+           2332 LOAD_CONST              15 (('flyMapXY',))
+           2334 CALL_FUNCTION_KW         3
+           2336 POP_TOP
+
+437        2338 LOAD_GLOBAL             11 (goToPositionAction)
+           2340 LOAD_DEREF               1 (deviceId)
+           2342 LOAD_GLOBAL              3 (getMapParams)
+           2344 LOAD_CONST              19 ('长安城')
+           2346 CALL_FUNCTION            1
+           2348 LOAD_GLOBAL              2 (QPoint)
+           2350 LOAD_CONST              20 (10)
+           2352 LOAD_CONST              21 (3)
+           2354 CALL_FUNCTION            2
+           2356 CALL_FUNCTION            3
+           2358 POP_TOP
+
+438        2360 LOAD_GLOBAL             12 (clickChuanSong)
+           2362 LOAD_DEREF               1 (deviceId)
+           2364 LOAD_CLOSURE             1 (deviceId)
+           2366 BUILD_TUPLE              1
+           2368 LOAD_CONST             124 (<code object <lambda> at 0x0000011B9FC25F50, file "game_action\map_action.py", line 438>)
+           2370 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           2372 MAKE_FUNCTION            8 (closure)
+           2374 LOAD_CONST              17 (('nextFunc',))
+           2376 CALL_FUNCTION_KW         2
+           2378 POP_TOP
+
+439        2380 LOAD_GLOBAL             11 (goToPositionAction)
+           2382 LOAD_DEREF               1 (deviceId)
+           2384 LOAD_GLOBAL              3 (getMapParams)
+           2386 LOAD_CONST              18 ('大唐国境')
+           2388 CALL_FUNCTION            1
+           2390 LOAD_GLOBAL              2 (QPoint)
+           2392 LOAD_CONST             125 (221)
+           2394 LOAD_CONST             126 (60)
+           2396 CALL_FUNCTION            2
+           2398 CALL_FUNCTION            3
+           2400 POP_TOP
+
+440        2402 LOAD_GLOBAL             13 (clickNpcAction)
+           2404 LOAD_DEREF               1 (deviceId)
+           2406 LOAD_GLOBAL              3 (getMapParams)
+           2408 LOAD_CONST              18 ('大唐国境')
+           2410 CALL_FUNCTION            1
+           2412 LOAD_GLOBAL              2 (QPoint)
+           2414 LOAD_CONST             125 (221)
+           2416 LOAD_CONST             126 (60)
+           2418 CALL_FUNCTION            2
+           2420 LOAD_CONST             127 ('点NPC对话-送我到普陀山')
+           2422 LOAD_CLOSURE             1 (deviceId)
+           2424 BUILD_TUPLE              1
+           2426 LOAD_CONST             128 (<code object <lambda> at 0x0000011B9FC27030, file "game_action\map_action.py", line 440>)
+           2428 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           2430 MAKE_FUNCTION            8 (closure)
+           2432 LOAD_CONST              33 (('assertFunc',))
+           2434 CALL_FUNCTION_KW         5
+           2436 POP_TOP
+           2438 EXTENDED_ARG             8
+           2440 JUMP_FORWARD          2168 (to 4610)
+
+441     >> 2442 LOAD_FAST                7 (mapParams)
+           2444 LOAD_ATTR                9 (area)
+           2446 LOAD_CONST             129 ('五行山')
+           2448 COMPARE_OP               2 (==)
+           2450 EXTENDED_ARG            10
+           2452 POP_JUMP_IF_FALSE     2592
+
+442        2454 LOAD_GLOBAL             10 (goToMapAction)
+           2456 LOAD_DEREF               1 (deviceId)
+           2458 LOAD_CONST              19 ('长安城')
+           2460 LOAD_GLOBAL              2 (QPoint)
+           2462 LOAD_CONST             108 (274)
+           2464 LOAD_CONST              81 (43)
+           2466 CALL_FUNCTION            2
+           2468 LOAD_CONST              15 (('flyMapXY',))
+           2470 CALL_FUNCTION_KW         3
+           2472 POP_TOP
+
+443        2474 LOAD_GLOBAL             11 (goToPositionAction)
+           2476 LOAD_DEREF               1 (deviceId)
+           2478 LOAD_GLOBAL              3 (getMapParams)
+           2480 LOAD_CONST              19 ('长安城')
+           2482 CALL_FUNCTION            1
+           2484 LOAD_GLOBAL              2 (QPoint)
+           2486 LOAD_CONST             108 (274)
+           2488 LOAD_CONST              81 (43)
+           2490 CALL_FUNCTION            2
+           2492 CALL_FUNCTION            3
+           2494 POP_TOP
+
+444        2496 LOAD_GLOBAL             13 (clickNpcAction)
+           2498 LOAD_DEREF               1 (deviceId)
+           2500 LOAD_GLOBAL              3 (getMapParams)
+           2502 LOAD_CONST              19 ('长安城')
+           2504 CALL_FUNCTION            1
+           2506 LOAD_GLOBAL              2 (QPoint)
+           2508 CALL_FUNCTION            0
+           2510 LOAD_CONST              41 ('点NPC对话-是的我要去')
+           2512 LOAD_CLOSURE             1 (deviceId)
+           2514 BUILD_TUPLE              1
+           2516 LOAD_CONST             130 (<code object <lambda> at 0x0000011B9FC270E0, file "game_action\map_action.py", line 444>)
+           2518 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           2520 MAKE_FUNCTION            8 (closure)
+           2522 LOAD_CONST             110 (True)
+           2524 LOAD_CONST             111 (('assertFunc', 'isYiZhan'))
+           2526 CALL_FUNCTION_KW         6
+           2528 POP_TOP
+
+445        2530 LOAD_GLOBAL             11 (goToPositionAction)
+           2532 LOAD_DEREF               1 (deviceId)
+           2534 LOAD_GLOBAL              3 (getMapParams)
+           2536 LOAD_CONST              18 ('大唐国境')
+           2538 CALL_FUNCTION            1
+           2540 LOAD_GLOBAL              2 (QPoint)
+           2542 LOAD_CONST             112 (48)
+           2544 LOAD_CONST             131 (278)
+           2546 CALL_FUNCTION            2
+           2548 CALL_FUNCTION            3
+           2550 POP_TOP
+
+446        2552 LOAD_GLOBAL             13 (clickNpcAction)
+           2554 LOAD_DEREF               1 (deviceId)
+           2556 LOAD_GLOBAL              3 (getMapParams)
+           2558 LOAD_CONST              18 ('大唐国境')
+           2560 CALL_FUNCTION            1
+           2562 LOAD_GLOBAL              2 (QPoint)
+           2564 LOAD_CONST             112 (48)
+           2566 LOAD_CONST             132 (279)
+           2568 CALL_FUNCTION            2
+           2570 LOAD_CONST             133 ('点NPC对话-前往五行山')
+           2572 LOAD_CLOSURE             1 (deviceId)
+           2574 BUILD_TUPLE              1
+           2576 LOAD_CONST             134 (<code object <lambda> at 0x0000011B9FC27190, file "game_action\map_action.py", line 446>)
+           2578 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           2580 MAKE_FUNCTION            8 (closure)
+           2582 LOAD_CONST              33 (('assertFunc',))
+           2584 CALL_FUNCTION_KW         5
+           2586 POP_TOP
+           2588 EXTENDED_ARG             7
+           2590 JUMP_FORWARD          2018 (to 4610)
+
+447     >> 2592 LOAD_FAST                7 (mapParams)
+           2594 LOAD_ATTR                9 (area)
+           2596 LOAD_CONST             135 ('青丘')
+           2598 COMPARE_OP               2 (==)
+           2600 EXTENDED_ARG            10
+           2602 POP_JUMP_IF_FALSE     2728
+
+448        2604 LOAD_GLOBAL             10 (goToMapAction)
+           2606 LOAD_DEREF               1 (deviceId)
+           2608 LOAD_CONST              19 ('长安城')
+           2610 LOAD_GLOBAL              2 (QPoint)
+           2612 LOAD_CONST              20 (10)
+           2614 LOAD_CONST              21 (3)
+           2616 CALL_FUNCTION            2
+           2618 LOAD_CONST              15 (('flyMapXY',))
+           2620 CALL_FUNCTION_KW         3
+           2622 POP_TOP
+
+449        2624 LOAD_GLOBAL             11 (goToPositionAction)
+           2626 LOAD_DEREF               1 (deviceId)
+           2628 LOAD_GLOBAL              3 (getMapParams)
+           2630 LOAD_CONST              19 ('长安城')
+           2632 CALL_FUNCTION            1
+           2634 LOAD_GLOBAL              2 (QPoint)
+           2636 LOAD_CONST              20 (10)
+           2638 LOAD_CONST              21 (3)
+           2640 CALL_FUNCTION            2
+           2642 CALL_FUNCTION            3
+           2644 POP_TOP
+
+450        2646 LOAD_GLOBAL             12 (clickChuanSong)
+           2648 LOAD_DEREF               1 (deviceId)
+           2650 LOAD_CLOSURE             1 (deviceId)
+           2652 BUILD_TUPLE              1
+           2654 LOAD_CONST             136 (<code object <lambda> at 0x0000011B9FC27240, file "game_action\map_action.py", line 450>)
+           2656 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           2658 MAKE_FUNCTION            8 (closure)
+           2660 LOAD_CONST              17 (('nextFunc',))
+           2662 CALL_FUNCTION_KW         2
+           2664 POP_TOP
+
+451        2666 LOAD_GLOBAL             11 (goToPositionAction)
+           2668 LOAD_DEREF               1 (deviceId)
+           2670 LOAD_GLOBAL              3 (getMapParams)
+           2672 LOAD_CONST              18 ('大唐国境')
+           2674 CALL_FUNCTION            1
+           2676 LOAD_GLOBAL              2 (QPoint)
+           2678 LOAD_CONST             137 (154)
+           2680 LOAD_CONST              40 (9)
+           2682 CALL_FUNCTION            2
+           2684 CALL_FUNCTION            3
+           2686 POP_TOP
+
+452        2688 LOAD_GLOBAL             13 (clickNpcAction)
+           2690 LOAD_DEREF               1 (deviceId)
+           2692 LOAD_GLOBAL              3 (getMapParams)
+           2694 LOAD_CONST              18 ('大唐国境')
+           2696 CALL_FUNCTION            1
+           2698 LOAD_GLOBAL              2 (QPoint)
+           2700 LOAD_CONST             137 (154)
+           2702 LOAD_CONST              40 (9)
+           2704 CALL_FUNCTION            2
+           2706 LOAD_CONST             138 ('点NPC对话-好想去青丘看看哇')
+           2708 LOAD_CLOSURE             1 (deviceId)
+           2710 BUILD_TUPLE              1
+           2712 LOAD_CONST             139 (<code object <lambda> at 0x0000011B9FC272F0, file "game_action\map_action.py", line 452>)
+           2714 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           2716 MAKE_FUNCTION            8 (closure)
+           2718 LOAD_CONST              33 (('assertFunc',))
+           2720 CALL_FUNCTION_KW         5
+           2722 POP_TOP
+           2724 EXTENDED_ARG             7
+           2726 JUMP_FORWARD          1882 (to 4610)
+
+453     >> 2728 LOAD_FAST                7 (mapParams)
+           2730 LOAD_ATTR                9 (area)
+           2732 LOAD_CONST             140 ('解阳山')
+           2734 COMPARE_OP               2 (==)
+           2736 EXTENDED_ARG            10
+           2738 POP_JUMP_IF_FALSE     2796
+
+454        2740 LOAD_GLOBAL             10 (goToMapAction)
+           2742 LOAD_DEREF               1 (deviceId)
+           2744 LOAD_CONST             141 ('宝象国')
+           2746 CALL_FUNCTION            2
+           2748 POP_TOP
+
+455        2750 LOAD_GLOBAL             11 (goToPositionAction)
+           2752 LOAD_DEREF               1 (deviceId)
+           2754 LOAD_GLOBAL              3 (getMapParams)
+           2756 LOAD_CONST             141 ('宝象国')
+           2758 CALL_FUNCTION            1
+           2760 LOAD_GLOBAL              2 (QPoint)
+           2762 LOAD_CONST             142 (131)
+           2764 LOAD_CONST             143 (115)
+           2766 CALL_FUNCTION            2
+           2768 CALL_FUNCTION            3
+           2770 POP_TOP
+
+456        2772 LOAD_GLOBAL             12 (clickChuanSong)
+           2774 LOAD_DEREF               1 (deviceId)
+           2776 LOAD_CLOSURE             1 (deviceId)
+           2778 BUILD_TUPLE              1
+           2780 LOAD_CONST             144 (<code object <lambda> at 0x0000011B9FC273A0, file "game_action\map_action.py", line 456>)
+           2782 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           2784 MAKE_FUNCTION            8 (closure)
+           2786 LOAD_CONST              17 (('nextFunc',))
+           2788 CALL_FUNCTION_KW         2
+           2790 POP_TOP
+           2792 EXTENDED_ARG             7
+           2794 JUMP_FORWARD          1814 (to 4610)
+
+457     >> 2796 LOAD_FAST                7 (mapParams)
+           2798 LOAD_ATTR                9 (area)
+           2800 LOAD_CONST             145 ('幻境花果山')
+           2802 COMPARE_OP               2 (==)
+           2804 EXTENDED_ARG            11
+           2806 POP_JUMP_IF_FALSE     2916
+
+458        2808 LOAD_GLOBAL             10 (goToMapAction)
+           2810 LOAD_DEREF               1 (deviceId)
+           2812 LOAD_CONST              87 ('傲来国')
+           2814 LOAD_GLOBAL              2 (QPoint)
+           2816 LOAD_CONST              88 (215)
+           2818 LOAD_CONST              13 (143)
+           2820 CALL_FUNCTION            2
+           2822 LOAD_CONST              15 (('flyMapXY',))
+           2824 CALL_FUNCTION_KW         3
+           2826 POP_TOP
+
+459        2828 LOAD_GLOBAL             11 (goToPositionAction)
+           2830 LOAD_DEREF               1 (deviceId)
+           2832 LOAD_GLOBAL              3 (getMapParams)
+           2834 LOAD_CONST              87 ('傲来国')
+           2836 CALL_FUNCTION            1
+           2838 LOAD_GLOBAL              2 (QPoint)
+           2840 LOAD_CONST              88 (215)
+           2842 LOAD_CONST              13 (143)
+           2844 CALL_FUNCTION            2
+           2846 CALL_FUNCTION            3
+           2848 POP_TOP
+
+460        2850 LOAD_GLOBAL             12 (clickChuanSong)
+           2852 LOAD_DEREF               1 (deviceId)
+           2854 LOAD_CLOSURE             1 (deviceId)
+           2856 BUILD_TUPLE              1
+           2858 LOAD_CONST             146 (<code object <lambda> at 0x0000011B9FC27450, file "game_action\map_action.py", line 460>)
+           2860 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           2862 MAKE_FUNCTION            8 (closure)
+           2864 LOAD_CONST              17 (('nextFunc',))
+           2866 CALL_FUNCTION_KW         2
+           2868 POP_TOP
+
+461        2870 LOAD_GLOBAL             11 (goToPositionAction)
+           2872 LOAD_DEREF               1 (deviceId)
+           2874 LOAD_GLOBAL              3 (getMapParams)
+           2876 LOAD_CONST              86 ('花果山')
+           2878 CALL_FUNCTION            1
+           2880 LOAD_GLOBAL              2 (QPoint)
+           2882 LOAD_CONST             147 (142)
+           2884 LOAD_CONST             148 (16)
+           2886 CALL_FUNCTION            2
+           2888 CALL_FUNCTION            3
+           2890 POP_TOP
+
+462        2892 LOAD_GLOBAL             12 (clickChuanSong)
+           2894 LOAD_DEREF               1 (deviceId)
+           2896 LOAD_CLOSURE             1 (deviceId)
+           2898 BUILD_TUPLE              1
+           2900 LOAD_CONST             149 (<code object <lambda> at 0x0000011B9FC27500, file "game_action\map_action.py", line 462>)
+           2902 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           2904 MAKE_FUNCTION            8 (closure)
+           2906 LOAD_CONST              17 (('nextFunc',))
+           2908 CALL_FUNCTION_KW         2
+           2910 POP_TOP
+           2912 EXTENDED_ARG             6
+           2914 JUMP_FORWARD          1694 (to 4610)
+
+463     >> 2916 LOAD_FAST                7 (mapParams)
+           2918 LOAD_ATTR                9 (area)
+           2920 LOAD_CONST             150 ('海底迷宫')
+           2922 COMPARE_OP               2 (==)
+           2924 EXTENDED_ARG            11
+           2926 POP_JUMP_IF_FALSE     3058
+
+464        2928 LOAD_GLOBAL             10 (goToMapAction)
+           2930 LOAD_DEREF               1 (deviceId)
+           2932 LOAD_CONST              87 ('傲来国')
+           2934 LOAD_GLOBAL              2 (QPoint)
+           2936 LOAD_CONST              88 (215)
+           2938 LOAD_CONST              13 (143)
+           2940 CALL_FUNCTION            2
+           2942 LOAD_CONST              15 (('flyMapXY',))
+           2944 CALL_FUNCTION_KW         3
+           2946 POP_TOP
+
+465        2948 LOAD_GLOBAL             11 (goToPositionAction)
+           2950 LOAD_DEREF               1 (deviceId)
+           2952 LOAD_GLOBAL              3 (getMapParams)
+           2954 LOAD_CONST              87 ('傲来国')
+           2956 CALL_FUNCTION            1
+           2958 LOAD_GLOBAL              2 (QPoint)
+           2960 LOAD_CONST              88 (215)
+           2962 LOAD_CONST              13 (143)
+           2964 CALL_FUNCTION            2
+           2966 CALL_FUNCTION            3
+           2968 POP_TOP
+
+466        2970 LOAD_GLOBAL             12 (clickChuanSong)
+           2972 LOAD_DEREF               1 (deviceId)
+           2974 LOAD_CLOSURE             1 (deviceId)
+           2976 BUILD_TUPLE              1
+           2978 LOAD_CONST             151 (<code object <lambda> at 0x0000011B9FC275B0, file "game_action\map_action.py", line 466>)
+           2980 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           2982 MAKE_FUNCTION            8 (closure)
+           2984 LOAD_CONST              17 (('nextFunc',))
+           2986 CALL_FUNCTION_KW         2
+           2988 POP_TOP
+
+467        2990 LOAD_GLOBAL             11 (goToPositionAction)
+           2992 LOAD_DEREF               1 (deviceId)
+           2994 LOAD_GLOBAL              3 (getMapParams)
+           2996 LOAD_CONST              86 ('花果山')
+           2998 CALL_FUNCTION            1
+           3000 LOAD_GLOBAL              2 (QPoint)
+           3002 LOAD_CONST               1 (100)
+           3004 LOAD_CONST              14 (5)
+           3006 CALL_FUNCTION            2
+           3008 CALL_FUNCTION            3
+           3010 POP_TOP
+
+468        3012 LOAD_GLOBAL             13 (clickNpcAction)
+           3014 LOAD_DEREF               1 (deviceId)
+           3016 LOAD_GLOBAL              3 (getMapParams)
+           3018 LOAD_CONST              86 ('花果山')
+           3020 CALL_FUNCTION            1
+           3022 LOAD_GLOBAL              2 (QPoint)
+           3024 LOAD_CONST               1 (100)
+           3026 LOAD_CONST              14 (5)
+           3028 CALL_FUNCTION            2
+           3030 LOAD_CONST              41 ('点NPC对话-是的我要去')
+           3032 LOAD_CONST             152 ('点NPC对话-我要做其他事情')
+           3034 LOAD_CONST             153 ('点NPC重叠-马猴')
+           3036 BUILD_LIST               2
+           3038 LOAD_CLOSURE             1 (deviceId)
+           3040 BUILD_TUPLE              1
+           3042 LOAD_CONST             154 (<code object <lambda> at 0x0000011B9FC27660, file "game_action\map_action.py", line 468>)
+           3044 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           3046 MAKE_FUNCTION            8 (closure)
+           3048 LOAD_CONST              96 (('middleImgNames', 'assertFunc'))
+           3050 CALL_FUNCTION_KW         6
+           3052 POP_TOP
+           3054 EXTENDED_ARG             6
+           3056 JUMP_FORWARD          1552 (to 4610)
+
+469     >> 3058 LOAD_FAST                7 (mapParams)
+           3060 LOAD_ATTR                9 (area)
+           3062 LOAD_CONST             155 ('地狱迷宫')
+           3064 COMPARE_OP               2 (==)
+           3066 EXTENDED_ARG            12
+           3068 POP_JUMP_IF_FALSE     3234
+
+470        3070 LOAD_GLOBAL             10 (goToMapAction)
+           3072 LOAD_DEREF               1 (deviceId)
+           3074 LOAD_CONST              19 ('长安城')
+           3076 LOAD_GLOBAL              2 (QPoint)
+           3078 LOAD_CONST             108 (274)
+           3080 LOAD_CONST              81 (43)
+           3082 CALL_FUNCTION            2
+           3084 LOAD_CONST              15 (('flyMapXY',))
+           3086 CALL_FUNCTION_KW         3
+           3088 POP_TOP
+
+471        3090 LOAD_GLOBAL             11 (goToPositionAction)
+           3092 LOAD_DEREF               1 (deviceId)
+           3094 LOAD_GLOBAL              3 (getMapParams)
+           3096 LOAD_CONST              19 ('长安城')
+           3098 CALL_FUNCTION            1
+           3100 LOAD_GLOBAL              2 (QPoint)
+           3102 LOAD_CONST             108 (274)
+           3104 LOAD_CONST              81 (43)
+           3106 CALL_FUNCTION            2
+           3108 CALL_FUNCTION            3
+           3110 POP_TOP
+
+472        3112 LOAD_GLOBAL             13 (clickNpcAction)
+           3114 LOAD_DEREF               1 (deviceId)
+           3116 LOAD_GLOBAL              3 (getMapParams)
+           3118 LOAD_CONST              19 ('长安城')
+           3120 CALL_FUNCTION            1
+           3122 LOAD_GLOBAL              2 (QPoint)
+           3124 CALL_FUNCTION            0
+           3126 LOAD_CONST              41 ('点NPC对话-是的我要去')
+           3128 LOAD_CLOSURE             1 (deviceId)
+           3130 BUILD_TUPLE              1
+           3132 LOAD_CONST             156 (<code object <lambda> at 0x0000011B9FC27710, file "game_action\map_action.py", line 472>)
+           3134 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           3136 MAKE_FUNCTION            8 (closure)
+           3138 LOAD_CONST             110 (True)
+           3140 LOAD_CONST             111 (('assertFunc', 'isYiZhan'))
+           3142 CALL_FUNCTION_KW         6
+           3144 POP_TOP
+
+473        3146 LOAD_GLOBAL             11 (goToPositionAction)
+           3148 LOAD_DEREF               1 (deviceId)
+           3150 LOAD_GLOBAL              3 (getMapParams)
+           3152 LOAD_CONST              18 ('大唐国境')
+           3154 CALL_FUNCTION            1
+           3156 LOAD_GLOBAL              2 (QPoint)
+           3158 LOAD_CONST             112 (48)
+           3160 LOAD_CONST             113 (325)
+           3162 CALL_FUNCTION            2
+           3164 CALL_FUNCTION            3
+           3166 POP_TOP
+
+474        3168 LOAD_GLOBAL             12 (clickChuanSong)
+           3170 LOAD_DEREF               1 (deviceId)
+           3172 LOAD_CLOSURE             1 (deviceId)
+           3174 BUILD_TUPLE              1
+           3176 LOAD_CONST             157 (<code object <lambda> at 0x0000011B9FC277C0, file "game_action\map_action.py", line 474>)
+           3178 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           3180 MAKE_FUNCTION            8 (closure)
+           3182 LOAD_CONST              17 (('nextFunc',))
+           3184 CALL_FUNCTION_KW         2
+           3186 POP_TOP
+
+475        3188 LOAD_GLOBAL             11 (goToPositionAction)
+           3190 LOAD_DEREF               1 (deviceId)
+           3192 LOAD_GLOBAL              3 (getMapParams)
+           3194 LOAD_CONST             106 ('地府')
+           3196 CALL_FUNCTION            1
+           3198 LOAD_GLOBAL              2 (QPoint)
+           3200 LOAD_CONST             158 (32)
+           3202 LOAD_CONST             159 (108)
+           3204 CALL_FUNCTION            2
+           3206 CALL_FUNCTION            3
+           3208 POP_TOP
+
+476        3210 LOAD_GLOBAL             12 (clickChuanSong)
+           3212 LOAD_DEREF               1 (deviceId)
+           3214 LOAD_CLOSURE             1 (deviceId)
+           3216 BUILD_TUPLE              1
+           3218 LOAD_CONST             160 (<code object <lambda> at 0x0000011B9FC27870, file "game_action\map_action.py", line 476>)
+           3220 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           3222 MAKE_FUNCTION            8 (closure)
+           3224 LOAD_CONST              17 (('nextFunc',))
+           3226 CALL_FUNCTION_KW         2
+           3228 POP_TOP
+           3230 EXTENDED_ARG             5
+           3232 JUMP_FORWARD          1376 (to 4610)
+
+477     >> 3234 LOAD_FAST                7 (mapParams)
+           3236 LOAD_ATTR                9 (area)
+           3238 LOAD_CONST             161 ('无底洞')
+           3240 COMPARE_OP               2 (==)
+           3242 EXTENDED_ARG            13
+           3244 POP_JUMP_IF_FALSE     3360
+
+478        3246 LOAD_GLOBAL             10 (goToMapAction)
+           3248 LOAD_DEREF               1 (deviceId)
+           3250 LOAD_CONST             141 ('宝象国')
+           3252 CALL_FUNCTION            2
+           3254 POP_TOP
+
+479        3256 LOAD_GLOBAL             11 (goToPositionAction)
+           3258 LOAD_DEREF               1 (deviceId)
+           3260 LOAD_GLOBAL              3 (getMapParams)
+           3262 LOAD_CONST             141 ('宝象国')
+           3264 CALL_FUNCTION            1
+           3266 LOAD_GLOBAL              2 (QPoint)
+           3268 LOAD_CONST             162 (148)
+           3270 LOAD_CONST              40 (9)
+           3272 CALL_FUNCTION            2
+           3274 CALL_FUNCTION            3
+           3276 POP_TOP
+
+480        3278 LOAD_GLOBAL             12 (clickChuanSong)
+           3280 LOAD_DEREF               1 (deviceId)
+           3282 LOAD_CLOSURE             1 (deviceId)
+           3284 BUILD_TUPLE              1
+           3286 LOAD_CONST             163 (<code object <lambda> at 0x0000011B9FC27920, file "game_action\map_action.py", line 480>)
+           3288 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           3290 MAKE_FUNCTION            8 (closure)
+           3292 LOAD_CONST              17 (('nextFunc',))
+           3294 CALL_FUNCTION_KW         2
+           3296 POP_TOP
+
+481        3298 LOAD_GLOBAL             11 (goToPositionAction)
+           3300 LOAD_DEREF               1 (deviceId)
+           3302 LOAD_GLOBAL              3 (getMapParams)
+           3304 LOAD_CONST             164 ('碗子山')
+           3306 CALL_FUNCTION            1
+           3308 LOAD_GLOBAL              2 (QPoint)
+           3310 LOAD_CONST             165 (26)
+           3312 LOAD_CONST             166 (18)
+           3314 CALL_FUNCTION            2
+           3316 CALL_FUNCTION            3
+           3318 POP_TOP
+
+482        3320 LOAD_GLOBAL             13 (clickNpcAction)
+           3322 LOAD_DEREF               1 (deviceId)
+           3324 LOAD_GLOBAL              3 (getMapParams)
+           3326 LOAD_CONST             164 ('碗子山')
+           3328 CALL_FUNCTION            1
+           3330 LOAD_GLOBAL              2 (QPoint)
+           3332 LOAD_CONST             165 (26)
+           3334 LOAD_CONST             166 (18)
+           3336 CALL_FUNCTION            2
+           3338 LOAD_CONST             167 ('点NPC对话-传送无底洞')
+           3340 LOAD_CLOSURE             1 (deviceId)
+           3342 BUILD_TUPLE              1
+           3344 LOAD_CONST             168 (<code object <lambda> at 0x0000011B9FC279D0, file "game_action\map_action.py", line 482>)
+           3346 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           3348 MAKE_FUNCTION            8 (closure)
+           3350 LOAD_CONST              33 (('assertFunc',))
+           3352 CALL_FUNCTION_KW         5
+           3354 POP_TOP
+           3356 EXTENDED_ARG             4
+           3358 JUMP_FORWARD          1250 (to 4610)
+
+483     >> 3360 LOAD_FAST                7 (mapParams)
+           3362 LOAD_ATTR                9 (area)
+           3364 LOAD_CONST             169 ('女儿村')
+           3366 COMPARE_OP               2 (==)
+           3368 EXTENDED_ARG            13
+           3370 POP_JUMP_IF_FALSE     3438
+
+484        3372 LOAD_GLOBAL             10 (goToMapAction)
+           3374 LOAD_DEREF               1 (deviceId)
+           3376 LOAD_CONST              87 ('傲来国')
+           3378 LOAD_GLOBAL              2 (QPoint)
+           3380 LOAD_CONST              65 (8)
+           3382 LOAD_CONST             170 (141)
+           3384 CALL_FUNCTION            2
+           3386 LOAD_CONST              15 (('flyMapXY',))
+           3388 CALL_FUNCTION_KW         3
+           3390 POP_TOP
+
+485        3392 LOAD_GLOBAL             11 (goToPositionAction)
+           3394 LOAD_DEREF               1 (deviceId)
+           3396 LOAD_GLOBAL              3 (getMapParams)
+           3398 LOAD_CONST              87 ('傲来国')
+           3400 CALL_FUNCTION            1
+           3402 LOAD_GLOBAL              2 (QPoint)
+           3404 LOAD_CONST              65 (8)
+           3406 LOAD_CONST             170 (141)
+           3408 CALL_FUNCTION            2
+           3410 CALL_FUNCTION            3
+           3412 POP_TOP
+
+486        3414 LOAD_GLOBAL             12 (clickChuanSong)
+           3416 LOAD_DEREF               1 (deviceId)
+           3418 LOAD_CLOSURE             1 (deviceId)
+           3420 BUILD_TUPLE              1
+           3422 LOAD_CONST             171 (<code object <lambda> at 0x0000011B9FC27A80, file "game_action\map_action.py", line 486>)
+           3424 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           3426 MAKE_FUNCTION            8 (closure)
+           3428 LOAD_CONST              17 (('nextFunc',))
+           3430 CALL_FUNCTION_KW         2
+           3432 POP_TOP
+           3434 EXTENDED_ARG             4
+           3436 JUMP_FORWARD          1172 (to 4610)
+
+487     >> 3438 LOAD_FAST                7 (mapParams)
+           3440 LOAD_ATTR                9 (area)
+           3442 LOAD_CONST             172 ('东海湾')
+           3444 COMPARE_OP               2 (==)
+           3446 EXTENDED_ARG            13
+           3448 POP_JUMP_IF_TRUE      3474
+           3450 LOAD_FAST                7 (mapParams)
+           3452 LOAD_ATTR                9 (area)
+           3454 LOAD_CONST             173 ('东海渊')
+           3456 COMPARE_OP               2 (==)
+           3458 EXTENDED_ARG            13
+           3460 POP_JUMP_IF_TRUE      3474
+           3462 LOAD_FAST                7 (mapParams)
+           3464 LOAD_ATTR                9 (area)
+           3466 LOAD_CONST             174 ('女魃墓')
+           3468 COMPARE_OP               2 (==)
+           3470 EXTENDED_ARG            13
+           3472 POP_JUMP_IF_FALSE     3556
+
+488     >> 3474 LOAD_GLOBAL             10 (goToMapAction)
+           3476 LOAD_DEREF               1 (deviceId)
+           3478 LOAD_CONST              87 ('傲来国')
+           3480 LOAD_GLOBAL              2 (QPoint)
+           3482 LOAD_CONST             175 (164)
+           3484 LOAD_CONST             176 (15)
+           3486 CALL_FUNCTION            2
+           3488 LOAD_CONST              15 (('flyMapXY',))
+           3490 CALL_FUNCTION_KW         3
+           3492 POP_TOP
+
+489        3494 LOAD_GLOBAL             11 (goToPositionAction)
+           3496 LOAD_DEREF               1 (deviceId)
+           3498 LOAD_GLOBAL              3 (getMapParams)
+           3500 LOAD_CONST              87 ('傲来国')
+           3502 CALL_FUNCTION            1
+           3504 LOAD_GLOBAL              2 (QPoint)
+           3506 LOAD_CONST             177 (165)
+           3508 LOAD_CONST             166 (18)
+           3510 CALL_FUNCTION            2
+           3512 CALL_FUNCTION            3
+           3514 POP_TOP
+
+490        3516 LOAD_GLOBAL             13 (clickNpcAction)
+           3518 LOAD_DEREF               1 (deviceId)
+           3520 LOAD_GLOBAL              3 (getMapParams)
+           3522 LOAD_CONST              87 ('傲来国')
+           3524 CALL_FUNCTION            1
+           3526 LOAD_GLOBAL              2 (QPoint)
+           3528 LOAD_CONST             178 (168)
+           3530 LOAD_CONST             148 (16)
+           3532 CALL_FUNCTION            2
+           3534 LOAD_CONST              41 ('点NPC对话-是的我要去')
+           3536 LOAD_CLOSURE             1 (deviceId)
+           3538 BUILD_TUPLE              1
+           3540 LOAD_CONST             179 (<code object <lambda> at 0x0000011B9FC27B30, file "game_action\map_action.py", line 490>)
+           3542 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           3544 MAKE_FUNCTION            8 (closure)
+           3546 LOAD_CONST              33 (('assertFunc',))
+           3548 CALL_FUNCTION_KW         5
+           3550 POP_TOP
+           3552 EXTENDED_ARG             4
+           3554 JUMP_FORWARD          1054 (to 4610)
+
+491     >> 3556 LOAD_FAST                7 (mapParams)
+           3558 LOAD_ATTR                9 (area)
+           3560 LOAD_CONST             180 ('月宫')
+           3562 COMPARE_OP               2 (==)
+           3564 EXTENDED_ARG            14
+           3566 POP_JUMP_IF_FALSE     3758
+
+492        3568 LOAD_GLOBAL             10 (goToMapAction)
+           3570 LOAD_DEREF               1 (deviceId)
+           3572 LOAD_CONST              35 ('朱紫国')
+           3574 LOAD_GLOBAL              2 (QPoint)
+           3576 LOAD_CONST              25 (4)
+           3578 LOAD_CONST              25 (4)
+           3580 CALL_FUNCTION            2
+           3582 LOAD_CONST              15 (('flyMapXY',))
+           3584 CALL_FUNCTION_KW         3
+           3586 POP_TOP
+
+493        3588 LOAD_GLOBAL             11 (goToPositionAction)
+           3590 LOAD_DEREF               1 (deviceId)
+           3592 LOAD_GLOBAL              3 (getMapParams)
+           3594 LOAD_CONST              35 ('朱紫国')
+           3596 CALL_FUNCTION            1
+           3598 LOAD_GLOBAL              2 (QPoint)
+           3600 LOAD_CONST              25 (4)
+           3602 LOAD_CONST              25 (4)
+           3604 CALL_FUNCTION            2
+           3606 CALL_FUNCTION            3
+           3608 POP_TOP
+
+494        3610 LOAD_GLOBAL             12 (clickChuanSong)
+           3612 LOAD_DEREF               1 (deviceId)
+           3614 LOAD_CLOSURE             1 (deviceId)
+           3616 BUILD_TUPLE              1
+           3618 LOAD_CONST             181 (<code object <lambda> at 0x0000011B9FC27BE0, file "game_action\map_action.py", line 494>)
+           3620 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           3622 MAKE_FUNCTION            8 (closure)
+           3624 LOAD_CONST              17 (('nextFunc',))
+           3626 CALL_FUNCTION_KW         2
+           3628 POP_TOP
+
+495        3630 LOAD_GLOBAL             11 (goToPositionAction)
+           3632 LOAD_DEREF               1 (deviceId)
+           3634 LOAD_GLOBAL              3 (getMapParams)
+           3636 LOAD_CONST              34 ('大唐境外')
+           3638 CALL_FUNCTION            1
+           3640 LOAD_GLOBAL              2 (QPoint)
+           3642 LOAD_CONST             182 (52)
+           3644 LOAD_CONST             176 (15)
+           3646 CALL_FUNCTION            2
+           3648 CALL_FUNCTION            3
+           3650 POP_TOP
+
+496        3652 LOAD_GLOBAL             13 (clickNpcAction)
+           3654 LOAD_DEREF               1 (deviceId)
+           3656 LOAD_GLOBAL              3 (getMapParams)
+           3658 LOAD_CONST              34 ('大唐境外')
+           3660 CALL_FUNCTION            1
+           3662 LOAD_GLOBAL              2 (QPoint)
+           3664 LOAD_CONST             182 (52)
+           3666 LOAD_CONST             176 (15)
+           3668 CALL_FUNCTION            2
+           3670 LOAD_CONST              41 ('点NPC对话-是的我要去')
+           3672 LOAD_CONST             152 ('点NPC对话-我要做其他事情')
+           3674 BUILD_LIST               1
+           3676 LOAD_CLOSURE             1 (deviceId)
+           3678 BUILD_TUPLE              1
+           3680 LOAD_CONST             183 (<code object <lambda> at 0x0000011B9FC27C90, file "game_action\map_action.py", line 496>)
+           3682 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           3684 MAKE_FUNCTION            8 (closure)
+           3686 LOAD_CONST              96 (('middleImgNames', 'assertFunc'))
+           3688 CALL_FUNCTION_KW         6
+           3690 POP_TOP
+
+497        3692 LOAD_GLOBAL             11 (goToPositionAction)
+           3694 LOAD_DEREF               1 (deviceId)
+           3696 LOAD_GLOBAL              3 (getMapParams)
+           3698 LOAD_CONST              11 ('长寿郊外')
+           3700 CALL_FUNCTION            1
+           3702 LOAD_GLOBAL              2 (QPoint)
+           3704 LOAD_CONST             184 (21)
+           3706 LOAD_CONST             185 (58)
+           3708 CALL_FUNCTION            2
+           3710 CALL_FUNCTION            3
+           3712 POP_TOP
+
+498        3714 LOAD_GLOBAL             13 (clickNpcAction)
+           3716 LOAD_DEREF               1 (deviceId)
+           3718 LOAD_GLOBAL              3 (getMapParams)
+           3720 LOAD_CONST              11 ('长寿郊外')
+           3722 CALL_FUNCTION            1
+           3724 LOAD_GLOBAL              2 (QPoint)
+           3726 LOAD_CONST             186 (22)
+           3728 LOAD_CONST             187 (59)
+           3730 CALL_FUNCTION            2
+           3732 LOAD_CONST              41 ('点NPC对话-是的我要去')
+           3734 LOAD_CONST             152 ('点NPC对话-我要做其他事情')
+           3736 BUILD_LIST               1
+           3738 LOAD_CLOSURE             1 (deviceId)
+           3740 BUILD_TUPLE              1
+           3742 LOAD_CONST             188 (<code object <lambda> at 0x0000011B9FC27D40, file "game_action\map_action.py", line 498>)
+           3744 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           3746 MAKE_FUNCTION            8 (closure)
+           3748 LOAD_CONST              96 (('middleImgNames', 'assertFunc'))
+           3750 CALL_FUNCTION_KW         6
+           3752 POP_TOP
+           3754 EXTENDED_ARG             3
+           3756 JUMP_FORWARD           852 (to 4610)
+
+499     >> 3758 LOAD_FAST                7 (mapParams)
+           3760 LOAD_ATTR                9 (area)
+           3762 LOAD_CONST             189 ('龙宫')
+           3764 COMPARE_OP               2 (==)
+           3766 EXTENDED_ARG            15
+           3768 POP_JUMP_IF_FALSE     3914
+
+500        3770 LOAD_GLOBAL             10 (goToMapAction)
+           3772 LOAD_DEREF               1 (deviceId)
+           3774 LOAD_CONST              87 ('傲来国')
+           3776 LOAD_GLOBAL              2 (QPoint)
+           3778 LOAD_CONST             175 (164)
+           3780 LOAD_CONST             176 (15)
+           3782 CALL_FUNCTION            2
+           3784 LOAD_CONST              15 (('flyMapXY',))
+           3786 CALL_FUNCTION_KW         3
+           3788 POP_TOP
+
+501        3790 LOAD_GLOBAL             11 (goToPositionAction)
+           3792 LOAD_DEREF               1 (deviceId)
+           3794 LOAD_GLOBAL              3 (getMapParams)
+           3796 LOAD_CONST              87 ('傲来国')
+           3798 CALL_FUNCTION            1
+           3800 LOAD_GLOBAL              2 (QPoint)
+           3802 LOAD_CONST             177 (165)
+           3804 LOAD_CONST             166 (18)
+           3806 CALL_FUNCTION            2
+           3808 CALL_FUNCTION            3
+           3810 POP_TOP
+
+502        3812 LOAD_GLOBAL             13 (clickNpcAction)
+           3814 LOAD_DEREF               1 (deviceId)
+           3816 LOAD_GLOBAL              3 (getMapParams)
+           3818 LOAD_CONST              87 ('傲来国')
+           3820 CALL_FUNCTION            1
+           3822 LOAD_GLOBAL              2 (QPoint)
+           3824 LOAD_CONST             178 (168)
+           3826 LOAD_CONST             176 (15)
+           3828 CALL_FUNCTION            2
+           3830 LOAD_CONST              41 ('点NPC对话-是的我要去')
+           3832 LOAD_CONST             190 ('点NPC重叠-驿站老板')
+           3834 BUILD_LIST               1
+           3836 LOAD_CLOSURE             1 (deviceId)
+           3838 BUILD_TUPLE              1
+           3840 LOAD_CONST             191 (<code object <lambda> at 0x0000011B9FC27DF0, file "game_action\map_action.py", line 502>)
+           3842 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           3844 MAKE_FUNCTION            8 (closure)
+           3846 LOAD_CONST              96 (('middleImgNames', 'assertFunc'))
+           3848 CALL_FUNCTION_KW         6
+           3850 POP_TOP
+
+503        3852 LOAD_GLOBAL             11 (goToPositionAction)
+           3854 LOAD_DEREF               1 (deviceId)
+           3856 LOAD_GLOBAL              3 (getMapParams)
+           3858 LOAD_CONST             172 ('东海湾')
+           3860 CALL_FUNCTION            1
+           3862 LOAD_GLOBAL              2 (QPoint)
+           3864 LOAD_CONST              54 (110)
+           3866 LOAD_CONST             192 (91)
+           3868 CALL_FUNCTION            2
+           3870 CALL_FUNCTION            3
+           3872 POP_TOP
+
+504        3874 LOAD_GLOBAL             13 (clickNpcAction)
+           3876 LOAD_DEREF               1 (deviceId)
+           3878 LOAD_GLOBAL              3 (getMapParams)
+           3880 LOAD_CONST             172 ('东海湾')
+           3882 CALL_FUNCTION            1
+           3884 LOAD_GLOBAL              2 (QPoint)
+           3886 LOAD_CONST             193 (113)
+           3888 LOAD_CONST             194 (88)
+           3890 CALL_FUNCTION            2
+           3892 LOAD_CONST             195 ('点NPC对话-送我到龙宫')
+           3894 LOAD_CLOSURE             1 (deviceId)
+           3896 BUILD_TUPLE              1
+           3898 LOAD_CONST             196 (<code object <lambda> at 0x0000011B9FC27EA0, file "game_action\map_action.py", line 504>)
+           3900 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           3902 MAKE_FUNCTION            8 (closure)
+           3904 LOAD_CONST              33 (('assertFunc',))
+           3906 CALL_FUNCTION_KW         5
+           3908 POP_TOP
+           3910 EXTENDED_ARG             2
+           3912 JUMP_FORWARD           696 (to 4610)
+
+505     >> 3914 LOAD_FAST                7 (mapParams)
+           3916 LOAD_ATTR                9 (area)
+           3918 LOAD_CONST             197 ('龙窟五层')
+           3920 COMPARE_OP               2 (==)
+           3922 EXTENDED_ARG            15
+           3924 POP_JUMP_IF_FALSE     3982
+
+506        3926 LOAD_FAST                4 (areaRes)
+           3928 LOAD_CONST             198 ('龙窟六层')
+           3930 COMPARE_OP               2 (==)
+           3932 EXTENDED_ARG            18
+           3934 POP_JUMP_IF_FALSE     4610
+
+507        3936 LOAD_GLOBAL             11 (goToPositionAction)
+           3938 LOAD_DEREF               1 (deviceId)
+           3940 LOAD_GLOBAL              3 (getMapParams)
+           3942 LOAD_CONST             198 ('龙窟六层')
+           3944 CALL_FUNCTION            1
+           3946 LOAD_GLOBAL              2 (QPoint)
+           3948 LOAD_CONST             199 (84)
+           3950 LOAD_CONST             200 (13)
+           3952 CALL_FUNCTION            2
+           3954 CALL_FUNCTION            3
+           3956 POP_TOP
+
+508        3958 LOAD_GLOBAL             12 (clickChuanSong)
+           3960 LOAD_DEREF               1 (deviceId)
+           3962 LOAD_CLOSURE             1 (deviceId)
+           3964 BUILD_TUPLE              1
+           3966 LOAD_CONST             201 (<code object <lambda> at 0x0000011B9FC27F50, file "game_action\map_action.py", line 508>)
+           3968 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           3970 MAKE_FUNCTION            8 (closure)
+           3972 LOAD_CONST              17 (('nextFunc',))
+           3974 CALL_FUNCTION_KW         2
+           3976 POP_TOP
+           3978 EXTENDED_ARG             2
+           3980 JUMP_FORWARD           628 (to 4610)
+
+509     >> 3982 LOAD_FAST                7 (mapParams)
+           3984 LOAD_ATTR                9 (area)
+           3986 LOAD_CONST             198 ('龙窟六层')
+           3988 COMPARE_OP               2 (==)
+           3990 EXTENDED_ARG            15
+           3992 POP_JUMP_IF_FALSE     4050
+
+510        3994 LOAD_FAST                4 (areaRes)
+           3996 LOAD_CONST             197 ('龙窟五层')
+           3998 COMPARE_OP               2 (==)
+           4000 EXTENDED_ARG            18
+           4002 POP_JUMP_IF_FALSE     4610
+
+511        4004 LOAD_GLOBAL             11 (goToPositionAction)
+           4006 LOAD_DEREF               1 (deviceId)
+           4008 LOAD_GLOBAL              3 (getMapParams)
+           4010 LOAD_CONST             197 ('龙窟五层')
+           4012 CALL_FUNCTION            1
+           4014 LOAD_GLOBAL              2 (QPoint)
+           4016 LOAD_CONST             202 (51)
+           4018 LOAD_CONST              20 (10)
+           4020 CALL_FUNCTION            2
+           4022 CALL_FUNCTION            3
+           4024 POP_TOP
+
+512        4026 LOAD_GLOBAL             12 (clickChuanSong)
+           4028 LOAD_DEREF               1 (deviceId)
+           4030 LOAD_CLOSURE             1 (deviceId)
+           4032 BUILD_TUPLE              1
+           4034 LOAD_CONST             203 (<code object <lambda> at 0x0000011B9FC29030, file "game_action\map_action.py", line 512>)
+           4036 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           4038 MAKE_FUNCTION            8 (closure)
+           4040 LOAD_CONST              17 (('nextFunc',))
+           4042 CALL_FUNCTION_KW         2
+           4044 POP_TOP
+           4046 EXTENDED_ARG             2
+           4048 JUMP_FORWARD           560 (to 4610)
+
+513     >> 4050 LOAD_FAST                7 (mapParams)
+           4052 LOAD_ATTR                9 (area)
+           4054 LOAD_CONST             204 ('凤巢三层')
+           4056 COMPARE_OP               2 (==)
+           4058 EXTENDED_ARG            16
+           4060 POP_JUMP_IF_FALSE     4118
+
+514        4062 LOAD_FAST                4 (areaRes)
+           4064 LOAD_CONST             205 ('凤巢四层')
+           4066 COMPARE_OP               2 (==)
+           4068 EXTENDED_ARG            18
+           4070 POP_JUMP_IF_FALSE     4610
+
+515        4072 LOAD_GLOBAL             11 (goToPositionAction)
+           4074 LOAD_DEREF               1 (deviceId)
+           4076 LOAD_GLOBAL              3 (getMapParams)
+           4078 LOAD_CONST             205 ('凤巢四层')
+           4080 CALL_FUNCTION            1
+           4082 LOAD_GLOBAL              2 (QPoint)
+           4084 LOAD_CONST             206 (14)
+           4086 LOAD_CONST             185 (58)
+           4088 CALL_FUNCTION            2
+           4090 CALL_FUNCTION            3
+           4092 POP_TOP
+
+516        4094 LOAD_GLOBAL             12 (clickChuanSong)
+           4096 LOAD_DEREF               1 (deviceId)
+           4098 LOAD_CLOSURE             1 (deviceId)
+           4100 BUILD_TUPLE              1
+           4102 LOAD_CONST             207 (<code object <lambda> at 0x0000011B9FC290E0, file "game_action\map_action.py", line 516>)
+           4104 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           4106 MAKE_FUNCTION            8 (closure)
+           4108 LOAD_CONST              17 (('nextFunc',))
+           4110 CALL_FUNCTION_KW         2
+           4112 POP_TOP
+           4114 EXTENDED_ARG             1
+           4116 JUMP_FORWARD           492 (to 4610)
+
+517     >> 4118 LOAD_FAST                7 (mapParams)
+           4120 LOAD_ATTR                9 (area)
+           4122 LOAD_CONST             205 ('凤巢四层')
+           4124 COMPARE_OP               2 (==)
+           4126 EXTENDED_ARG            16
+           4128 POP_JUMP_IF_FALSE     4186
+
+518        4130 LOAD_FAST                4 (areaRes)
+           4132 LOAD_CONST             204 ('凤巢三层')
+           4134 COMPARE_OP               2 (==)
+           4136 EXTENDED_ARG            18
+           4138 POP_JUMP_IF_FALSE     4610
+
+519        4140 LOAD_GLOBAL             11 (goToPositionAction)
+           4142 LOAD_DEREF               1 (deviceId)
+           4144 LOAD_GLOBAL              3 (getMapParams)
+           4146 LOAD_CONST             204 ('凤巢三层')
+           4148 CALL_FUNCTION            1
+           4150 LOAD_GLOBAL              2 (QPoint)
+           4152 LOAD_CONST             208 (120)
+           4154 LOAD_CONST              14 (5)
+           4156 CALL_FUNCTION            2
+           4158 CALL_FUNCTION            3
+           4160 POP_TOP
+
+520        4162 LOAD_GLOBAL             12 (clickChuanSong)
+           4164 LOAD_DEREF               1 (deviceId)
+           4166 LOAD_CLOSURE             1 (deviceId)
+           4168 BUILD_TUPLE              1
+           4170 LOAD_CONST             209 (<code object <lambda> at 0x0000011B9FC29190, file "game_action\map_action.py", line 520>)
+           4172 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           4174 MAKE_FUNCTION            8 (closure)
+           4176 LOAD_CONST              17 (('nextFunc',))
+           4178 CALL_FUNCTION_KW         2
+           4180 POP_TOP
+           4182 EXTENDED_ARG             1
+           4184 JUMP_FORWARD           424 (to 4610)
+
+521     >> 4186 LOAD_FAST                7 (mapParams)
+           4188 LOAD_ATTR                9 (area)
+           4190 LOAD_CONST             210 ('方寸山')
+           4192 COMPARE_OP               2 (==)
+           4194 EXTENDED_ARG            16
+           4196 POP_JUMP_IF_FALSE     4264
+
+522        4198 LOAD_GLOBAL             10 (goToMapAction)
+           4200 LOAD_DEREF               1 (deviceId)
+           4202 LOAD_CONST              12 ('长寿村')
+           4204 LOAD_GLOBAL              2 (QPoint)
+           4206 LOAD_CONST             159 (108)
+           4208 LOAD_CONST             211 (205)
+           4210 CALL_FUNCTION            2
+           4212 LOAD_CONST              15 (('flyMapXY',))
+           4214 CALL_FUNCTION_KW         3
+           4216 POP_TOP
+
+523        4218 LOAD_GLOBAL             11 (goToPositionAction)
+           4220 LOAD_DEREF               1 (deviceId)
+           4222 LOAD_GLOBAL              3 (getMapParams)
+           4224 LOAD_CONST              12 ('长寿村')
+           4226 CALL_FUNCTION            1
+           4228 LOAD_GLOBAL              2 (QPoint)
+           4230 LOAD_CONST             159 (108)
+           4232 LOAD_CONST             211 (205)
+           4234 CALL_FUNCTION            2
+           4236 CALL_FUNCTION            3
+           4238 POP_TOP
+
+524        4240 LOAD_GLOBAL             12 (clickChuanSong)
+           4242 LOAD_DEREF               1 (deviceId)
+           4244 LOAD_CLOSURE             1 (deviceId)
+           4246 BUILD_TUPLE              1
+           4248 LOAD_CONST             212 (<code object <lambda> at 0x0000011B9FC29240, file "game_action\map_action.py", line 524>)
+           4250 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           4252 MAKE_FUNCTION            8 (closure)
+           4254 LOAD_CONST              17 (('nextFunc',))
+           4256 CALL_FUNCTION_KW         2
+           4258 POP_TOP
+           4260 EXTENDED_ARG             1
+           4262 JUMP_FORWARD           346 (to 4610)
+
+525     >> 4264 LOAD_FAST                7 (mapParams)
+           4266 LOAD_ATTR                9 (area)
+           4268 LOAD_CONST             213 ('五庄观')
+           4270 COMPARE_OP               2 (==)
+           4272 EXTENDED_ARG            17
+           4274 POP_JUMP_IF_FALSE     4438
+
+526        4276 LOAD_GLOBAL             10 (goToMapAction)
+           4278 LOAD_DEREF               1 (deviceId)
+           4280 LOAD_CONST              19 ('长安城')
+           4282 LOAD_GLOBAL              2 (QPoint)
+           4284 LOAD_CONST             108 (274)
+           4286 LOAD_CONST              81 (43)
+           4288 CALL_FUNCTION            2
+           4290 LOAD_CONST              15 (('flyMapXY',))
+           4292 CALL_FUNCTION_KW         3
+           4294 POP_TOP
+
+527        4296 LOAD_GLOBAL             11 (goToPositionAction)
+           4298 LOAD_DEREF               1 (deviceId)
+           4300 LOAD_GLOBAL              3 (getMapParams)
+           4302 LOAD_CONST              19 ('长安城')
+           4304 CALL_FUNCTION            1
+           4306 LOAD_GLOBAL              2 (QPoint)
+           4308 LOAD_CONST             108 (274)
+           4310 LOAD_CONST              81 (43)
+           4312 CALL_FUNCTION            2
+           4314 CALL_FUNCTION            3
+           4316 POP_TOP
+
+528        4318 LOAD_GLOBAL             13 (clickNpcAction)
+           4320 LOAD_DEREF               1 (deviceId)
+           4322 LOAD_GLOBAL              3 (getMapParams)
+           4324 LOAD_CONST              19 ('长安城')
+           4326 CALL_FUNCTION            1
+           4328 LOAD_GLOBAL              2 (QPoint)
+           4330 CALL_FUNCTION            0
+           4332 LOAD_CONST              41 ('点NPC对话-是的我要去')
+           4334 LOAD_CLOSURE             1 (deviceId)
+           4336 BUILD_TUPLE              1
+           4338 LOAD_CONST             214 (<code object <lambda> at 0x0000011B9FC292F0, file "game_action\map_action.py", line 528>)
+           4340 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           4342 MAKE_FUNCTION            8 (closure)
+           4344 LOAD_CONST             110 (True)
+           4346 LOAD_CONST             111 (('assertFunc', 'isYiZhan'))
+           4348 CALL_FUNCTION_KW         6
+           4350 POP_TOP
+
+529        4352 LOAD_GLOBAL             11 (goToPositionAction)
+           4354 LOAD_DEREF               1 (deviceId)
+           4356 LOAD_GLOBAL              3 (getMapParams)
+           4358 LOAD_CONST              18 ('大唐国境')
+           4360 CALL_FUNCTION            1
+           4362 LOAD_GLOBAL              2 (QPoint)
+           4364 LOAD_CONST              65 (8)
+           4366 LOAD_CONST             215 (76)
+           4368 CALL_FUNCTION            2
+           4370 CALL_FUNCTION            3
+           4372 POP_TOP
+
+530        4374 LOAD_GLOBAL             12 (clickChuanSong)
+           4376 LOAD_DEREF               1 (deviceId)
+           4378 LOAD_CLOSURE             1 (deviceId)
+           4380 BUILD_TUPLE              1
+           4382 LOAD_CONST             216 (<code object <lambda> at 0x0000011B9FC293A0, file "game_action\map_action.py", line 530>)
+           4384 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           4386 MAKE_FUNCTION            8 (closure)
+           4388 LOAD_CONST              17 (('nextFunc',))
+           4390 CALL_FUNCTION_KW         2
+           4392 POP_TOP
+
+531        4394 LOAD_GLOBAL             11 (goToPositionAction)
+           4396 LOAD_DEREF               1 (deviceId)
+           4398 LOAD_GLOBAL              3 (getMapParams)
+           4400 LOAD_CONST              34 ('大唐境外')
+           4402 CALL_FUNCTION            1
+           4404 LOAD_GLOBAL              2 (QPoint)
+           4406 LOAD_CONST             217 (628)
+           4408 LOAD_CONST             218 (75)
+           4410 CALL_FUNCTION            2
+           4412 CALL_FUNCTION            3
+           4414 POP_TOP
+
+532        4416 LOAD_GLOBAL             12 (clickChuanSong)
+           4418 LOAD_DEREF               1 (deviceId)
+           4420 LOAD_CLOSURE             1 (deviceId)
+           4422 BUILD_TUPLE              1
+           4424 LOAD_CONST             219 (<code object <lambda> at 0x0000011B9FC29450, file "game_action\map_action.py", line 532>)
+           4426 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           4428 MAKE_FUNCTION            8 (closure)
+           4430 LOAD_CONST              17 (('nextFunc',))
+           4432 CALL_FUNCTION_KW         2
+           4434 POP_TOP
+           4436 JUMP_FORWARD           172 (to 4610)
+
+533     >> 4438 LOAD_FAST                7 (mapParams)
+           4440 LOAD_ATTR                9 (area)
+           4442 LOAD_CONST             220 ('盘丝岭')
+           4444 COMPARE_OP               2 (==)
+           4446 EXTENDED_ARG            18
+           4448 POP_JUMP_IF_FALSE     4610
+
+534        4450 LOAD_GLOBAL             10 (goToMapAction)
+           4452 LOAD_DEREF               1 (deviceId)
+           4454 LOAD_CONST              19 ('长安城')
+           4456 LOAD_GLOBAL              2 (QPoint)
+           4458 LOAD_CONST             108 (274)
+           4460 LOAD_CONST              81 (43)
+           4462 CALL_FUNCTION            2
+           4464 LOAD_CONST              15 (('flyMapXY',))
+           4466 CALL_FUNCTION_KW         3
+           4468 POP_TOP
+
+535        4470 LOAD_GLOBAL             11 (goToPositionAction)
+           4472 LOAD_DEREF               1 (deviceId)
+           4474 LOAD_GLOBAL              3 (getMapParams)
+           4476 LOAD_CONST              19 ('长安城')
+           4478 CALL_FUNCTION            1
+           4480 LOAD_GLOBAL              2 (QPoint)
+           4482 LOAD_CONST             108 (274)
+           4484 LOAD_CONST              81 (43)
+           4486 CALL_FUNCTION            2
+           4488 CALL_FUNCTION            3
+           4490 POP_TOP
+
+536        4492 LOAD_GLOBAL             13 (clickNpcAction)
+           4494 LOAD_DEREF               1 (deviceId)
+           4496 LOAD_GLOBAL              3 (getMapParams)
+           4498 LOAD_CONST              19 ('长安城')
+           4500 CALL_FUNCTION            1
+           4502 LOAD_GLOBAL              2 (QPoint)
+           4504 CALL_FUNCTION            0
+           4506 LOAD_CONST              41 ('点NPC对话-是的我要去')
+           4508 LOAD_CLOSURE             1 (deviceId)
+           4510 BUILD_TUPLE              1
+           4512 LOAD_CONST             221 (<code object <lambda> at 0x0000011B9FC29500, file "game_action\map_action.py", line 536>)
+           4514 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           4516 MAKE_FUNCTION            8 (closure)
+           4518 LOAD_CONST             110 (True)
+           4520 LOAD_CONST             111 (('assertFunc', 'isYiZhan'))
+           4522 CALL_FUNCTION_KW         6
+           4524 POP_TOP
+
+537        4526 LOAD_GLOBAL             11 (goToPositionAction)
+           4528 LOAD_DEREF               1 (deviceId)
+           4530 LOAD_GLOBAL              3 (getMapParams)
+           4532 LOAD_CONST              18 ('大唐国境')
+           4534 CALL_FUNCTION            1
+           4536 LOAD_GLOBAL              2 (QPoint)
+           4538 LOAD_CONST              65 (8)
+           4540 LOAD_CONST             215 (76)
+           4542 CALL_FUNCTION            2
+           4544 CALL_FUNCTION            3
+           4546 POP_TOP
+
+538        4548 LOAD_GLOBAL             12 (clickChuanSong)
+           4550 LOAD_DEREF               1 (deviceId)
+           4552 LOAD_CLOSURE             1 (deviceId)
+           4554 BUILD_TUPLE              1
+           4556 LOAD_CONST             222 (<code object <lambda> at 0x0000011B9FC295B0, file "game_action\map_action.py", line 538>)
+           4558 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           4560 MAKE_FUNCTION            8 (closure)
+           4562 LOAD_CONST              17 (('nextFunc',))
+           4564 CALL_FUNCTION_KW         2
+           4566 POP_TOP
+
+539        4568 LOAD_GLOBAL             11 (goToPositionAction)
+           4570 LOAD_DEREF               1 (deviceId)
+           4572 LOAD_GLOBAL              3 (getMapParams)
+           4574 LOAD_CONST              34 ('大唐境外')
+           4576 CALL_FUNCTION            1
+           4578 LOAD_GLOBAL              2 (QPoint)
+           4580 LOAD_CONST             223 (529)
+           4582 LOAD_CONST              56 (112)
+           4584 CALL_FUNCTION            2
+           4586 CALL_FUNCTION            3
+           4588 POP_TOP
+
+540        4590 LOAD_GLOBAL             12 (clickChuanSong)
+           4592 LOAD_DEREF               1 (deviceId)
+           4594 LOAD_CLOSURE             1 (deviceId)
+           4596 BUILD_TUPLE              1
+           4598 LOAD_CONST             224 (<code object <lambda> at 0x0000011B9FC29660, file "game_action\map_action.py", line 540>)
+           4600 LOAD_CONST               5 ('goToMapAction.<locals>.<lambda>')
+           4602 MAKE_FUNCTION            8 (closure)
+           4604 LOAD_CONST              17 (('nextFunc',))
+           4606 CALL_FUNCTION_KW         2
+           4608 POP_TOP
+        >> 4610 POP_BLOCK
+           4612 JUMP_FORWARD            52 (to 4666)
+
+543     >> 4614 DUP_TOP
+           4616 LOAD_GLOBAL             14 (Exception)
+           4618 COMPARE_OP              10 (exception match)
+           4620 EXTENDED_ARG            18
+           4622 POP_JUMP_IF_FALSE     4664
+           4624 POP_TOP
+           4626 STORE_FAST               9 (e)
+           4628 POP_TOP
+           4630 SETUP_FINALLY           20 (to 4652)
+
+544        4632 LOAD_GLOBAL             15 (logger)
+           4634 LOAD_METHOD             16 (debug)
+           4636 LOAD_CONST             225 ('goToMapDKAction Exception: ')
+           4638 LOAD_FAST                9 (e)
+           4640 FORMAT_VALUE             0
+           4642 BUILD_STRING             2
+           4644 CALL_METHOD              1
+           4646 POP_TOP
+           4648 POP_BLOCK
+           4650 BEGIN_FINALLY
+        >> 4652 LOAD_CONST               0 (None)
+           4654 STORE_FAST               9 (e)
+           4656 DELETE_FAST              9 (e)
+           4658 END_FINALLY
+           4660 POP_EXCEPT
+           4662 JUMP_FORWARD             2 (to 4666)
+        >> 4664 END_FINALLY
+        >> 4666 LOAD_CONST               0 (None)
+           4668 RETURN_VALUE
