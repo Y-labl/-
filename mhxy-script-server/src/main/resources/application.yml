@@ -1,27 +1,23 @@
 server:
-  port: 8888
+  port: 8080
 
 spring:
   application:
     name: mhxy-script
-  # 关闭Banner
   main:
     banner-mode: off
   
-  # MySQL数据库配置（生产环境必须通过环境变量注入，不可硬编码密码）
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://localhost:3306/mhxy_script?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:root}
   
-  # 文件上传配置
   servlet:
     multipart:
       max-file-size: 100MB
       max-request-size: 100MB
 
-# MyBatis-Plus配置
 mybatis-plus:
   mapper-locations: classpath*:/mapper/**/*.xml
   type-aliases-package: com.mhxy.entity
@@ -29,32 +25,19 @@ mybatis-plus:
     map-underscore-to-camel-case: true
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
 
-# 图色脚本配置
 script:
-  # 截图保存路径
   screenshot-path: ${user.dir}/screenshots
-  # 模板图片路径
   template-path: ${user.dir}/templates
-  # 匹配精度 (0.0-1.0)
   match-threshold: 0.85
-  # 默认截图超时时间(毫秒)
   screenshot-timeout: 5000
-  # 点击间隔(毫秒)
   click-interval: 300
-  # Tesseract OCR 配置
   tesseract:
-    # tessdata 语言包路径（默认为项目根目录下的 tessdata 文件夹）
     datapath: ${user.dir}/tessdata
-    # OCR 语言包（eng 用于数字识别，如需中文用 chi_sim+eng）
     language: eng
-  # OCR 预处理配置
   ocr:
-    # 预处理缩放比例（0.5-1.0，越小越快但可能降低精度）
     preprocess-scale: 0.7
-    # 单区域 OCR 超时(毫秒)
     timeout-ms: 500
 
-# 日志配置
 logging:
   level:
     com.mhxy: DEBUG

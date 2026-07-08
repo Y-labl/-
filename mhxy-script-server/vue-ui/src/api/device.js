@@ -1,4 +1,4 @@
-﻿import request from '@/utils/request'
+import request from '@/utils/request'
 
 export function getDeviceList(params) {
   return request({ url: '/device/list', method: 'get', params })
@@ -6,6 +6,10 @@ export function getDeviceList(params) {
 
 export function getDeviceInfo(id) {
   return request({ url: `/device/${id}`, method: 'get' })
+}
+
+export function getDeviceScreenshot(id) {
+  return request({ url: `/device/${id}/screenshot`, method: 'get', timeout: 8000 })
 }
 
 export function addDevice(data) {

@@ -61,3 +61,51 @@ export function getBattleExecutionList(params) {
     params
   })
 }
+
+// 偷卡API
+export function startSteal(id, deviceId) {
+  return request({
+    url: `/battle/scene/${id}/steal/start`,
+    method: 'post',
+    data: { deviceId }
+  })
+}
+
+export function stopSteal(id) {
+  return request({
+    url: `/battle/scene/${id}/steal/stop`,
+    method: 'post'
+  })
+}
+
+export function getStealStatus(id) {
+  return request({
+    url: `/battle/scene/${id}/steal/status`,
+    method: 'get'
+  })
+}
+
+// ============ 偷卡配置（设备级）API ============
+export function getStealConfigList() {
+  return request({ url: '/steal-card/list', method: 'get' })
+}
+
+export function getStealConfigByDevice(deviceId) {
+  return request({ url: `/steal-card/device/${deviceId}`, method: 'get' })
+}
+
+export function saveStealConfig(deviceId, data) {
+  return request({ url: `/steal-card/device/${deviceId}`, method: 'post', data })
+}
+
+export function startStealByDevice(deviceId) {
+  return request({ url: `/steal-card/device/${deviceId}/start`, method: 'post' })
+}
+
+export function stopStealByDevice(deviceId) {
+  return request({ url: `/steal-card/device/${deviceId}/stop`, method: 'post' })
+}
+
+export function getStealRunningDevices() {
+  return request({ url: '/steal-card/running', method: 'get' })
+}

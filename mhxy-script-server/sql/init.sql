@@ -203,7 +203,28 @@ CREATE TABLE IF NOT EXISTS template_image (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='模板图片表';
 
 -- ============================================
--- 9. 操作日志表
+-- 9. 偷卡配置表（设备级）
+-- ============================================
+CREATE TABLE IF NOT EXISTS steal_card_config (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '配置ID',
+    device_id BIGINT NOT NULL UNIQUE COMMENT '设备ID(每个设备独立配置)',
+    config_name VARCHAR(100) DEFAULT '偷卡配置' COMMENT '配置名称',
+    target_monsters VARCHAR(500) DEFAULT '噬天虎,炎魔神,金身僧' COMMENT '目标怪物(逗号分隔)',
+    auto_battle TINYINT DEFAULT 1 COMMENT '自动战斗: 0否 1是',
+    auto_recovery TINYINT DEFAULT 1 COMMENT '自动恢复: 0否 1是',
+    auto_revival TINYINT DEFAULT 1 COMMENT '自动复活: 0否 1是',
+    auto_pickup TINYINT DEFAULT 1 COMMENT '自动拾取: 0否 1是',
+    map_click_area VARCHAR(100) DEFAULT '80,180,980,2200' COMMENT '地图随机点击区域 x1,y1,x2,y2',
+    template_confidence DECIMAL(4,2) DEFAULT 0.80 COMMENT '模板匹配阈值',
+    walk_interval INT DEFAULT 500 COMMENT '随机行走间隔(毫秒)',
+    steal_attempts INT DEFAULT 3 COMMENT '每场战斗偷取尝试次数',
+    status TINYINT DEFAULT 1 COMMENT '状态: 0禁用 1启用',
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='偷卡配置表(设备级)';
+
+-- ============================================
+-- 10. 操作日志表
 -- ============================================
 CREATE TABLE IF NOT EXISTS operation_log (
     id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '日志ID',

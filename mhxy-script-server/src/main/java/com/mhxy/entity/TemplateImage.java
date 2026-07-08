@@ -12,17 +12,16 @@ public class TemplateImage {
     @TableId(type = IdType.AUTO)
     private Long id;
     private String templateName;
-    private String templateType;
-    private String filePath;
-    private String fileName;
-    private Integer fileSize;
+    private String templatePath;
+    private String category;
+    private String description;
+    private Double matchThreshold;
     private Integer width;
     private Integer height;
-    private Double matchThreshold;
-    private String tags;
-    private String description;
-    private Integer useCount;
-    private Integer status;
+    private Integer fileSize;
+    private Integer usageCount;
+    private Integer successCount;
     private Long userId;
+    private Integer status;
     private LocalDateTime createTime;
 }

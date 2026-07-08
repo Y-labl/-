@@ -23,6 +23,7 @@ public class BattleScene {
     private String characterTeam;
     
     // JSON配置
+    /** 战斗策略 JSON: { hpReplenish, mpReplenish, hpThreshold, mpThreshold, autoNavigate, battleOps: {...} } */
     private String battleStrategy;
     private String skillConfig;
     private String medicineConfig;
@@ -43,5 +44,7 @@ public class BattleScene {
     private Integer totalDuration;
     
     private LocalDateTime createTime;
+    private Long deviceId;
+
     private LocalDateTime updateTime;
 }

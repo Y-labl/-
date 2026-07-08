@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="devices-page">
     <div class="page-header">
       <h2 class="page-title">设备管理</h2>
@@ -18,7 +18,7 @@
       </div>
     </div>
 
-    <!-- 设备卡片列表 -->
+    <!-- Device cards -->
     <div class="card">
       <el-row :gutter="20">
         <el-col
@@ -43,10 +43,13 @@
             </div>
 
             <div class="device-preview">
-              <div class="screen-preview">
-                <img v-if="device.screenshot" :src="device.screenshot" alt="设备截图" />
-                <span v-else-if="device.screenWidth">{{ device.screenWidth }}x{{ device.screenHeight }}</span>
-                <span v-else>暂无画面</span>
+              <div class="screen-preview" @click="refreshScreenshot(device)">
+                <img v-if="device.screenshot" :src="device.screenshot" alt="设备画面" />
+                <div v-else class="screenshot-placeholder">
+                  <el-icon v-if="!device.loadingShot" class="placeholder-icon"><VideoCamera /></el-icon>
+                  <el-icon v-else class="is-loading" :size="28"><Loading /></el-icon>
+                  <span>{{ device.loadingShot ? '获取画面...' : (device.screenWidth ? device.screenWidth + 'x' + device.screenHeight : '暂无画面') }}</span>
+                </div>
               </div>
             </div>
 
@@ -70,7 +73,7 @@
       </div>
     </div>
 
-    <!-- 扫描设备弹窗 -->
+    <!-- Scan dialog -->
     <el-dialog v-model="showScanDialog" title="扫描可用设备" width="650px">
       <div v-if="scannedDevices.length > 0">
         <el-table :data="scannedDevices" style="width: 100%">
@@ -109,18 +112,17 @@
       </template>
     </el-dialog>
 
-    <!-- 手动添加设备弹窗 -->
-    <el-dialog v-model="showAddDialog" title="手动添加设备" width="500px">
-      <el-form ref="deviceFormRef" :model="deviceForm" :rules="rules" label-width="100px">
+    <!-- Add device dialog -->
+    <el-dialog v-model="showAddDialog" title="手动添加设备" width="450px">
+      <el-form :model="deviceForm" :rules="rules" label-width="80px">
         <el-form-item label="设备名称" prop="deviceName">
-          <el-input v-model="deviceForm.deviceName" placeholder="请输入设备名称" />
+          <el-input v-model="deviceForm.deviceName" placeholder="例如：夜神模拟器" />
         </el-form-item>
         <el-form-item label="设备类型" prop="deviceType">
-          <el-select v-model="deviceForm.deviceType" placeholder="请选择设备类型">
-            <el-option label="Windows模拟器" value="windows" />
-            <el-option label="Android" value="android" />
-            <el-option label="iOS" value="ios" />
-          </el-select>
+          <el-radio-group v-model="deviceForm.deviceType">
+            <el-radio value="windows">模拟器</el-radio>
+            <el-radio value="android">Android手机</el-radio>
+          </el-radio-group>
         </el-form-item>
         <el-form-item label="IP地址" prop="ipAddress">
           <el-input v-model="deviceForm.ipAddress" placeholder="127.0.0.1" />
@@ -128,14 +130,18 @@
         <el-form-item label="端口" prop="port">
           <el-input-number v-model="deviceForm.port" :min="1" :max="65535" />
         </el-form-item>
-        <el-form-item label="分辨率宽">
-          <el-input-number v-model="deviceForm.screenWidth" :min="1" />
-        </el-form-item>
-        <el-form-item label="分辨率高">
-          <el-input-number v-model="deviceForm.screenHeight" :min="1" />
+        <el-form-item label="分辨率">
+          <el-row :gutter="10">
+            <el-col :span="12">
+              <el-input-number v-model="deviceForm.screenWidth" placeholder="宽" :min="1" controls-position="right" />
+            </el-col>
+            <el-col :span="12">
+              <el-input-number v-model="deviceForm.screenHeight" placeholder="高" :min="1" controls-position="right" />
+            </el-col>
+          </el-row>
         </el-form-item>
         <el-form-item label="备注">
-          <el-input v-model="deviceForm.remark" type="textarea" rows="3" />
+          <el-input v-model="deviceForm.remark" type="textarea" :rows="2" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -147,15 +153,16 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getDeviceList, addDevice, deleteDevice, connectDevice, disconnectDevice, scanDevices, bindDevice } from '@/api/device'
+import { getDeviceList, getDeviceScreenshot, addDevice, deleteDevice, connectDevice, disconnectDevice, scanDevices, bindDevice } from '@/api/device'
 
 const showAddDialog = ref(false)
 const showScanDialog = ref(false)
 const scanning = ref(false)
 const deviceList = ref([])
 const scannedDevices = ref([])
+let screenshotTimer = null
 
 const deviceForm = reactive({
   deviceName: '',
@@ -184,11 +191,36 @@ const getStatusText = (status) => {
   return texts[status] || '未知'
 }
 
+const refreshScreenshot = async (device) => {
+  if (!device.deviceId) return
+  device.loadingShot = true
+  try {
+    const res = await getDeviceScreenshot(device.id)
+    if (res.data && res.data.base64) {
+      device.screenshot = res.data.base64
+    }
+  } catch (e) {
+    // silently fail, device may be offline
+  } finally {
+    device.loadingShot = false
+  }
+}
+
+const pollScreenshots = () => {
+  deviceList.value.forEach(d => {
+    if (d.deviceId && (d.status === 1 || d.status === 2)) {
+      refreshScreenshot(d)
+    }
+  })
+}
+
 const loadDevices = async () => {
   try {
     const res = await getDeviceList()
-    deviceList.value = res.data || []
+    deviceList.value = (res.data || []).map(d => ({ ...d, screenshot: null, loadingShot: false }))
     ElMessage.success('设备列表已刷新')
+    // fetch screenshots after load
+    pollScreenshots()
   } catch (e) {
     ElMessage.error('获取设备列表失败')
   }
@@ -270,8 +302,15 @@ const handleAddDevice = async () => {
   }
 }
 
-// 初始化
-loadDevices()
+onMounted(() => {
+  loadDevices()
+  // poll every 4s for screenshots
+  screenshotTimer = setInterval(pollScreenshots, 4000)
+})
+
+onUnmounted(() => {
+  if (screenshotTimer) clearInterval(screenshotTimer)
+})
 </script>
 
 <style scoped lang="scss">
@@ -322,16 +361,31 @@ loadDevices()
       margin-bottom: 15px;
       .screen-preview {
         width: 100%;
-        height: 150px;
-        background: #000;
+        height: 180px;
+        background: #1a1a2e;
         border-radius: 8px;
         display: flex;
         align-items: center;
         justify-content: center;
-        color: #666;
-        font-size: 14px;
         overflow: hidden;
-        img { max-width: 100%; max-height: 100%; }
+        cursor: pointer;
+
+        img {
+          width: 100%;
+          height: 100%;
+          object-fit: contain;
+        }
+
+        .screenshot-placeholder {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 8px;
+          color: #666;
+          font-size: 13px;
+
+          .placeholder-icon { font-size: 36px; color: #444; }
+        }
       }
     }
 

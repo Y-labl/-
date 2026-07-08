@@ -4,8 +4,13 @@ import com.mhxy.dto.ApiResponse;
 import com.mhxy.entity.Device;
 import com.mhxy.service.DeviceScannerService;
 import com.mhxy.service.DeviceService;
+import com.mhxy.service.OcrRecognitionService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
@@ -21,9 +26,9 @@ public class DeviceController {
     @Autowired
     private DeviceScannerService scannerService;
 
-    /**
-     * 获取设备列表
-     */
+    @Autowired
+    private OcrRecognitionService ocrRecognitionService;
+
     @GetMapping("/list")
     public ApiResponse<List<Map<String, Object>>> getDeviceList() {
         List<Device> devices = deviceService.list();
@@ -34,15 +39,11 @@ public class DeviceController {
         return ApiResponse.success(result);
     }
 
-    /**
-     * 扫描可用设备（模拟器端口检测 + ADB扫描）
-     */
     @GetMapping("/scan")
     public ApiResponse<List<Map<String, Object>>> scanDevices() {
-        log.info("扫描可用设备...");
+        log.info("Scanning devices...");
         List<Map<String, Object>> scanned = scannerService.scanDevices();
 
-        // 标记已绑定的设备
         List<Device> boundDevices = deviceService.list();
         Set<String> boundSerials = new HashSet<>();
         for (Device d : boundDevices) {
@@ -54,13 +55,70 @@ public class DeviceController {
             device.put("bound", boundSerials.contains(serial));
         }
 
-        log.info("扫描完成, 发现 {} 台设备", scanned.size());
+        log.info("Scan done, found {} devices", scanned.size());
         return ApiResponse.success(scanned);
     }
 
+    @GetMapping("/{id}/screenshot")
+    public ApiResponse<Map<String, String>> getScreenshot(@PathVariable Long id) {
+        Device device = deviceService.getById(id);
+        if (device == null) {
+            return ApiResponse.fail("Device not found");
+        }
+
+        String serial = device.getDeviceId();
+        if (serial == null || serial.isEmpty()) {
+            return ApiResponse.fail("No device serial configured");
+        }
+
+        try {
+            byte[] pngBytes = scannerService.captureAdbScreenshot(serial);
+            if (pngBytes == null || pngBytes.length == 0) {
+                return ApiResponse.fail("Screenshot capture failed");
+            }
+            String base64 = Base64.getEncoder().encodeToString(pngBytes);
+            Map<String, String> data = new HashMap<>();
+            data.put("base64", "data:image/png;base64," + base64);
+            data.put("serial", serial);
+            return ApiResponse.success(data);
+        } catch (Exception e) {
+            log.error("Screenshot error for {}: {}", serial, e.getMessage());
+            return ApiResponse.fail(e.getMessage());
+        }
+    }
+
     /**
-     * 绑定设备（将扫描到的设备保存到数据库）
+     * 流式预览端点：返回降分辨率 JPEG 二进制，体积小、传输快，适合实时预览。
+     * 后台线程持续截图缓存，此端点几乎零延迟返回最新帧。
      */
+    @GetMapping("/{id}/stream")
+    public ResponseEntity<byte[]> streamScreenshot(@PathVariable Long id,
+                                                  @RequestParam(defaultValue = "480") int width,
+                                                  @RequestParam(defaultValue = "0.7") float quality) {
+        Device device = deviceService.getById(id);
+        if (device == null) return ResponseEntity.notFound().build();
+        String serial = device.getDeviceId();
+        if (serial == null || serial.isEmpty()) return ResponseEntity.notFound().build();
+        try {
+            scannerService.ensureStreaming(serial, width, quality);
+            byte[] jpeg = scannerService.getLatestFrame(serial);
+            if (jpeg == null || jpeg.length == 0) return ResponseEntity.noContent().build();
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.IMAGE_JPEG);
+            headers.setCacheControl(CacheControl.noStore().getHeaderValue());
+            return new ResponseEntity<>(jpeg, headers, org.springframework.http.HttpStatus.OK);
+        } catch (Exception e) {
+            log.error("Stream error for {}: {}", serial, e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @GetMapping("/{id}/recognize")
+    public ApiResponse<Map<String, Object>> recognizeDevice(@PathVariable Long id) {
+        Map<String, Object> result = ocrRecognitionService.recognizeFull(id);
+        return ApiResponse.success(result);
+    }
+
     @PostMapping("/bind")
     public ApiResponse<Map<String, Object>> bindDevice(@RequestBody Map<String, Object> body) {
         String deviceName = (String) body.get("deviceName");
@@ -69,11 +127,10 @@ public class DeviceController {
         Integer port = body.get("port") != null ? ((Number) body.get("port")).intValue() : 5555;
         String serial = (String) body.get("serial");
 
-        // Check if already bound
         if (serial != null && !serial.isEmpty()) {
             Device existing = deviceService.lambdaQuery().eq(Device::getDeviceId, serial).one();
             if (existing != null) {
-                return ApiResponse.fail("该设备已绑定");
+                return ApiResponse.fail("Device already bound");
             }
         }
 
@@ -92,25 +149,19 @@ public class DeviceController {
         }
 
         deviceService.save(device);
-        log.info("绑定设备: {} ({})", deviceName, serial);
-        return ApiResponse.success("绑定成功", deviceToMap(device));
+        log.info("Bound device: {} ({})", deviceName, serial);
+        return ApiResponse.success("Bound", deviceToMap(device));
     }
 
-    /**
-     * 获取设备详情
-     */
     @GetMapping("/{id}")
     public ApiResponse<Map<String, Object>> getDevice(@PathVariable Long id) {
         Device device = deviceService.getById(id);
         if (device == null) {
-            return ApiResponse.fail("设备不存在");
+            return ApiResponse.fail("Device not found");
         }
         return ApiResponse.success(deviceToMap(device));
     }
 
-    /**
-     * 添加设备
-     */
     @PostMapping
     public ApiResponse<Map<String, Object>> addDevice(@RequestBody Map<String, Object> body) {
         Device device = new Device();
@@ -124,18 +175,15 @@ public class DeviceController {
         device.setRemark((String) body.get("remark"));
 
         deviceService.save(device);
-        log.info("添加设备: {}", device.getDeviceName());
-        return ApiResponse.success("添加成功", deviceToMap(device));
+        log.info("Added device: {}", device.getDeviceName());
+        return ApiResponse.success("Added", deviceToMap(device));
     }
 
-    /**
-     * 更新设备
-     */
     @PutMapping("/{id}")
     public ApiResponse<Void> updateDevice(@PathVariable Long id, @RequestBody Map<String, Object> body) {
         Device device = deviceService.getById(id);
         if (device == null) {
-            return ApiResponse.fail("设备不存在");
+            return ApiResponse.fail("Device not found");
         }
         if (body.containsKey("deviceName")) device.setDeviceName((String) body.get("deviceName"));
         if (body.containsKey("deviceType")) device.setDeviceType((String) body.get("deviceType"));
@@ -146,49 +194,37 @@ public class DeviceController {
         if (body.containsKey("remark")) device.setRemark((String) body.get("remark"));
 
         deviceService.updateById(device);
-        return ApiResponse.success("更新成功", null);
+        return ApiResponse.success("Updated", null);
     }
 
-    /**
-     * 删除设备
-     */
     @DeleteMapping("/{id}")
     public ApiResponse<Void> deleteDevice(@PathVariable Long id) {
         deviceService.removeById(id);
-        return ApiResponse.success("删除成功", null);
+        return ApiResponse.success("Deleted", null);
     }
 
-    /**
-     * 连接设备
-     */
     @PostMapping("/{id}/connect")
     public ApiResponse<Void> connectDevice(@PathVariable Long id) {
         Device device = deviceService.getById(id);
         if (device == null) {
-            return ApiResponse.fail("设备不存在");
+            return ApiResponse.fail("Device not found");
         }
         deviceService.connectDevice(id);
-        log.info("连接设备: {}", device.getDeviceName());
-        return ApiResponse.success("连接成功", null);
+        log.info("Connected device: {}", device.getDeviceName());
+        return ApiResponse.success("Connected", null);
     }
 
-    /**
-     * 断开设备
-     */
     @PostMapping("/{id}/disconnect")
     public ApiResponse<Void> disconnectDevice(@PathVariable Long id) {
         Device device = deviceService.getById(id);
         if (device == null) {
-            return ApiResponse.fail("设备不存在");
+            return ApiResponse.fail("Device not found");
         }
         deviceService.disconnectDevice(id);
-        log.info("断开设备: {}", device.getDeviceName());
-        return ApiResponse.success("断开成功", null);
+        log.info("Disconnected device: {}", device.getDeviceName());
+        return ApiResponse.success("Disconnected", null);
     }
 
-    /**
-     * 刷新设备列表
-     */
     @PostMapping("/refresh")
     public ApiResponse<List<Map<String, Object>>> refreshDevices() {
         List<Device> devices = deviceService.list();
@@ -196,7 +232,7 @@ public class DeviceController {
         for (Device d : devices) {
             result.add(deviceToMap(d));
         }
-        log.info("刷新设备列表, 共{}台", devices.size());
+        log.info("Refreshed device list, {} devices", devices.size());
         return ApiResponse.success(result);
     }
 
