@@ -1,31 +1,35 @@
-<template>
+﻿<template>
   <div class="devices-page">
     <div class="page-header">
       <h2 class="page-title">设备管理</h2>
       <div class="header-actions">
-        <el-button type="primary" @click="refreshDevices">
+        <el-button type="warning" @click="openScanDialog" :loading="scanning">
+          <el-icon><Search /></el-icon>
+          扫描设备
+        </el-button>
+        <el-button type="primary" @click="loadDevices">
           <el-icon><Refresh /></el-icon>
-          刷新设备
+          刷新列表
         </el-button>
         <el-button type="success" @click="showAddDialog = true">
           <el-icon><Plus /></el-icon>
-          添加设备
+          手动添加
         </el-button>
       </div>
     </div>
-    
-    <!-- 设备列表 -->
+
+    <!-- 设备卡片列表 -->
     <div class="card">
       <el-row :gutter="20">
-        <el-col 
-          v-for="device in deviceList" 
-          :key="device.id" 
+        <el-col
+          v-for="device in deviceList"
+          :key="device.id"
           :span="6"
           class="device-col"
         >
           <el-card class="device-card" shadow="hover">
             <div class="device-header">
-              <el-icon class="device-icon" :class="getDeviceIcon(device.deviceType)">
+              <el-icon class="device-icon" :class="device.deviceType === 'windows' ? 'windows' : 'mobile'">
                 <Monitor v-if="device.deviceType === 'windows'" />
                 <Iphone v-else />
               </el-icon>
@@ -37,49 +41,76 @@
                 {{ getStatusText(device.status) }}
               </el-tag>
             </div>
-            
+
             <div class="device-preview">
               <div class="screen-preview">
                 <img v-if="device.screenshot" :src="device.screenshot" alt="设备截图" />
+                <span v-else-if="device.screenWidth">{{ device.screenWidth }}x{{ device.screenHeight }}</span>
                 <span v-else>暂无画面</span>
               </div>
             </div>
-            
+
             <div class="device-footer">
               <span class="device-size">
-                {{ device.screenWidth }}x{{ device.screenHeight }}
+                {{ device.screenWidth || '?' }}x{{ device.screenHeight || '?' }}
               </span>
               <div class="device-actions">
-                <el-button 
-                  size="small" 
-                  type="primary"
-                  :disabled="device.status === 2"
-                  @click="connectDevice(device)"
-                >
-                  连接
-                </el-button>
-                <el-button 
-                  size="small" 
-                  type="danger"
-                  :disabled="device.status === 0"
-                  @click="disconnectDevice(device)"
-                >
-                  断开
-                </el-button>
+                <el-button size="small" type="primary" :disabled="device.status === 2" @click="handleConnect(device)">连接</el-button>
+                <el-button size="small" type="danger" :disabled="device.status === 0" @click="handleDisconnect(device)">断开</el-button>
+                <el-button size="small" type="danger" plain @click="handleDelete(device)">删除</el-button>
               </div>
             </div>
           </el-card>
         </el-col>
       </el-row>
-      
+
       <div v-if="deviceList.length === 0" class="empty-state">
         <el-icon class="empty-icon"><Monitor /></el-icon>
-        <p class="empty-text">暂无设备，请添加设备</p>
+        <p class="empty-text">暂无设备，请扫描或手动添加</p>
       </div>
     </div>
-    
-    <!-- 添加设备对话框 -->
-    <el-dialog v-model="showAddDialog" title="添加设备" width="500px">
+
+    <!-- 扫描设备弹窗 -->
+    <el-dialog v-model="showScanDialog" title="扫描可用设备" width="650px">
+      <div v-if="scannedDevices.length > 0">
+        <el-table :data="scannedDevices" style="width: 100%">
+          <el-table-column prop="deviceName" label="设备名称" width="140" />
+          <el-table-column label="类型" width="80">
+            <template #default="{ row }">
+              <el-tag :type="row.deviceType === 'windows' ? '' : 'success'" size="small">
+                {{ row.deviceType === 'windows' ? '模拟器' : 'Android' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="serial" label="序列号/地址" width="160" />
+          <el-table-column label="分辨率" width="110">
+            <template #default="{ row }">
+              {{ row.screenWidth ? row.screenWidth + 'x' + row.screenHeight : '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="100">
+            <template #default="{ row }">
+              <el-button v-if="!row.bound" type="primary" size="small" @click="handleBind(row)">绑定</el-button>
+              <el-tag v-else type="info" size="small">已绑定</el-tag>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+      <div v-else-if="!scanning" class="empty-state" style="padding: 40px 0">
+        <p class="empty-text">未发现可用设备，请确保模拟器已启动或手机已通过 ADB 连接</p>
+      </div>
+      <div v-if="scanning" style="text-align: center; padding: 40px 0">
+        <el-icon class="is-loading" :size="32"><Loading /></el-icon>
+        <p style="margin-top: 10px">正在扫描设备...</p>
+      </div>
+      <template #footer>
+        <el-button @click="showScanDialog = false">关闭</el-button>
+        <el-button type="warning" @click="doScan" :loading="scanning">重新扫描</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 手动添加设备弹窗 -->
+    <el-dialog v-model="showAddDialog" title="手动添加设备" width="500px">
       <el-form ref="deviceFormRef" :model="deviceForm" :rules="rules" label-width="100px">
         <el-form-item label="设备名称" prop="deviceName">
           <el-input v-model="deviceForm.deviceName" placeholder="请输入设备名称" />
@@ -97,6 +128,12 @@
         <el-form-item label="端口" prop="port">
           <el-input-number v-model="deviceForm.port" :min="1" :max="65535" />
         </el-form-item>
+        <el-form-item label="分辨率宽">
+          <el-input-number v-model="deviceForm.screenWidth" :min="1" />
+        </el-form-item>
+        <el-form-item label="分辨率高">
+          <el-input-number v-model="deviceForm.screenHeight" :min="1" />
+        </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="deviceForm.remark" type="textarea" rows="3" />
         </el-form-item>
@@ -111,16 +148,22 @@
 
 <script setup>
 import { ref, reactive } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { getDeviceList, addDevice, deleteDevice, connectDevice, disconnectDevice, scanDevices, bindDevice } from '@/api/device'
 
 const showAddDialog = ref(false)
+const showScanDialog = ref(false)
+const scanning = ref(false)
 const deviceList = ref([])
+const scannedDevices = ref([])
 
 const deviceForm = reactive({
   deviceName: '',
   deviceType: 'windows',
   ipAddress: '127.0.0.1',
   port: 5555,
+  screenWidth: null,
+  screenHeight: null,
   remark: ''
 })
 
@@ -129,10 +172,6 @@ const rules = {
   deviceType: [{ required: true, message: '请选择设备类型', trigger: 'change' }],
   ipAddress: [{ required: true, message: '请输入IP地址', trigger: 'blur' }],
   port: [{ required: true, message: '请输入端口', trigger: 'blur' }]
-}
-
-const getDeviceIcon = (type) => {
-  return type === 'windows' ? 'windows' : 'mobile'
 }
 
 const getStatusType = (status) => {
@@ -145,64 +184,94 @@ const getStatusText = (status) => {
   return texts[status] || '未知'
 }
 
-const refreshDevices = () => {
-  // 模拟数据
-  deviceList.value = [
-    {
-      id: 1,
-      deviceName: '夜神模拟器',
-      deviceType: 'windows',
-      ipAddress: '127.0.0.1',
-      port: 62001,
-      status: 1,
-      screenWidth: 1280,
-      screenHeight: 720,
-      screenshot: null
-    },
-    {
-      id: 2,
-      deviceName: '雷电模拟器',
-      deviceType: 'windows',
-      ipAddress: '127.0.0.1',
-      port: 5555,
-      status: 2,
-      screenWidth: 1920,
-      screenHeight: 1080,
-      screenshot: null
-    },
-    {
-      id: 3,
-      deviceName: '小米手机',
-      deviceType: 'android',
-      ipAddress: '192.168.1.100',
-      port: 5555,
-      status: 1,
-      screenWidth: 1080,
-      screenHeight: 2400,
-      screenshot: null
+const loadDevices = async () => {
+  try {
+    const res = await getDeviceList()
+    deviceList.value = res.data || []
+    ElMessage.success('设备列表已刷新')
+  } catch (e) {
+    ElMessage.error('获取设备列表失败')
+  }
+}
+
+const openScanDialog = async () => {
+  showScanDialog.value = true
+  await doScan()
+}
+
+const doScan = async () => {
+  scanning.value = true
+  scannedDevices.value = []
+  try {
+    const res = await scanDevices()
+    scannedDevices.value = res.data || []
+    if (scannedDevices.value.length === 0) {
+      ElMessage.info('未发现可用设备')
+    } else {
+      ElMessage.success(`发现 ${scannedDevices.value.length} 台设备`)
     }
-  ]
-  ElMessage.success('设备列表已刷新')
+  } catch (e) {
+    ElMessage.error('扫描失败')
+  } finally {
+    scanning.value = false
+  }
 }
 
-const connectDevice = (device) => {
-  ElMessage.success(`正在连接 ${device.deviceName}...`)
-  device.status = 2
+const handleBind = async (device) => {
+  try {
+    await bindDevice(device)
+    ElMessage.success(`已绑定 ${device.deviceName}`)
+    device.bound = true
+    loadDevices()
+  } catch (e) {
+    ElMessage.error('绑定失败')
+  }
 }
 
-const disconnectDevice = (device) => {
-  ElMessage.success(`已断开 ${device.deviceName}`)
-  device.status = 0
+const handleConnect = async (device) => {
+  try {
+    await connectDevice(device.id)
+    ElMessage.success(`已连接 ${device.deviceName}`)
+    loadDevices()
+  } catch (e) {
+    ElMessage.error('连接失败')
+  }
 }
 
-const handleAddDevice = () => {
-  ElMessage.success('设备添加成功')
-  showAddDialog.value = false
-  refreshDevices()
+const handleDisconnect = async (device) => {
+  try {
+    await disconnectDevice(device.id)
+    ElMessage.success(`已断开 ${device.deviceName}`)
+    loadDevices()
+  } catch (e) {
+    ElMessage.error('断开失败')
+  }
+}
+
+const handleDelete = async (device) => {
+  try {
+    await ElMessageBox.confirm(`确定删除设备 "${device.deviceName}"？`, '确认删除', { type: 'warning' })
+    await deleteDevice(device.id)
+    ElMessage.success('设备已删除')
+    loadDevices()
+  } catch (e) {
+    // user cancelled
+  }
+}
+
+const handleAddDevice = async () => {
+  try {
+    await addDevice(deviceForm)
+    ElMessage.success('设备添加成功')
+    showAddDialog.value = false
+    loadDevices()
+  } catch (e) {
+    ElMessage.error('添加失败')
+  }
 }
 
 // 初始化
-refreshDevices()
+loadDevices()
 </script>
 
 <style scoped lang="scss">
@@ -212,60 +281,45 @@ refreshDevices()
     justify-content: space-between;
     align-items: center;
     margin-bottom: 20px;
-    
+
     .page-title {
       font-size: 20px;
       font-weight: bold;
     }
-    
+
     .header-actions {
       display: flex;
       gap: 10px;
     }
   }
-  
+
   .device-col {
     margin-bottom: 20px;
   }
-  
+
   .device-card {
     .device-header {
       display: flex;
       align-items: center;
       gap: 12px;
       margin-bottom: 15px;
-      
+
       .device-icon {
         font-size: 32px;
         color: #409eff;
-        
-        &.windows {
-          color: #409eff;
-        }
-        &.mobile {
-          color: #67c23a;
-        }
+        &.windows { color: #409eff; }
+        &.mobile { color: #67c23a; }
       }
-      
+
       .device-info {
         flex: 1;
-        
-        h4 {
-          margin: 0 0 5px;
-          font-size: 14px;
-        }
-        
-        p {
-          margin: 0;
-          font-size: 12px;
-          color: #999;
-        }
+        h4 { margin: 0 0 5px; font-size: 14px; }
+        p { margin: 0; font-size: 12px; color: #999; }
       }
     }
-    
+
     .device-preview {
       margin-bottom: 15px;
-      
       .screen-preview {
         width: 100%;
         height: 150px;
@@ -277,28 +331,16 @@ refreshDevices()
         color: #666;
         font-size: 14px;
         overflow: hidden;
-        
-        img {
-          max-width: 100%;
-          max-height: 100%;
-        }
+        img { max-width: 100%; max-height: 100%; }
       }
     }
-    
+
     .device-footer {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      
-      .device-size {
-        font-size: 12px;
-        color: #999;
-      }
-      
-      .device-actions {
-        display: flex;
-        gap: 8px;
-      }
+      .device-size { font-size: 12px; color: #999; }
+      .device-actions { display: flex; gap: 6px; }
     }
   }
 }
