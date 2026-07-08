@@ -498,7 +498,7 @@ class MainWindow(QMainWindow):
         self._lbl_bound_info.setStyleSheet("color: #888; padding: 0 8px;")
         self._btn_enum_children = QPushButton("子窗口")
         self._btn_enum_children.setToolTip("枚举选中窗口的子窗口")
-        self._btn_adb = QPushButton("ADB扫描")
+        self._btn_adb = QPushButton("绑定设备")
         self._btn_adb.setToolTip("扫描 ADB 连接的 Android 设备")
 
         bind_layout.addWidget(self._btn_refresh)
@@ -1668,14 +1668,21 @@ class MainWindow(QMainWindow):
             return
 
         # 重新截图确保图片最新
-        if self.binder.is_bound:
-            self._log("正在截图以进行模板匹配...")
+        img = None
+        if self._adb_serial:
+            self._log("正在通过 ADB 截图以进行模板匹配...")
+            try:
+                from adbutils import adb
+                d = adb.device(self._adb_serial)
+                img = d.screenshot()
+            except Exception as e:
+                self._log(f"ADB 截图失败: {e}")
+        if img is None and self.binder.is_bound:
+            self._log("正在截取窗口以进行模板匹配...")
             img = self.capture.capture_window(
                 self.binder.target_window.hwnd,
                 client_area=self._cb_client_area.isChecked())
-            if img is None:
-                img = self.capture.cached_image
-        else:
+        if img is None:
             img = self.capture.cached_image
 
         if img is None:
@@ -1798,7 +1805,7 @@ class MainWindow(QMainWindow):
     def _on_adb_devices_found(self, devices):
         """ADB 设备扫描完成 - 弹出设备选择对话框"""
         self._btn_adb.setEnabled(True)
-        self._btn_adb.setText("ADB扫描")
+        self._btn_adb.setText("绑定设备")
         if not devices:
             self._log("未发现 ADB 设备")
             QMessageBox.information(self, "ADB 扫描", "未检测到已连接的 Android 设备\n请确认 USB 调试已开启且已通过 USB 连接")
@@ -1878,6 +1885,13 @@ class MainWindow(QMainWindow):
 
         # 自动绑定 + 拉到前台确保截图可见
         self.binder.bind_window(hwnd)
+        # 显示 ADB 设备信息
+        info = f"ADB: {serial}"
+        if resolution:
+            info += f"  |  {resolution}"
+        self._lbl_bound_info.setText(info)
+        self._lbl_bound_info.setStyleSheet(
+            "color: #4FC3F7; padding: 0 8px; font-weight: bold;")
         try:
             win32gui.SetForegroundWindow(hwnd)
             time.sleep(0.2)

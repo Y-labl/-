@@ -17,6 +17,7 @@ if os.path.exists(original_path) and original_path not in sys.path:
     sys.path.insert(0, original_path)
 
 from core.img_util import find_template
+from battle import BattleHandler, get_monster_names
 from core.adb_util import AdbUtil
 
 # ---- 常量：模板基准分辨率（原始截图使用的横屏宽度）----
@@ -25,7 +26,7 @@ IMAGES_DIR = os.path.join(project_dir, "images")
 
 
 class XiaoXiTianChangJingThread(threading.Thread):
-    def __init__(self, serial, debug_win=True):
+    def __init__(self, serial, debug_win=False):
         super().__init__(daemon=True)
         self.serial = serial
         self._client = None
@@ -35,12 +36,13 @@ class XiaoXiTianChangJingThread(threading.Thread):
         self._loop_count = 0
         self._state = "INIT"
         self._debug_win = debug_win
-        self._debug_annotations = []  # [(type, data), ...] type: "match"/"click"/"miss"
+        self._debug_annotations = []
+        self._battle = None  # 延迟初始化，等 client 就绪  # [(type, data), ...] type: "match"/"click"/"miss"
 
     @property
     def state(self): return self._state
     @property
-    def battle_count(self): return self._loop_count
+    def battle_count(self): return getattr(self, "_battle_count", self._loop_count)
 
     def add_callback(self, name, func): self._callbacks.append((name, func))
     def _emit(self, name, *args):
@@ -290,27 +292,69 @@ class XiaoXiTianChangJingThread(threading.Thread):
         self._state = "RUNNING"
         self._emit("state_update", "RUNNING")
 
+        self._battle = BattleHandler(self._client, log_func=self._log)
+        self._battle.set_mode("auto")
+        self._battle.set_hp_threshold(30)
+        self._battle.set_mp_threshold(20)
+        self._battle.set_target_names(get_monster_names("小西天"))
+
         while self._running:
             self._loop_count += 1
             self._log(f"--- 第 {self._loop_count} 轮 ---")
             self._render_debug()
 
-            # Step 1: 点击打开地图（坐标基于横屏 1080x608）
+            # === A: 战斗检测（参照原版 startDuiZhang） ===
+            if self._battle and self._battle.is_in_battle():
+                self._log(">>> 进入战斗 <<<")
+                self._battle._battle_count = 0
+                self._battle._cached_targets = []
+                self._battle._auto_toggled = False
+                battle_rounds = 0
+                while self._running and self._battle.is_in_battle():
+                    battle_rounds += 1
+                    flags = self._battle.check_battle_flags()
+                    if flags:
+                        self._battle.handle_battle_flags(flags)
+                    if not self._battle.do_battle_round():
+                        break
+                    time.sleep(random.uniform(0.3, 0.6))
+                self._log(f">>> 战斗结束 ({battle_rounds}回合) <<<")
+                time.sleep(0.5)
+                self._battle._check_hp_mp(in_battle=False)
+                self._click_template("关闭弹窗点卡服.png", threshold=0.7)
+                time.sleep(1)
+                continue
+
+            # === B: 打开地图 ===
             ok = self._click_template("打开地图点卡服.png", threshold=0.85)
             if not ok:
                 self._log("未找到按钮，重试...")
                 time.sleep(0.5)
                 continue
 
-            # Step 2: 智能等待地图出现
+            # === D: 找小西天地图 ===
             map_r = None
-            max_wait = 5.0
-            interval = 0.2
             elapsed = 0.0
-            self._log("等待地图加载...")
-            while elapsed < max_wait and self._running:
-                time.sleep(interval)
-                elapsed += interval
+            while elapsed < 5.0 and self._running:
+                time.sleep(0.2)
+                elapsed += 0.2
+                if self._battle and self._battle.is_in_battle():
+                    self._log("地图加载中遇怪，进入战斗")
+                    self._battle._battle_count = 0
+                    self._battle._cached_targets = []
+                    self._battle._auto_toggled = False
+                    br = 0
+                    while self._running and self._battle.is_in_battle():
+                        br += 1
+                        flags = self._battle.check_battle_flags()
+                        if flags: self._battle.handle_battle_flags(flags)
+                        if not self._battle.do_battle_round(): break
+                        time.sleep(random.uniform(0.3, 0.6))
+                    self._log(f">>> 战斗结束 ({br}回合) <<<")
+                    time.sleep(0.5)
+                    self._click_template("关闭弹窗点卡服.png", threshold=0.7)
+                    time.sleep(1)
+                    break
                 map_r = self._find("点卡小西天地图.png", threshold=0.6)
                 if map_r:
                     self._log(f"地图已识别 (耗时{elapsed:.1f}s)")
@@ -318,7 +362,7 @@ class XiaoXiTianChangJingThread(threading.Thread):
 
             if map_r is None:
                 self._render_debug()
-                self._log(f"超时未识别地图，跳过")
+                self._log("超时未识别地图，跳过")
                 time.sleep(2)
                 continue
 
@@ -326,32 +370,28 @@ class XiaoXiTianChangJingThread(threading.Thread):
             self._render_debug()
             self._log(f"地图位置: ({mx},{my}), {mw}x{mh}, conf={mconf:.2f}")
 
-            # Step 3: 随机点击地图内区域（横屏坐标）
+            # === E: 点击地图 ===
             margin_x = max(10, mw // 12)
             margin_y = max(10, mh // 12)
             rx = random.randint(mx + margin_x, mx + mw - margin_x)
             ry = random.randint(my + margin_y, my + mh - margin_y)
             self._log(f"地图点击: ({rx}, {ry})")
             self._tap(rx, ry)
-            # 偶尔补点一次（模拟手抖）
             if random.random() < 0.3:
-                ox = random.randint(-5, 5)
-                oy = random.randint(-5, 5)
+                ox, oy = random.randint(-5, 5), random.randint(-5, 5)
                 time.sleep(random.uniform(0.05, 0.1))
                 self._tap(rx + ox, ry + oy)
 
-            # Step 4: 关闭弹窗
+            # === F: 关闭弹窗 ===
             time.sleep(0.5)
             self._click_template("关闭弹窗点卡服.png", threshold=0.7)
 
-            self._log(f"第 {self._loop_count} 轮完成，等待5秒...")
-            time.sleep(5)
+            time.sleep(random.uniform(0.3, 0.6))
 
         self._disconnect()
         self._state = "STOPPED"
         self._log("=== 已停止 ===")
         self._emit("state_update", "STOPPED")
-
 
 # ================================================================
 # 入口函数（同前，仅微调提示）

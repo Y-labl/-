@@ -151,3 +151,21 @@
 [18:07:01]   rect: (251,55) 1098x899
 [18:07:01]   frombuffer OK: 1098x899
 [18:07:01]   SUCCESS: (1098, 899)
+[18:54:14] capture_window: hwnd=1114238, client_area=True
+[18:54:14]   rect=(251, 55, 1349, 954)
+[18:54:14] capture_region: region=(251, 55, 1349, 954), dpr=1.0
+[18:54:14]   GetDesktopWindow=65548
+[18:54:14]   GetWindowDC=-1107223884
+[18:54:14]   CreateCompatibleDC=1459689627
+[18:54:14]   rect: (251,55) 1098x899
+[18:54:14]   frombuffer OK: 1098x899
+[18:54:14]   SUCCESS: (1098, 899)
+[18:54:45] capture_window: hwnd=1114238, client_area=True
+[18:54:45]   rect=(251, 55, 1349, 954)
+[18:54:45] capture_region: region=(251, 55, 1349, 954), dpr=1.0
+[18:54:45]   GetDesktopWindow=65548
+[18:54:45]   GetWindowDC=-117371516
+[18:54:45]   CreateCompatibleDC=-318693619
+[18:54:45]   rect: (251,55) 1098x899
+[18:54:45]   frombuffer OK: 1098x899
+[18:54:45]   SUCCESS: (1098, 899)
