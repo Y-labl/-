@@ -211,28 +211,21 @@ const fetchScreenshot = async () => {
   finally { loadingShot.value = false }
 }
 
-/* 持续拉取画面，frame by frame 无延迟循环，使用二进制流端点 */
+/* 3秒拉取一次高清原图画质 */
 const startStream = () => {
   if (streamRunning) return
   streamRunning = true
   const loop = async () => {
     while (streamRunning && selectedDevice.value) {
       if (document.visibilityState !== 'visible') {
-        await new Promise(r => setTimeout(r, 500))
+        await new Promise(r => setTimeout(r, 1000))
         continue
       }
       try {
-        const res = await fetch(`/api/device/${selectedDevice.value}/stream?width=480&quality=0.7&_=${Date.now()}`)
-        if (res.ok) {
-          const blob = await res.blob()
-          if (currentScreenshot.value && currentScreenshot.value.startsWith('blob:')) {
-            URL.revokeObjectURL(currentScreenshot.value)
-          }
-          currentScreenshot.value = URL.createObjectURL(blob)
-        }
+        const res = await getDeviceScreenshot(selectedDevice.value)
+        if (res.data && res.data.base64) currentScreenshot.value = res.data.base64
       } catch (e) { /* ignore */ }
-      // 1s 间隔，避免请求堆积阻塞 UI
-      await new Promise(r => setTimeout(r, 1000))
+      await new Promise(r => setTimeout(r, 3000))
     }
   }
   loop()
