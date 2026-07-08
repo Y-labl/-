@@ -1,54 +1,33 @@
 package com.mhxy.controller;
 
 import com.mhxy.dto.ApiResponse;
+import com.mhxy.entity.Device;
+import com.mhxy.service.DeviceService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.*;
 
-/**
- * 设备控制器
- */
 @Slf4j
 @RestController
 @RequestMapping("/api/device")
 public class DeviceController {
 
-    private final Map<Long, Map<String, Object>> deviceStore = new ConcurrentHashMap<>();
-    private final AtomicLong idGenerator = new AtomicLong(1);
-
-    public DeviceController() {
-        // 初始化示例设备
-        addSampleDevice("夜神模拟器", "windows", "127.0.0.1", 62001, 1280, 720);
-        addSampleDevice("雷电模拟器", "windows", "127.0.0.1", 5555, 1920, 1080);
-        addSampleDevice("小米手机", "android", "192.168.1.100", 5555, 1080, 2400);
-    }
-
-    private void addSampleDevice(String name, String type, String ip, int port, int width, int height) {
-        Map<String, Object> device = new HashMap<>();
-        device.put("id", idGenerator.getAndIncrement());
-        device.put("deviceName", name);
-        device.put("deviceType", type);
-        device.put("ipAddress", ip);
-        device.put("port", port);
-        device.put("screenWidth", width);
-        device.put("screenHeight", height);
-        device.put("status", 1);
-        device.put("screenshot", null);
-        deviceStore.put((Long) device.get("id"), device);
-    }
+    @Autowired
+    private DeviceService deviceService;
 
     /**
      * 获取设备列表
      */
     @GetMapping("/list")
     public ApiResponse<List<Map<String, Object>>> getDeviceList() {
-        return ApiResponse.success(new ArrayList<>(deviceStore.values()));
+        List<Device> devices = deviceService.list();
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Device d : devices) {
+            result.add(deviceToMap(d));
+        }
+        return ApiResponse.success(result);
     }
 
     /**
@@ -56,37 +35,51 @@ public class DeviceController {
      */
     @GetMapping("/{id}")
     public ApiResponse<Map<String, Object>> getDevice(@PathVariable Long id) {
-        Map<String, Object> device = deviceStore.get(id);
+        Device device = deviceService.getById(id);
         if (device == null) {
             return ApiResponse.fail("设备不存在");
         }
-        return ApiResponse.success(device);
+        return ApiResponse.success(deviceToMap(device));
     }
 
     /**
      * 添加设备
      */
     @PostMapping
-    public ApiResponse<Map<String, Object>> addDevice(@RequestBody Map<String, Object> device) {
-        long id = idGenerator.getAndIncrement();
-        device.put("id", id);
-        device.put("status", 0);
-        device.put("screenshot", null);
-        deviceStore.put(id, device);
-        log.info("添加设备: {}", device.get("deviceName"));
-        return ApiResponse.success("添加成功", device);
+    public ApiResponse<Map<String, Object>> addDevice(@RequestBody Map<String, Object> body) {
+        Device device = new Device();
+        device.setDeviceName((String) body.get("deviceName"));
+        device.setDeviceType((String) body.getOrDefault("deviceType", "android"));
+        device.setIpAddress((String) body.get("ipAddress"));
+        device.setPort(body.get("port") != null ? ((Number) body.get("port")).intValue() : 5555);
+        device.setScreenWidth(body.get("screenWidth") != null ? ((Number) body.get("screenWidth")).intValue() : null);
+        device.setScreenHeight(body.get("screenHeight") != null ? ((Number) body.get("screenHeight")).intValue() : null);
+        device.setStatus(0);
+        device.setRemark((String) body.get("remark"));
+
+        deviceService.save(device);
+        log.info("添加设备: {}", device.getDeviceName());
+        return ApiResponse.success("添加成功", deviceToMap(device));
     }
 
     /**
      * 更新设备
      */
     @PutMapping("/{id}")
-    public ApiResponse<Void> updateDevice(@PathVariable Long id, @RequestBody Map<String, Object> device) {
-        if (!deviceStore.containsKey(id)) {
+    public ApiResponse<Void> updateDevice(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        Device device = deviceService.getById(id);
+        if (device == null) {
             return ApiResponse.fail("设备不存在");
         }
-        device.put("id", id);
-        deviceStore.put(id, device);
+        if (body.containsKey("deviceName")) device.setDeviceName((String) body.get("deviceName"));
+        if (body.containsKey("deviceType")) device.setDeviceType((String) body.get("deviceType"));
+        if (body.containsKey("ipAddress")) device.setIpAddress((String) body.get("ipAddress"));
+        if (body.containsKey("port")) device.setPort(((Number) body.get("port")).intValue());
+        if (body.containsKey("screenWidth")) device.setScreenWidth(((Number) body.get("screenWidth")).intValue());
+        if (body.containsKey("screenHeight")) device.setScreenHeight(((Number) body.get("screenHeight")).intValue());
+        if (body.containsKey("remark")) device.setRemark((String) body.get("remark"));
+
+        deviceService.updateById(device);
         return ApiResponse.success("更新成功", null);
     }
 
@@ -95,7 +88,7 @@ public class DeviceController {
      */
     @DeleteMapping("/{id}")
     public ApiResponse<Void> deleteDevice(@PathVariable Long id) {
-        deviceStore.remove(id);
+        deviceService.removeById(id);
         return ApiResponse.success("删除成功", null);
     }
 
@@ -104,12 +97,12 @@ public class DeviceController {
      */
     @PostMapping("/{id}/connect")
     public ApiResponse<Void> connectDevice(@PathVariable Long id) {
-        Map<String, Object> device = deviceStore.get(id);
+        Device device = deviceService.getById(id);
         if (device == null) {
             return ApiResponse.fail("设备不存在");
         }
-        device.put("status", 2); // 使用中
-        log.info("连接设备: {}", device.get("deviceName"));
+        deviceService.connectDevice(id);
+        log.info("连接设备: {}", device.getDeviceName());
         return ApiResponse.success("连接成功", null);
     }
 
@@ -118,22 +111,40 @@ public class DeviceController {
      */
     @PostMapping("/{id}/disconnect")
     public ApiResponse<Void> disconnectDevice(@PathVariable Long id) {
-        Map<String, Object> device = deviceStore.get(id);
+        Device device = deviceService.getById(id);
         if (device == null) {
             return ApiResponse.fail("设备不存在");
         }
-        device.put("status", 1); // 在线
-        log.info("断开设备: {}", device.get("deviceName"));
+        deviceService.disconnectDevice(id);
+        log.info("断开设备: {}", device.getDeviceName());
         return ApiResponse.success("断开成功", null);
     }
 
     /**
-     * 刷新设备
+     * 刷新设备列表
      */
     @PostMapping("/refresh")
     public ApiResponse<List<Map<String, Object>>> refreshDevices() {
-        // 实际应该扫描可用设备
-        log.info("刷新设备列表");
-        return ApiResponse.success(new ArrayList<>(deviceStore.values()));
+        List<Device> devices = deviceService.list();
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Device d : devices) {
+            result.add(deviceToMap(d));
+        }
+        log.info("刷新设备列表, 共{}台", devices.size());
+        return ApiResponse.success(result);
+    }
+
+    private Map<String, Object> deviceToMap(Device d) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("id", d.getId());
+        map.put("deviceName", d.getDeviceName());
+        map.put("deviceType", d.getDeviceType());
+        map.put("ipAddress", d.getIpAddress());
+        map.put("port", d.getPort());
+        map.put("screenWidth", d.getScreenWidth());
+        map.put("screenHeight", d.getScreenHeight());
+        map.put("status", d.getStatus());
+        map.put("screenshot", null);
+        return map;
     }
 }

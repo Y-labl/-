@@ -1,4 +1,4 @@
-﻿-- ============================================
+-- ============================================
 -- 梦幻西游自动化脚本系统 数据库初始化脚本
 -- 数据库: mhxy_script
 -- 用户名: root
@@ -12,8 +12,7 @@
 -- ============================================
 -- 1. 用户表
 -- ============================================
-DROP TABLE IF EXISTS sys_user;
-CREATE TABLE sys_user (
+CREATE TABLE IF NOT EXISTS sys_user (
     id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '用户ID',
     username VARCHAR(50) NOT NULL UNIQUE COMMENT '用户名',
     password VARCHAR(128) NOT NULL COMMENT '密码(MD5)',
@@ -30,8 +29,7 @@ CREATE TABLE sys_user (
 -- ============================================
 -- 2. 设备表
 -- ============================================
-DROP TABLE IF EXISTS device;
-CREATE TABLE device (
+CREATE TABLE IF NOT EXISTS device (
     id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '设备ID',
     device_name VARCHAR(100) NOT NULL COMMENT '设备名称',
     device_type VARCHAR(20) DEFAULT 'android' COMMENT '设备类型: android/ios/windows',
@@ -51,8 +49,7 @@ CREATE TABLE device (
 -- ============================================
 -- 3. 截图记录表
 -- ============================================
-DROP TABLE IF EXISTS screenshot;
-CREATE TABLE screenshot (
+CREATE TABLE IF NOT EXISTS screenshot (
     id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '截图ID',
     device_id BIGINT NOT NULL COMMENT '设备ID',
     user_id BIGINT NOT NULL COMMENT '用户ID',
@@ -70,8 +67,7 @@ CREATE TABLE screenshot (
 -- ============================================
 -- 4. 录制任务表
 -- ============================================
-DROP TABLE IF EXISTS recording;
-CREATE TABLE recording (
+CREATE TABLE IF NOT EXISTS recording (
     id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '录制ID',
     device_id BIGINT NOT NULL COMMENT '设备ID',
     user_id BIGINT NOT NULL COMMENT '用户ID',
@@ -92,8 +88,7 @@ CREATE TABLE recording (
 -- ============================================
 -- 5. 观看连接表
 -- ============================================
-DROP TABLE IF EXISTS view_connection;
-CREATE TABLE view_connection (
+CREATE TABLE IF NOT EXISTS view_connection (
     id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '连接ID',
     device_id BIGINT NOT NULL COMMENT '设备ID',
     user_id BIGINT NOT NULL COMMENT '用户ID',
@@ -111,8 +106,7 @@ CREATE TABLE view_connection (
 -- ============================================
 -- 6. 打怪场景配置表
 -- ============================================
-DROP TABLE IF EXISTS battle_scene;
-CREATE TABLE battle_scene (
+CREATE TABLE IF NOT EXISTS battle_scene (
     id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '场景ID',
     scene_name VARCHAR(100) NOT NULL COMMENT '场景名称',
     scene_type VARCHAR(50) DEFAULT 'pve' COMMENT '场景类型: pve/pvp/dungeon/boss',
@@ -157,8 +151,7 @@ CREATE TABLE battle_scene (
 -- ============================================
 -- 7. 任务执行记录表
 -- ============================================
-DROP TABLE IF EXISTS task_execution;
-CREATE TABLE task_execution (
+CREATE TABLE IF NOT EXISTS task_execution (
     id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '执行ID',
     task_type VARCHAR(30) NOT NULL COMMENT '任务类型: battle/screenshot/recording/view',
     task_id BIGINT NOT NULL COMMENT '关联任务ID',
@@ -192,8 +185,7 @@ CREATE TABLE task_execution (
 -- ============================================
 -- 8. 模板图片表
 -- ============================================
-DROP TABLE IF EXISTS template_image;
-CREATE TABLE template_image (
+CREATE TABLE IF NOT EXISTS template_image (
     id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '模板ID',
     template_name VARCHAR(100) NOT NULL COMMENT '模板名称',
     template_path VARCHAR(500) NOT NULL COMMENT '模板路径',
@@ -213,8 +205,7 @@ CREATE TABLE template_image (
 -- ============================================
 -- 9. 操作日志表
 -- ============================================
-DROP TABLE IF EXISTS operation_log;
-CREATE TABLE operation_log (
+CREATE TABLE IF NOT EXISTS operation_log (
     id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '日志ID',
     user_id BIGINT NOT NULL COMMENT '用户ID',
     user_name VARCHAR(50) COMMENT '用户名',
@@ -235,8 +226,7 @@ CREATE TABLE operation_log (
 -- ============================================
 -- 10. 系统配置表
 -- ============================================
-DROP TABLE IF EXISTS system_config;
-CREATE TABLE system_config (
+CREATE TABLE IF NOT EXISTS system_config (
     id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '配置ID',
     config_key VARCHAR(100) NOT NULL UNIQUE COMMENT '配置键',
     config_value TEXT COMMENT '配置值',
@@ -255,12 +245,12 @@ CREATE TABLE system_config (
 -- ============================================
 
 -- 插入默认管理员用户 (密码: admin123)
-INSERT INTO sys_user (username, password, phone, email, balance, status) VALUES
+INSERT IGNORE INTO sys_user (username, password, phone, email, balance, status) VALUES
 ('admin', '0192023a7bbd73250516f069df18b500', '13800138000', 'admin@mhxy.com', 1000000, 1),
 ('test', 'e10adc3949ba59abbe56e057f20f883e', '13900139000', 'test@mhxy.com', 500000, 1);
 
 -- 插入默认系统配置
-INSERT INTO system_config (config_key, config_value, config_type, config_name, config_group, description) VALUES
+INSERT IGNORE INTO system_config (config_key, config_value, config_type, config_name, config_group, description) VALUES
 ('app.name', '梦幻西游自动化脚本', 'string', '应用名称', 'basic', '系统名称'),
 ('app.version', '1.0.0', 'string', '版本号', 'basic', '当前版本'),
 ('app.theme', 'light', 'string', '主题', 'basic', '默认主题'),
