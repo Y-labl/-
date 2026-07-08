@@ -303,6 +303,7 @@ public class DeviceScannerService {
                 } catch (Exception e) {
                     log.warn("Stream capture error for {}: {}", serial, e.getMessage());
                 }
+                try { Thread.sleep(500); } catch (InterruptedException ignored) {}
             }
         }, "adb-stream-" + serial);
         t.setDaemon(true);

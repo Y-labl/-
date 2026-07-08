@@ -28,6 +28,9 @@
                 <el-icon v-else class="is-loading" :size="32"><Loading /></el-icon>
                 <p>{{ loadingShot ? '正在获取画面...' : (selectedDevice ? '点击刷新获取画面' : '请先选择在线设备') }}</p>
               </div>
+              <div v-if="loadingShot && currentScreenshot" class="preview-loading-overlay">
+                <el-icon class="is-loading" :size="40"><Loading /></el-icon>
+              </div>
             </div>
           </div>
         </div>
@@ -228,7 +231,8 @@ const startStream = () => {
           currentScreenshot.value = URL.createObjectURL(blob)
         }
       } catch (e) { /* ignore */ }
-      await new Promise(r => setTimeout(r, 50))
+      // 1s 间隔，避免请求堆积阻塞 UI
+      await new Promise(r => setTimeout(r, 1000))
     }
   }
   loop()
@@ -249,12 +253,30 @@ const onDeviceChange = () => {
 
 const refreshPreview = () => fetchScreenshot()
 
-const captureNow = () => {
+const blobToBase64 = (blob) => new Promise((resolve, reject) => {
+  const reader = new FileReader()
+  reader.onloadend = () => resolve(reader.result)
+  reader.onerror = reject
+  reader.readAsDataURL(blob)
+})
+
+const captureNow = async () => {
   if (!currentScreenshot.value) return
+  let url = currentScreenshot.value
+  if (url.startsWith('blob:')) {
+    try {
+      const res = await fetch(url)
+      const blob = await res.blob()
+      url = await blobToBase64(blob)
+    } catch (e) {
+      ElMessage.error('截图处理失败')
+      return
+    }
+  }
   screenshotList.value.unshift({
     id: Date.now(),
     fileName: 'capture_' + new Date().toISOString().replace(/[:.]/g, '-') + '.png',
-    thumbnail: currentScreenshot.value, url: currentScreenshot.value,
+    thumbnail: url, url: url,
     createTime: new Date().toLocaleString()
   })
   ElMessage.success('截图已保存')
@@ -323,8 +345,11 @@ const openEditor = (shot) => {
 
 const loadEditorImage = (src) => {
   const img = new Image()
-  img.crossOrigin = 'anonymous'
+  if (src && (src.startsWith('http://') || src.startsWith('https://'))) {
+    img.crossOrigin = 'anonymous'
+  }
   img.onload = () => { editorImage = img; selStart = null; selEnd = null; nextTick(() => zoomFit()) }
+  img.onerror = () => { ElMessage.error('图片加载失败，请重新截图后再试') }
   img.src = src
 }
 
@@ -333,7 +358,10 @@ const initEditor = () => { if (!editorImage) return; nextTick(() => drawCanvas()
 const zoomFit = () => {
   if (!editorImage || !canvasWrap.value) return
   const wrap = canvasWrap.value
-  zoom.value = Math.min((wrap.clientWidth - 4) / editorImage.width, (wrap.clientHeight - 32) / editorImage.height, 1)
+  // 优先填满宽度，竖屏图片也足够大；若图片太宽则按高度适配
+  const wr = (wrap.clientWidth - 4) / editorImage.width
+  const hr = (wrap.clientHeight - 32) / editorImage.height
+  zoom.value = editorImage.width > editorImage.height ? Math.min(wr, hr) : wr
   drawCanvas()
 }
 
@@ -344,8 +372,8 @@ const canvasToImage = (cx, cy) => {
   const cvs = editorCanvas.value
   if (!cvs || !editorImage) return { x: 0, y: 0 }
   return {
-    x: Math.round((cx - (cvs.width - editorImage.width * zoom.value) / 2) / zoom.value),
-    y: Math.round((cy - (cvs.height - editorImage.height * zoom.value) / 2) / zoom.value)
+    x: Math.round(cx / zoom.value),
+    y: Math.round(cy / zoom.value)
   }
 }
 
@@ -353,11 +381,11 @@ const drawCanvas = () => {
   const cvs = editorCanvas.value
   if (!cvs || !editorImage) return
   const zw = editorImage.width * zoom.value, zh = editorImage.height * zoom.value
-  cvs.width = canvasWrap.value ? canvasWrap.value.clientWidth : 800
-  cvs.height = canvasWrap.value ? canvasWrap.value.clientHeight - 30 : 600
+  cvs.width = Math.ceil(zw)
+  cvs.height = Math.ceil(zh)
   const ctx = cvs.getContext('2d')
   ctx.clearRect(0, 0, cvs.width, cvs.height)
-  const ox = (cvs.width - zw) / 2, oy = (cvs.height - zh) / 2
+  const ox = 0, oy = 0
   const ts = 12
   for (let y = 0; y < cvs.height; y += ts)
     for (let x = 0; x < cvs.width; x += ts)
@@ -535,10 +563,11 @@ onUnmounted(() => {
     .page-title { font-size: 20px; font-weight: bold; }
     .header-actions { display: flex; gap: 10px; }
   }
-  .preview-container { background: #1a1a2e; border-radius: 8px; overflow: hidden;
-    .screen-preview { width: 100%; min-height: 400px; display: flex; align-items: center; justify-content: center;
-      img { max-width: 100%; max-height: 100%; }
+  .preview-container { background: #1a1a2e; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center;
+    .screen-preview { width: 100%; max-height: 70vh; aspect-ratio: 9/16; display: flex; align-items: center; justify-content: center; position: relative;
+      img { width: 100%; height: 100%; object-fit: contain; }
       .preview-placeholder { color: #666; text-align: center; p { margin-top: 10px; } }
+      .preview-loading-overlay { position: absolute; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; color: #fff; }
     }
   }
   .screenshot-list { max-height: 500px; overflow-y: auto;
@@ -581,8 +610,8 @@ onUnmounted(() => {
   }
 }
 
-.editor-canvas-wrap { flex: 1; background: #222; border-radius: 8px; overflow: hidden; position: relative; display: flex; align-items: center; justify-content: center; }
-.editor-canvas { display: block; }
+.editor-canvas-wrap { flex: 1; background: #222; border-radius: 8px; overflow: auto; position: relative; display: flex; align-items: center; justify-content: center; }
+.editor-canvas { display: block; margin: auto; }
 .editor-status {
   position: absolute; bottom: 0; left: 0; right: 0; height: 28px;
   background: rgba(0,0,0,.7); color: #aaa; font-size: 12px;
