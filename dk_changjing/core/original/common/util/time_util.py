@@ -31,7 +31,7 @@ def expireTimeShow(expireTimeStr):
 
 
 def getLogTime():
-    return getNow().strftime("%Y-%m-%d-%H-%M-%S-%f")[None[:-3]]
+    return getNow().strftime("%Y-%m-%d-%H-%M-%S-%f")[:-3]
 
 
 def durationSeconds(startT, endT):

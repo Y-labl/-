@@ -1,0 +1,257 @@
+// 全局样式
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  font-family: 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+// 布局样式
+.layout-container {
+  height: 100vh;
+  display: flex;
+  
+  .sidebar {
+    width: 200px;
+    background: #304156;
+    transition: width 0.3s;
+    overflow: hidden;
+    
+    &.is-collapse {
+      width: 64px;
+    }
+    
+    .logo {
+      height: 60px;
+      line-height: 60px;
+      text-align: center;
+      background: #263445;
+      color: #fff;
+      font-size: 18px;
+      font-weight: bold;
+    }
+    
+    .menu {
+      border-right: none;
+      background: transparent;
+    }
+  }
+  
+  .main-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    
+    .header {
+      height: 60px;
+      background: #fff;
+      border-bottom: 1px solid #e6e6e6;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      
+      .header-left {
+        display: flex;
+        align-items: center;
+        
+        .toggle-btn {
+          font-size: 20px;
+          cursor: pointer;
+          margin-right: 15px;
+        }
+        
+        .breadcrumb {
+          font-size: 14px;
+        }
+      }
+      
+      .header-right {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        
+        .user-info {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          cursor: pointer;
+        }
+      }
+    }
+    
+    .content {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+      background: #f0f2f5;
+    }
+  }
+}
+
+// 卡片样式
+.card {
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #eee;
+    
+    .card-title {
+      font-size: 16px;
+      font-weight: bold;
+    }
+  }
+}
+
+// 统计卡片
+.stat-card {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  
+  &.success {
+    background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+  }
+  
+  &.warning {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  }
+  
+  &.info {
+    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  }
+  
+  .stat-value {
+    font-size: 32px;
+    font-weight: bold;
+    margin-bottom: 5px;
+  }
+  
+  .stat-label {
+    font-size: 14px;
+    opacity: 0.9;
+  }
+}
+
+// 设备状态
+.device-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  
+  &.online {
+    background: #e7f7e7;
+    color: #52c41a;
+  }
+  
+  &.offline {
+    background: #f5f5f5;
+    color: #999;
+  }
+  
+  &.busy {
+    background: #fff7e6;
+    color: #fa8c16;
+  }
+}
+
+// 任务状态
+.task-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  
+  &.waiting {
+    background: #f5f5f5;
+    color: #999;
+  }
+  
+  &.running {
+    background: #e6f7ff;
+    color: #1890ff;
+  }
+  
+  &.success {
+    background: #e7f7e7;
+    color: #52c41a;
+  }
+  
+  &.failed {
+    background: #fff1f0;
+    color: #ff4d4f;
+  }
+}
+
+// 屏幕预览
+.screen-preview {
+  width: 100%;
+  aspect-ratio: 16/9;
+  background: #000;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #666;
+  font-size: 14px;
+  overflow: hidden;
+  
+  img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+}
+
+// 操作按钮组
+.action-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+// 空状态
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: #999;
+  
+  .empty-icon {
+    font-size: 64px;
+    margin-bottom: 20px;
+  }
+  
+  .empty-text {
+    font-size: 14px;
+  }
+}
+
+// 页面标题
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  
+  .page-title {
+    font-size: 20px;
+    font-weight: bold;
+  }
+}

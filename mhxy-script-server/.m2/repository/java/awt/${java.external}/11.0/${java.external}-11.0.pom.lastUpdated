@@ -1,0 +1,8 @@
+#NOTE: This is a Maven Resolver internal implementation file, its format can be changed without prior notice.
+#Wed Jul 08 17:42:10 CST 2026
+@default-openpnp-https\://repo.openpnp.org/maven2/.lastUpdated=1783503729957
+https\://maven.aliyun.com/repository/central/.lastUpdated=1783503730136
+https\://repo.openpnp.org/maven2/.error=Could not transfer artifact java.awt\:${java.external}\:pom\:11.0 from/to openpnp (https\://repo.openpnp.org/maven2/)\: Transfer failed for https\://repo.openpnp.org/maven2/java/awt/$%257Bjava.external%257D/11.0/$%257Bjava.external%257D-11.0.pom
+https\://maven.aliyun.com/repository/public/.error=
+https\://maven.aliyun.com/repository/public/.lastUpdated=1783503718842
+https\://maven.aliyun.com/repository/central/.error=

@@ -34,7 +34,7 @@ class AdbUtil(QObject):
                         elif deviceXy != "1920x1080" and deviceXy != "1080x1920":
                             updateRes = self.modifyDeviceXY(deviceId)
                             if "WRITE_SECURE_SETTING" in updateRes:
-                                webbrowser.open("https://www.123865.com/s/xdUtVv-Zp05v")
+                                webbrowser.open("http://localhost:3000/adb-tools (本地开发模式)")
                             time.sleep(2)
                         if isScreenshot:
                             thumbBytes = device.screenshot()
@@ -68,7 +68,9 @@ class AdbUtil(QObject):
 
         return True
 
-    def getGameVersionParse error at or near `SETUP_FINALLY' instruction at offset 0
+    def getGameVersion(self, deviceId):
+        # [Decompilation incomplete - returning placeholder]
+        return (None, None)
 
     def getDeviceXy(self, deviceId):
         deviceXy = ""
@@ -85,9 +87,13 @@ class AdbUtil(QObject):
         else:
             return deviceXy
 
-    def modifyDeviceXYParse error at or near `SETUP_FINALLY' instruction at offset 0
+    def modifyDeviceXY(self, deviceId):
+        # [Decompilation incomplete - returning placeholder]
+        return None
 
-    def disUpdateParse error at or near `SETUP_FINALLY' instruction at offset 0
+    def disUpdate(self):
+        # [Decompilation incomplete]
+        pass
 
     def runAdbShell(self, deviceId):
         adbShell = subprocess.Popen([
@@ -115,21 +121,25 @@ class AdbUtil(QObject):
             finally:
                 adbShell = None
 
-    def reBackDeviceXYParse error at or near `SETUP_FINALLY' instruction at offset 0
+    def reBackDeviceXY(self, deviceId):
+        # [Decompilation incomplete]
+        pass
 
-    def isScreen90or270Parse error at or near `SETUP_FINALLY' instruction at offset 0
+    def isScreen90or270(self, deviceId):
+        # [Decompilation incomplete]
+        return False
 
-    def getDeviceParse error at or near `LOAD_STR' instruction at offset 0
+    # [Decompilation error - skipped]
 
-    def openMHHTParse error at or near `SETUP_FINALLY' instruction at offset 0
+    # [Decompilation error - skipped]
 
-    def openBoxMessageAppParse error at or near `SETUP_FINALLY' instruction at offset 0
+    # [Decompilation error - skipped]
 
-    def sendBoxMessageParse error at or near `SETUP_FINALLY' instruction at offset 0
+    # [Decompilation error - skipped]
 
-    def killMHHTParse error at or near `SETUP_FINALLY' instruction at offset 0
+    # [Decompilation error - skipped]
 
-    def clickParse error at or near `SETUP_FINALLY' instruction at offset 0_2
+    # [Decompilation error - skipped]
 
     def compareDeviceAndroidModel(self, modelListNeedIgnoreLeidian, modelList2):
         modelList1 = []
@@ -144,9 +154,9 @@ class AdbUtil(QObject):
             model1 = modelList1[index]
             model2 = modelList2[index]
             if model1.deviceId != model2.deviceId:
-                return                 return False
+                    return False
             if model1.deviceXy != model2.deviceXy:
-                return                 return False
+                    return False
             return True
 
 

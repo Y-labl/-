@@ -1,0 +1,32 @@
+import request from '@/utils/request'
+
+// 登录相关API
+export function login(data) {
+  return request({
+    url: '/auth/login',
+    method: 'post',
+    data
+  })
+}
+
+export function logout() {
+  return request({
+    url: '/auth/logout',
+    method: 'post'
+  })
+}
+
+export function getUserInfo() {
+  return request({
+    url: '/auth/userinfo',
+    method: 'get'
+  })
+}
+
+export function updatePassword(data) {
+  return request({
+    url: '/auth/password',
+    method: 'put',
+    data
+  })
+}

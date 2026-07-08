@@ -1,2 +1,0 @@
-# -
-mhxy-ledger
