@@ -261,25 +261,25 @@ const blobToBase64 = (blob) => new Promise((resolve, reject) => {
 })
 
 const captureNow = async () => {
-  if (!currentScreenshot.value) return
-  let url = currentScreenshot.value
-  if (url.startsWith('blob:')) {
-    try {
-      const res = await fetch(url)
-      const blob = await res.blob()
-      url = await blobToBase64(blob)
-    } catch (e) {
-      ElMessage.error('截图处理失败')
+  if (!selectedDevice.value) return
+  try {
+    const res = await getDeviceScreenshot(selectedDevice.value)
+    if (!res.data || !res.data.base64) {
+      ElMessage.error('截图获取失败')
       return
     }
+    const url = res.data.base64
+    screenshotList.value.unshift({
+      id: Date.now(),
+      fileName: 'capture_' + new Date().toISOString().replace(/[:.]/g, '-') + '.png',
+      thumbnail: url, url: url,
+      createTime: new Date().toLocaleString()
+    })
+    currentScreenshot.value = url
+    ElMessage.success('截图已保存')
+  } catch (e) {
+    ElMessage.error('截图处理失败')
   }
-  screenshotList.value.unshift({
-    id: Date.now(),
-    fileName: 'capture_' + new Date().toISOString().replace(/[:.]/g, '-') + '.png',
-    thumbnail: url, url: url,
-    createTime: new Date().toLocaleString()
-  })
-  ElMessage.success('截图已保存')
 }
 
 const loadDevices = async () => {
