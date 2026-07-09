@@ -163,9 +163,11 @@ public class ImageMatchUtil {
             log.warn("图片文件不存在: {}", filePath);
             return new Mat();
         }
-        Mat mat = Imgcodecs.imread(filePath, Imgcodecs.IMREAD_GRAYSCALE);
+                // 用Java NIO读字节绕过OpenCV imread不支持中文路径的问题
+        byte[] bytes = java.nio.file.Files.readAllBytes(file.toPath());
+        Mat mat = Imgcodecs.imdecode(new MatOfByte(bytes), Imgcodecs.IMREAD_GRAYSCALE);
         if (mat.empty()) {
-            log.warn("OpenCV无法读取图片: {}", filePath);
+            log.warn("OpenCV无法解码图片: {}", filePath);
         }
         return mat;
     }
