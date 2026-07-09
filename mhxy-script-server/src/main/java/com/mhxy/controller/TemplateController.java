@@ -88,7 +88,7 @@ public class TemplateController {
             @RequestParam("file") MultipartFile file,
             @RequestParam("templateName") String templateName,
             @RequestParam(value = "category", defaultValue = "monster") String category,
-            @RequestParam(value = "matchThreshold", defaultValue = "0.85") Double threshold,
+            @RequestParam(value = "matchThreshold", defaultValue = "0.75") Double threshold,
             @RequestParam(value = "description", required = false) String description) {
         try {
             Path dir = Paths.get(templatePath);
@@ -158,7 +158,8 @@ public class TemplateController {
     @PostMapping("/{id}/match")
     public ApiResponse<Map<String, Object>> matchTemplate(
             @PathVariable Long id,
-            @RequestParam("file") MultipartFile file) {
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "threshold", required = false) Double overrideThreshold) {
         TemplateImage template = templateImageMapper.selectById(id);
         if (template == null || template.getTemplatePath() == null) {
             return ApiResponse.fail("模板不存在");
@@ -171,7 +172,8 @@ public class TemplateController {
             if (targetMat.empty()) return ApiResponse.fail("无法读取目标图片");
             if (templateMat.empty()) return ApiResponse.fail("无法读取模板图片");
 
-            double threshold = template.getMatchThreshold() != null ? template.getMatchThreshold() : 0.85;
+            double threshold = overrideThreshold != null ? overrideThreshold
+                : (template.getMatchThreshold() != null ? template.getMatchThreshold() : 0.75);
             double similarity = imageMatchUtil.getMatchSimilarity(targetMat, templateMat);
             java.util.List<org.opencv.core.Point> matches = imageMatchUtil.findAllTemplates(targetMat, templateMat, threshold);
 
@@ -212,7 +214,8 @@ public class TemplateController {
     @PostMapping("/{id}/match-device")
     public ApiResponse<Map<String, Object>> matchDevice(
             @PathVariable Long id,
-            @RequestParam("deviceId") Long deviceId) {
+            @RequestParam("deviceId") Long deviceId,
+            @RequestParam(value = "threshold", required = false) Double overrideThreshold) {
         TemplateImage template = templateImageMapper.selectById(id);
         if (template == null || template.getTemplatePath() == null) {
             return ApiResponse.fail("模板不存在");
@@ -231,7 +234,8 @@ public class TemplateController {
             if (screenMat.empty()) return ApiResponse.fail("无法读取设备截图");
             if (templateMat.empty()) return ApiResponse.fail("无法读取模板图片");
 
-            double threshold = template.getMatchThreshold() != null ? template.getMatchThreshold() : 0.85;
+            double threshold = overrideThreshold != null ? overrideThreshold
+                : (template.getMatchThreshold() != null ? template.getMatchThreshold() : 0.75);
             double similarity = imageMatchUtil.getMatchSimilarity(screenMat, templateMat);
             java.util.List<org.opencv.core.Point> matches = imageMatchUtil.findAllTemplates(screenMat, templateMat, threshold);
 

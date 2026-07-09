@@ -28,8 +28,8 @@ public class ImageMatchUtil {
     /** 单次 findAllTemplates 最多返回的匹配数，防止极端情况下死循环 */
     private static final int MAX_MATCHES = 50;
 
-    @Value("${script.match-threshold:0.85}")
-    private double matchThreshold;
+    @Value("${script.match-threshold:0.75}")
+    private double matchThreshold = 0.75;
 
     /**
      * 在屏幕截图中查找模板图片的位置
@@ -163,7 +163,7 @@ public class ImageMatchUtil {
             log.warn("图片文件不存在: {}", filePath);
             return new Mat();
         }
-        Mat mat = Imgcodecs.imread(filePath, Imgcodecs.IMREAD_COLOR);
+        Mat mat = Imgcodecs.imread(filePath, Imgcodecs.IMREAD_GRAYSCALE);
         if (mat.empty()) {
             log.warn("OpenCV无法读取图片: {}", filePath);
         }
@@ -177,7 +177,7 @@ public class ImageMatchUtil {
         if (imageBytes == null || imageBytes.length == 0) {
             return new Mat();
         }
-        Mat mat = Imgcodecs.imdecode(new MatOfByte(imageBytes), Imgcodecs.IMREAD_COLOR);
+        Mat mat = Imgcodecs.imdecode(new MatOfByte(imageBytes), Imgcodecs.IMREAD_GRAYSCALE);
         if (mat.empty()) {
             log.warn("OpenCV无法解码图片字节流");
         }

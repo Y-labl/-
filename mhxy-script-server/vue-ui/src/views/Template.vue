@@ -204,11 +204,11 @@ const showUploadDialog = ref(false)
 const showEditDialog = ref(false)
 
 const uploadForm = reactive({
-  templateName: '', category: 'monster', matchThreshold: 0.85, description: '', file: null
+  templateName: '', category: 'monster', matchThreshold: 0.75, description: '', file: null
 })
 
 const editForm = reactive({
-  id: null, templateName: '', category: '', matchThreshold: 0.85, description: ''
+  id: null, templateName: '', category: '', matchThreshold: 0.75, description: ''
 })
 
 
@@ -220,6 +220,7 @@ const testTargetUrl = ref(null)
 const testDeviceId = ref(null)
 const testDevices = ref([])
 const testRunning = ref(false)
+const testThreshold = ref(0.75)
 const testResult = ref(null)
 const resultImageSize = reactive({ width: 0, height: 0 })
 const resultImage = ref(null)
