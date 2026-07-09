@@ -86,17 +86,28 @@ public class OcrUtil {
         effectiveDataPath = dataPath;
         if (effectiveDataPath == null || effectiveDataPath.isEmpty()) {
             // Tess4J 5.x datapath应指向tessdata的父目录
-            // 多路径fallback：找到包含chi_sim.traineddata的tessdata目录，取其父目录
+            // 从 user.dir 向上递归搜索 tessdata 目录
             String userDir = System.getProperty("user.dir");
-            String[] searchPaths = {
-                new File(userDir, "tessdata").getAbsolutePath(),
-                new File(userDir, "../tessdata").getAbsolutePath(),
-                new File("tessdata").getAbsolutePath()
-            };
-            for (String sp : searchPaths) {
-                if (new File(sp, "chi_sim.traineddata").exists()) {
-                    effectiveDataPath = new File(sp).getParentFile().getAbsolutePath();
+            File searchDir = new File(userDir);
+            while (searchDir != null) {
+                File tessdata = new File(searchDir, "tessdata");
+                if (new File(tessdata, "chi_sim.traineddata").exists()) {
+                    effectiveDataPath = searchDir.getAbsolutePath();
                     break;
+                }
+                searchDir = searchDir.getParentFile();
+            }
+            // 也搜索子目录（处理 IDE 多模块场景）
+            if (effectiveDataPath == null) {
+                File[] subDirs = new File(userDir).listFiles(File::isDirectory);
+                if (subDirs != null) {
+                    for (File sub : subDirs) {
+                        File tessdata = new File(sub, "tessdata");
+                        if (new File(tessdata, "chi_sim.traineddata").exists()) {
+                            effectiveDataPath = sub.getAbsolutePath();
+                            break;
+                        }
+                    }
                 }
             }
             if (effectiveDataPath == null) {
