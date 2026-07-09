@@ -81,27 +81,6 @@ public class OcrUtil {
         }
     }
 
-    /** 递归搜索包含 tessdata/chi_sim.traineddata 的目录，返回父目录 */
-    private File findTessdataParent(File dir, int depth, int maxDepth) {
-        if (dir == null || depth > maxDepth) return null;
-        // 检查当前目录
-        if (new File(new File(dir, "tessdata"), "chi_sim.traineddata").exists()) {
-            return dir;
-        }
-        // 向上一级搜索
-        File parent = findTessdataParent(dir.getParentFile(), depth + 1, maxDepth);
-        if (parent != null) return parent;
-        // 向下一级搜索
-        File[] subDirs = dir.listFiles(File::isDirectory);
-        if (subDirs != null) {
-            for (File sub : subDirs) {
-                File found = findTessdataParent(sub, depth + 1, maxDepth);
-                if (found != null) return found;
-            }
-        }
-        return null;
-    }
-
     @PostConstruct
     public void init() {
         // 将路径标准化为操作系统原生格式，避免正斜杠在 Windows 原生层不兼容
