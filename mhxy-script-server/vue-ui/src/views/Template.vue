@@ -35,6 +35,7 @@
           <div class="template-actions">
             <el-button size="small" type="primary" @click="openEditDialog(t)">编辑</el-button>
             <el-button size="small" type="danger" @click="deleteTemplate(t)">删除</el-button>
+            <el-button size="small" type="success" @click="openTestDialog(t)">测试</el-button>
           </div>
         </el-card>
       </div>
@@ -105,6 +106,81 @@
         <el-button type="primary" @click="handleEdit">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- 测试匹配 -->
+    <el-dialog v-model="showTestDialog" title="模板匹配测试" width="960px" class="test-dialog">
+      <div class="test-body">
+        <div class="test-template-panel">
+          <div class="panel-title">模板图片</div>
+          <img :src="testTemplate.thumbnail" class="test-template-img" />
+          <div class="template-meta">
+            <span>{{ testTemplate.templateName }}</span>
+            <span>{{ testTemplate.width }}x{{ testTemplate.height }}</span>
+          </div>
+        </div>
+
+        <div class="test-main-panel">
+          <el-tabs v-model="testTab">
+            <el-tab-pane label="上传图片" name="upload">
+              <el-upload
+                drag
+                :auto-upload="false"
+                :on-change="handleTestFileChange"
+                accept="image/*"
+                class="test-upload"
+              >
+                <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
+                <div class="el-upload__text">拖拽或点击上传目标图片</div>
+              </el-upload>
+              <el-button type="primary" @click="runMatchTest" :loading="testRunning" :disabled="!testFile" style="margin-top:12px;width:100%">
+                开始匹配
+              </el-button>
+            </el-tab-pane>
+            <el-tab-pane label="选择设备" name="device">
+              <el-select v-model="testDeviceId" placeholder="选择设备" style="width:100%">
+                <el-option v-for="dev in testDevices" :key="dev.id" :label="dev.deviceName" :value="dev.id" />
+              </el-select>
+              <el-button type="primary" @click="runDeviceMatchTest" :loading="testRunning" :disabled="!testDeviceId" style="margin-top:12px;width:100%">
+                截图并匹配
+              </el-button>
+            </el-tab-pane>
+          </el-tabs>
+
+          <!-- 匹配结果 -->
+          <div v-if="testResult" class="test-result">
+            <div class="result-status">
+              <el-tag :type="testResult.data.matched ? 'success' : 'danger'" size="large">
+                {{ testResult.data.matched ? '匹配成功' : '未匹配' }}
+              </el-tag>
+              <span class="similarity-text">相似度：{{ (testResult.data.similarity * 100).toFixed(2) }}%</span>
+            </div>
+
+            <div v-if="testResult.data.matched" class="match-positions">
+              <div v-for="(pt, idx) in testResult.data.matchPoints" :key="idx" class="match-position-item">
+                位置{{ idx + 1 }}：中心 ({{ pt.x }}, {{ pt.y }})
+              </div>
+            </div>
+
+            <!-- 目标图片 + 矩形标注 -->
+            <div class="result-image-wrapper" ref="resultImageWrap">
+              <img
+                v-if="testTargetUrl"
+                :src="testTargetUrl"
+                class="result-image"
+                @load="onResultImageLoad"
+                ref="resultImage"
+              />
+              <div
+                v-for="(pt, idx) in (testResult.data.matchPoints || [])"
+                :key="'rect-' + idx"
+                class="match-rect"
+                :style="getRectStyle(pt)"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -112,6 +188,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from 'axios'
+import { getDeviceList } from '@/api/device'
 
 const currentCategory = ref('')
 const templateList = ref([])
@@ -125,6 +202,21 @@ const uploadForm = reactive({
 const editForm = reactive({
   id: null, templateName: '', category: '', matchThreshold: 0.85, description: ''
 })
+
+
+// 测试相关状态
+const showTestDialog = ref(false)
+const testTab = ref('upload')
+const testTemplate = reactive({ id: null, templateName: '', thumbnail: '', width: 0, height: 0 })
+const testFile = ref(null)
+const testTargetUrl = ref(null)
+const testDeviceId = ref(null)
+const testDevices = ref([])
+const testRunning = ref(false)
+const testResult = ref(null)
+const resultImageSize = reactive({ width: 0, height: 0 })
+const resultImage = ref(null)
+const resultImageWrap = ref(null)
 
 const getCategoryText = (cat) => {
   const m = { button: '按钮', dialog: '对话框', npc: 'NPC', monster: '怪物', item: '物品' }
@@ -205,6 +297,96 @@ const deleteTemplate = async (t) => {
   } catch (e) {}
 }
 
+
+const openTestDialog = async (t) => {
+  testTemplate.id = t.id
+  testTemplate.templateName = t.templateName
+  testTemplate.thumbnail = t.thumbnail
+  testTemplate.width = t.width || 0
+  testTemplate.height = t.height || 0
+  testFile.value = null
+  testTargetUrl.value = null
+  testDeviceId.value = null
+  testResult.value = null
+  testTab.value = 'upload'
+  // 加载设备列表
+  try {
+    const res = await getDeviceList()
+    testDevices.value = res.data || []
+  } catch (e) { testDevices.value = [] }
+  showTestDialog.value = true
+}
+
+const handleTestFileChange = (file) => {
+  testFile.value = file.raw
+  testTargetUrl.value = URL.createObjectURL(file.raw)
+}
+
+const runMatchTest = async () => {
+  if (!testFile.value) { ElMessage.warning('请先选择目标图片'); return }
+  testRunning.value = true
+  try {
+    const fd = new FormData()
+    fd.append('file', testFile.value)
+    const res = await axios.post('/api/template/' + testTemplate.id + '/match', fd)
+    testResult.value = res.data
+    if (testResult.value.data?.matched) {
+      ElMessage.success('匹配成功！')
+    } else {
+      ElMessage.warning('未找到匹配位置')
+    }
+  } catch (e) { ElMessage.error('匹配失败') }
+  finally { testRunning.value = false }
+}
+
+const runDeviceMatchTest = async () => {
+  if (!testDeviceId.value) { ElMessage.warning('请选择设备'); return }
+  testRunning.value = true
+  try {
+    const fd = new FormData()
+    fd.append('deviceId', testDeviceId.value)
+    const res = await axios.post('/api/template/' + testTemplate.id + '/match-device', fd)
+    testResult.value = res.data
+    // 设置设备截图为目标图片
+    if (res.data.data?.screenshotBase64) {
+      testTargetUrl.value = res.data.data.screenshotBase64
+    }
+    if (res.data.data?.matched) {
+      ElMessage.success('匹配成功！')
+    } else {
+      ElMessage.warning('未找到匹配位置')
+    }
+  } catch (e) { ElMessage.error('匹配失败') }
+  finally { testRunning.value = false }
+}
+
+const onResultImageLoad = () => {
+  if (resultImage.value) {
+    resultImageSize.width = resultImage.value.offsetWidth
+    resultImageSize.height = resultImage.value.offsetHeight
+  }
+}
+
+const getRectStyle = (pt) => {
+  if (!testResult.value?.data || !resultImageSize.width) return {}
+  const data = testResult.value.data
+  const scaleX = resultImageSize.width / data.imageWidth
+  const scaleY = resultImageSize.height / data.imageHeight
+  const tw = data.templateWidth * scaleX
+  const th = data.templateHeight * scaleY
+  const left = (pt.x - data.templateWidth / 2) * scaleX
+  const top = (pt.y - data.templateHeight / 2) * scaleY
+  return {
+    position: 'absolute',
+    left: left + 'px',
+    top: top + 'px',
+    width: tw + 'px',
+    height: th + 'px',
+    border: '2px solid #f56c6c',
+    background: 'rgba(245, 108, 108, 0.15)',
+    pointerEvents: 'none'
+  }
+}
 onMounted(() => { loadTemplates() })
 </script>
 
@@ -228,4 +410,34 @@ onMounted(() => { loadTemplates() })
     }
   }
 }
+.test-dialog {
+  .test-body {
+    display: flex; gap: 20px;
+    .test-template-panel {
+      width: 200px; flex-shrink: 0;
+      .panel-title { font-size: 14px; font-weight: bold; margin-bottom: 10px; color: #333; }
+      .test-template-img { width: 100%; border-radius: 6px; border: 1px solid #eee; }
+      .template-meta { margin-top: 8px; font-size: 12px; color: #999; display: flex; flex-direction: column; gap: 4px; }
+    }
+    .test-main-panel {
+      flex: 1; min-width: 0;
+      .test-upload { width: 100%; }
+      .test-result {
+        margin-top: 16px;
+        .result-status { display: flex; align-items: center; gap: 12px; margin-bottom: 12px;
+          .similarity-text { font-size: 14px; color: #666; font-weight: 500; }
+        }
+        .match-positions { margin-bottom: 12px;
+          .match-position-item { font-size: 13px; color: #409eff; padding: 2px 0; }
+        }
+        .result-image-wrapper {
+          position: relative; display: inline-block; max-width: 100%; border: 1px solid #eee; border-radius: 4px; overflow: hidden;
+          .result-image { display: block; max-width: 100%; max-height: 500px; }
+          .match-rect {}
+        }
+      }
+    }
+  }
+}
+
 </style>
