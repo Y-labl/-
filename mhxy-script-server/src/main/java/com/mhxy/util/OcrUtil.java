@@ -13,6 +13,8 @@ import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -32,6 +34,8 @@ public class OcrUtil {
     private String language;
 
     private final ReentrantLock lock = new ReentrantLock();
+
+    private String effectiveDataPath;
 
     private static final String DIGIT_WHITELIST = "0123456789.-";
     private static final String ALPHANUM_WHITELIST = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-%+/";
@@ -76,7 +80,7 @@ public class OcrUtil {
     @PostConstruct
     public void init() {
         tesseract = new Tesseract();
-        String effectiveDataPath = dataPath;
+        effectiveDataPath = dataPath;
         if (effectiveDataPath == null || effectiveDataPath.isEmpty()) {
             effectiveDataPath = new File("tessdata").getAbsolutePath();
         }
@@ -88,19 +92,38 @@ public class OcrUtil {
         log.info("OCR engine initialized: datapath={}, language={}", effectiveDataPath, language);
     }
 
-    /** 检查训练数据文件是否存在，缺失时在日志中给出明确提示 */
-    private void checkLanguageData(String effectiveDataPath, String lang) {
-        if (lang == null || lang.isEmpty()) return;
-        File dir = new File(effectiveDataPath);
+    /** 检查训练数据文件是否存在，返回缺失的语言列表 */
+    private List<String> getMissingLanguages(String datapath, String lang) {
+        List<String> missing = new ArrayList<>();
+        if (lang == null || lang.isEmpty()) return missing;
+        File dir = new File(datapath);
         if (!dir.exists() || !dir.isDirectory()) {
-            log.warn("Tesseract tessdata 目录不存在: {}，OCR 将无法识别文字，请下载对应 .traineddata 文件放入该目录", effectiveDataPath);
-            return;
+            // 目录不存在时认为配置的所有语言都缺失
+            for (String l : lang.split("\\+")) {
+                missing.add(l);
+            }
+            return missing;
         }
         for (String l : lang.split("\\+")) {
             File trainedData = new File(dir, l + ".traineddata");
             if (!trainedData.exists()) {
-                log.warn("缺少 Tesseract 语言训练数据: {}，中文识别请下载 chi_sim.traineddata 放到 {}", trainedData.getName(), effectiveDataPath);
+                missing.add(l);
             }
+        }
+        return missing;
+    }
+
+    /** 检查训练数据文件是否存在，缺失时在日志中给出明确提示 */
+    private void checkLanguageData(String datapath, String lang) {
+        List<String> missing = getMissingLanguages(datapath, lang);
+        if (missing.isEmpty()) return;
+        File dir = new File(datapath);
+        if (!dir.exists() || !dir.isDirectory()) {
+            log.warn("Tesseract tessdata 目录不存在: {}，OCR 将无法识别文字，请下载对应 .traineddata 文件放入该目录", datapath);
+            return;
+        }
+        for (String l : missing) {
+            log.warn("缺少 Tesseract 语言训练数据: {}.traineddata，中文识别请下载 chi_sim.traineddata 放到 {}", l, datapath);
         }
     }
 
@@ -130,12 +153,24 @@ public class OcrUtil {
     public String recognize(BufferedImage image) {
         BufferedImage safe = preprocess(image);
         if (safe == null) return "";
+        List<String> missing = getMissingLanguages(effectiveDataPath, language);
+        if (!missing.isEmpty()) {
+            String msg = "[OCR 失败：缺少语言训练数据 " + missing + ".traineddata，请放到 " + effectiveDataPath + "]";
+            log.warn(msg);
+            return msg;
+        }
         lock.lock();
         try {
             tesseract.setTessVariable("tessedit_char_whitelist", "");
             return tesseract.doOCR(safe).trim();
         } catch (TesseractException e) {
-            log.error("OCR recognition failed: {}", e.getMessage());
+            String msg = e.getMessage() != null ? e.getMessage() : "";
+            if (isLanguageMissingError(msg)) {
+                String warn = "[OCR 失败：Tesseract 无法加载语言数据，请检查 " + effectiveDataPath + " 目录]";
+                log.error(warn + ": {}", msg);
+                return warn;
+            }
+            log.error("OCR recognition failed: {}", msg);
             return "";
         } catch (Error e) {
             log.error("Tesseract native crash, reinitializing: {}", e.getMessage());
@@ -152,6 +187,12 @@ public class OcrUtil {
     @SuppressWarnings("deprecation")
     public String recognizeChinese(BufferedImage image) {
         if (image == null) return "";
+        List<String> missing = getMissingLanguages(effectiveDataPath, "chi_sim+eng");
+        if (!missing.isEmpty()) {
+            String msg = "[OCR 失败：缺少语言训练数据 " + missing + ".traineddata，请放到 " + effectiveDataPath + "]";
+            log.warn(msg);
+            return msg;
+        }
         BufferedImage scaled = scaleForOcr(image, 2.0);
         BufferedImage safe = preprocess(scaled);
         if (safe == null) return "";
@@ -165,7 +206,13 @@ public class OcrUtil {
             tesseract.setLanguage(language);
             return text;
         } catch (TesseractException e) {
-            log.error("Chinese OCR recognition failed: {}", e.getMessage());
+            String msg = e.getMessage() != null ? e.getMessage() : "";
+            if (isLanguageMissingError(msg)) {
+                String warn = "[OCR 失败：Tesseract 无法加载语言数据，请检查 " + effectiveDataPath + " 目录]";
+                log.error(warn + ": {}", msg);
+                return warn;
+            }
+            log.error("Chinese OCR recognition failed: {}", msg);
             return "";
         } catch (Error e) {
             log.error("Tesseract native crash, reinitializing: {}", e.getMessage());
@@ -174,6 +221,14 @@ public class OcrUtil {
         } finally {
             lock.unlock();
         }
+    }
+
+    /** 判断异常是否由语言训练数据缺失引起 */
+    private boolean isLanguageMissingError(String message) {
+        if (message == null) return false;
+        String lower = message.toLowerCase();
+        return lower.contains("failed loading language") || lower.contains("can not find language data")
+                || lower.contains("could not load language") || lower.contains("missing language data");
     }
 
     /** 放大图像以提升小字体识别率 */

@@ -268,7 +268,9 @@
                 </div>
                 <div class="ocr-text-result">
                   <div class="panel-title">识别文字</div>
-                  <div class="ocr-text-box">{{ ocrResult.data.text || '(未识别到文字)' }}</div>
+                  <div class="ocr-text-box" :class="{ 'ocr-text-error': isOcrErrorText }">
+                    {{ ocrResult.data.text || '(未识别到文字)' }}
+                  </div>
                 </div>
               </div>
             </div>
@@ -280,7 +282,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from 'axios'
 import { getDeviceList } from '@/api/device'
@@ -338,6 +340,11 @@ const formatSize = (bytes) => {
   if (bytes < 1048576) return (bytes / 1024).toFixed(1) + 'KB'
   return (bytes / 1048576).toFixed(1) + 'MB'
 }
+
+const isOcrErrorText = computed(() => {
+  const text = ocrResult.value?.data?.text || ''
+  return text.startsWith('[OCR 失败')
+})
 
 const loadTemplates = async () => {
   try {
@@ -692,6 +699,7 @@ onMounted(() => { loadTemplates() })
         background: #1a1a2e; color: #67c23a; padding: 12px 16px; border-radius: 6px;
         font-family: 'Courier New', monospace; font-size: 15px; line-height: 1.8;
         min-height: 60px; white-space: pre-wrap; word-break: break-all;
+        &.ocr-text-error { color: #f56c6c; }
       }
     }
   }
