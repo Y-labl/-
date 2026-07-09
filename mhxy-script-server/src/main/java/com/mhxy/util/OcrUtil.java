@@ -155,7 +155,7 @@ public class OcrUtil {
         tesseract.setLanguage(language);
         tesseract.setOcrEngineMode(1);
         tesseract.setPageSegMode(7);
-        checkLanguageData(effectiveDataPath, language);
+        checkLanguageData(tessdataDir, language);
     }
 
     /** 多策略自动解析包含 tessdata/ 子目录的路径 */
@@ -216,14 +216,17 @@ public class OcrUtil {
     private List<String> getMissingLanguages(String datapath, String lang) {
         List<String> missing = new ArrayList<>();
         if (lang == null || lang.isEmpty()) return missing;
-        // datapath now points directly to tessdata/ directory
-        File dir = new File(datapath);
-        // Also check parent/tessdata for backward compatibility
-        if (!dir.exists() || !dir.isDirectory()) {
-            File alt = new File(new File(datapath), "tessdata");
-            if (alt.exists() && alt.isDirectory()) dir = alt;
+        // Try: 1) datapath directly, 2) datapath/tessdata/, 3) parent dir
+        File[] candidates = {
+            new File(datapath),
+            new File(datapath, "tessdata"),
+            new File(new File(datapath).getParentFile(), "tessdata")
+        };
+        File dir = null;
+        for (File c : candidates) {
+            if (c.exists() && c.isDirectory()) { dir = c; break; }
         }
-        if (!dir.exists() || !dir.isDirectory()) {
+        if (dir == null) {
             for (String l : lang.split("\\+")) {
                 missing.add(l);
             }
@@ -278,7 +281,7 @@ public class OcrUtil {
     public String recognize(BufferedImage image) {
         BufferedImage safe = preprocess(image);
         if (safe == null) return "";
-        List<String> missing = getMissingLanguages(effectiveDataPath, language);
+        List<String> missing = getMissingLanguages(new File(effectiveDataPath, "tessdata").getAbsolutePath(), language);
         if (!missing.isEmpty()) {
             String msg = "[OCR 失败：缺少语言训练数据 " + missing + ".traineddata，请放到 " + effectiveDataPath + "]";
             log.warn(msg);
@@ -312,7 +315,7 @@ public class OcrUtil {
     @SuppressWarnings("deprecation")
     public String recognizeChinese(BufferedImage image) {
         if (image == null) return "";
-        List<String> missing = getMissingLanguages(effectiveDataPath, "chi_sim");
+        List<String> missing = getMissingLanguages(new File(effectiveDataPath, "tessdata").getAbsolutePath(), "chi_sim");
         if (!missing.isEmpty()) {
             String msg = "[OCR 失败：缺少语言训练数据 " + missing + ".traineddata，请放到 " + effectiveDataPath + "]";
             log.warn(msg);
