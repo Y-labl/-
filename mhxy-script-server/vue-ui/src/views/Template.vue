@@ -392,8 +392,6 @@ const getRectStyle = (pt) => {
     width: tw + 'px',
     height: th + 'px',
     border: '3px solid #ffd700',
-    background: 'rgba(255, 215, 0, 0.2)',
-    boxShadow: '0 0 8px rgba(255, 215, 0, 0.5)',
     pointerEvents: 'none'
 }
 }
