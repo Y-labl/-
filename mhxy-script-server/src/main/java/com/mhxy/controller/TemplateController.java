@@ -193,10 +193,13 @@ public class TemplateController {
                             org.opencv.core.Point p = match.get();
                             int tx = templateMat.cols();
                             int ty = templateMat.rows();
-                            int cx = Math.max(0, (int)(p.x - tx / 2.0));
-                            int cy = Math.max(0, (int)(p.y - ty / 2.0));
-                            int cw = Math.min(tx, image.getWidth() - cx);
-                            int ch = Math.min(ty, image.getHeight() - cy);
+                            // 以模板为中心向四周扩展，水平多扩一些以包含整行文字（如坐标、地名）
+                            int marginX = tx * 2;
+                            int marginY = ty;
+                            int cx = Math.max(0, (int)(p.x - tx / 2.0 - marginX));
+                            int cy = Math.max(0, (int)(p.y - ty / 2.0 - marginY));
+                            int cw = Math.min(tx + 2 * marginX, image.getWidth() - cx);
+                            int ch = Math.min(ty + 2 * marginY, image.getHeight() - cy);
                             if (cw > 0 && ch > 0) {
                                 targetRegion = image.getSubimage(cx, cy, cw, ch);
                                 matchInfo = new LinkedHashMap<>();
@@ -213,7 +216,7 @@ public class TemplateController {
             }
 
             long t0 = System.currentTimeMillis();
-            String text = ocrUtil.recognize(targetRegion);
+            String text = ocrUtil.recognizeChinese(targetRegion);
             long elapsed = System.currentTimeMillis() - t0;
 
             Map<String, Object> result = new LinkedHashMap<>();
@@ -225,6 +228,10 @@ public class TemplateController {
             result.put("screenshotBase64", "data:image/png;base64," + base64);
             if (matchInfo != null) {
                 result.put("cropRegion", matchInfo);
+                try (java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream()) {
+                    ImageIO.write(targetRegion, "png", baos);
+                    result.put("cropImageBase64", "data:image/png;base64," + Base64.getEncoder().encodeToString(baos.toByteArray()));
+                } catch (Exception ignored) {}
             }
             if (templateId != null && matchInfo == null) {
                 result.put("matchFailed", true);
@@ -260,10 +267,13 @@ public class TemplateController {
                             org.opencv.core.Point p = match.get();
                             int tx = templateMat.cols();
                             int ty = templateMat.rows();
-                            int cx = Math.max(0, (int)(p.x - tx / 2.0));
-                            int cy = Math.max(0, (int)(p.y - ty / 2.0));
-                            int cw = Math.min(tx, image.getWidth() - cx);
-                            int ch = Math.min(ty, image.getHeight() - cy);
+                            // 以模板为中心向四周扩展，水平多扩一些以包含整行文字（如坐标、地名）
+                            int marginX = tx * 2;
+                            int marginY = ty;
+                            int cx = Math.max(0, (int)(p.x - tx / 2.0 - marginX));
+                            int cy = Math.max(0, (int)(p.y - ty / 2.0 - marginY));
+                            int cw = Math.min(tx + 2 * marginX, image.getWidth() - cx);
+                            int ch = Math.min(ty + 2 * marginY, image.getHeight() - cy);
                             if (cw > 0 && ch > 0) {
                                 targetRegion = image.getSubimage(cx, cy, cw, ch);
                                 matchInfo = new LinkedHashMap<>();
@@ -280,7 +290,7 @@ public class TemplateController {
             }
 
             long t0 = System.currentTimeMillis();
-            String text = ocrUtil.recognize(targetRegion);
+            String text = ocrUtil.recognizeChinese(targetRegion);
             long elapsed = System.currentTimeMillis() - t0;
 
             Map<String, Object> result = new LinkedHashMap<>();
@@ -290,6 +300,10 @@ public class TemplateController {
             result.put("imageHeight", image.getHeight());
             if (matchInfo != null) {
                 result.put("cropRegion", matchInfo);
+                try (java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream()) {
+                    ImageIO.write(targetRegion, "png", baos);
+                    result.put("cropImageBase64", "data:image/png;base64," + Base64.getEncoder().encodeToString(baos.toByteArray()));
+                } catch (Exception ignored) {}
             }
             if (templateId != null && matchInfo == null) {
                 result.put("matchFailed", true);

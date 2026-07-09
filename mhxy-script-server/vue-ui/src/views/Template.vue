@@ -240,6 +240,10 @@
                 <div v-if="ocrResult.data.matchFailed" class="ocr-warn">
                   <el-tag type="warning">模板未匹配到，已对整张图片进行识别</el-tag>
                 </div>
+                <div v-if="ocrResult.data.cropImageBase64" class="ocr-crop-preview">
+                  <div class="panel-title">实际识别区域</div>
+                  <img :src="ocrResult.data.cropImageBase64" class="crop-preview-image" />
+                </div>
                 <div class="ocr-text-result">
                   <div class="panel-title">识别文字</div>
                   <div class="ocr-text-box">{{ ocrResult.data.text || '(未识别到文字)' }}</div>
@@ -543,6 +547,10 @@ onMounted(() => { loadTemplates() })
       }
       .ocr-crop-info { font-size: 13px; color: #67c23a; margin-bottom: 8px; }
       .ocr-warn { margin-bottom: 8px; }
+      .ocr-crop-preview {
+        margin-bottom: 12px;
+        .crop-preview-image { max-width: 100%; max-height: 160px; border: 1px solid #eee; border-radius: 4px; background: #f5f5f5; }
+      }
       .ocr-text-box {
         background: #1a1a2e; color: #67c23a; padding: 12px 16px; border-radius: 6px;
         font-family: 'Courier New', monospace; font-size: 15px; line-height: 1.8;

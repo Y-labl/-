@@ -76,15 +76,32 @@ public class OcrUtil {
     @PostConstruct
     public void init() {
         tesseract = new Tesseract();
-        if (dataPath != null && !dataPath.isEmpty()) {
-            tesseract.setDatapath(dataPath);
-        } else {
-            tesseract.setDatapath(new File("tessdata").getAbsolutePath());
+        String effectiveDataPath = dataPath;
+        if (effectiveDataPath == null || effectiveDataPath.isEmpty()) {
+            effectiveDataPath = new File("tessdata").getAbsolutePath();
         }
+        tesseract.setDatapath(effectiveDataPath);
         tesseract.setLanguage(language);
         tesseract.setOcrEngineMode(1);
         tesseract.setPageSegMode(7);
-        log.info("OCR engine initialized: datapath={}, language={}", dataPath, language);
+        checkLanguageData(effectiveDataPath, language);
+        log.info("OCR engine initialized: datapath={}, language={}", effectiveDataPath, language);
+    }
+
+    /** 检查训练数据文件是否存在，缺失时在日志中给出明确提示 */
+    private void checkLanguageData(String effectiveDataPath, String lang) {
+        if (lang == null || lang.isEmpty()) return;
+        File dir = new File(effectiveDataPath);
+        if (!dir.exists() || !dir.isDirectory()) {
+            log.warn("Tesseract tessdata 目录不存在: {}，OCR 将无法识别文字，请下载对应 .traineddata 文件放入该目录", effectiveDataPath);
+            return;
+        }
+        for (String l : lang.split("\\+")) {
+            File trainedData = new File(dir, l + ".traineddata");
+            if (!trainedData.exists()) {
+                log.warn("缺少 Tesseract 语言训练数据: {}，中文识别请下载 chi_sim.traineddata 放到 {}", trainedData.getName(), effectiveDataPath);
+            }
+        }
     }
 
     @SuppressWarnings("deprecation")
@@ -127,6 +144,49 @@ public class OcrUtil {
         } finally {
             lock.unlock();
         }
+    }
+
+    /**
+     * 中文识别：放大 ROI 并切换到 chi_sim 语言模型
+     */
+    @SuppressWarnings("deprecation")
+    public String recognizeChinese(BufferedImage image) {
+        if (image == null) return "";
+        BufferedImage scaled = scaleForOcr(image, 2.0);
+        BufferedImage safe = preprocess(scaled);
+        if (safe == null) return "";
+        lock.lock();
+        try {
+            // 临时切换到中文语言包；若不存在会回退到 eng
+            tesseract.setLanguage("chi_sim+eng");
+            tesseract.setTessVariable("tessedit_char_whitelist", "");
+            String text = tesseract.doOCR(safe).trim();
+            // 恢复默认语言
+            tesseract.setLanguage(language);
+            return text;
+        } catch (TesseractException e) {
+            log.error("Chinese OCR recognition failed: {}", e.getMessage());
+            return "";
+        } catch (Error e) {
+            log.error("Tesseract native crash, reinitializing: {}", e.getMessage());
+            reinit();
+            return "";
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /** 放大图像以提升小字体识别率 */
+    private BufferedImage scaleForOcr(BufferedImage image, double scale) {
+        if (scale <= 1.0) return image;
+        int w = (int) (image.getWidth() * scale);
+        int h = (int) (image.getHeight() * scale);
+        BufferedImage scaled = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        java.awt.Graphics2D g = scaled.createGraphics();
+        g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+        g.drawImage(image, 0, 0, w, h, null);
+        g.dispose();
+        return scaled;
     }
 
     public String recognizeDigits(BufferedImage image, String label) {
