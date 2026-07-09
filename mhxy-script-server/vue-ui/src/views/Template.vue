@@ -394,6 +394,7 @@ const getRectStyle = (pt) => {
     boxShadow: '0 0 8px rgba(255, 215, 0, 0.5)',
     pointerEvents: 'none'
 }
+}
 onMounted(() => { loadTemplates() })
 </script>
 
