@@ -110,12 +110,14 @@ public class OcrUtil {
             // Tess4J 5.x datapath应指向tessdata的父目录
             // 从 user.dir 向上递归 + 向下递归搜索 tessdata 目录
             String userDir = System.getProperty("user.dir");
+            log.info("OCR searching tessdata from user.dir={}", userDir);
             File found = findTessdataParent(new File(userDir), 0, 4);
             if (found == null) {
                 // 也搜索当前目录
                 found = findTessdataParent(new File("."), 0, 4);
             }
             effectiveDataPath = found != null ? found.getAbsolutePath() : userDir;
+            log.info("OCR tessdata resolved: effectiveDataPath={}", effectiveDataPath);
         }
         effectiveDataPath = new File(effectiveDataPath).getAbsolutePath();
         // 设置环境变量，让 Tesseract 原生库也能找到训练数据
