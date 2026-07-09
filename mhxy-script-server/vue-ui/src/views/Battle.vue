@@ -96,7 +96,9 @@
     </div>
 
     <!-- 新建/编辑场景 -->
-    <el-dialog v-model="showFormDialog" :title="isEdit ? '编辑场景' : '新建场景'" width="700px">
+    <el-dialog v-model="showFormDialog" :title="isEdit ? '编辑场景' : '新建场景'" width="800px">
+      <el-tabs v-model="formTab" type="border-card">
+        <el-tab-pane label="场景配置" name="scene">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
         <el-row :gutter="20">
           <el-col :span="12">
@@ -235,6 +237,44 @@
           </el-col>
         </el-row>
       </el-form>
+        </el-tab-pane>
+        <el-tab-pane label="设备配置" name="device">
+          <div class="device-config-tab">
+            <el-table :data="allDevices" style="width:100%" size="small">
+              <el-table-column prop="deviceName" label="设备名称" width="140" />
+              <el-table-column prop="deviceId" label="序列号" width="140" />
+              <el-table-column label="状态" width="80">
+                <template #default="{ row }">
+                  <el-tag :type="getDeviceConfigRunning(row.id) ? 'warning' : 'info'" size="small">
+                    {{ getDeviceConfigRunning(row.id) ? '运行中' : '空闲' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="目标怪物" min-width="160">
+                <template #default="{ row }">
+                  <span class="monster-preview">{{ getDeviceConfigField(row.id, 'targetMonsters') || '未配置' }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="200" fixed="right">
+                <template #default="{ row }">
+                  <el-button size="small" @click="openDeviceConfigDialog(row)">配置</el-button>
+                  <el-button
+                    v-if="!getDeviceConfigRunning(row.id)"
+                    size="small" type="warning"
+                    :disabled="!getDeviceConfigField(row.id, 'targetMonsters')"
+                    @click="startDeviceSteal(row)"
+                  >启动</el-button>
+                  <el-button
+                    v-else
+                    size="small" type="danger"
+                    @click="stopDeviceSteal(row)"
+                  >停止</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
       <template #footer>
         <el-button @click="showFormDialog = false">取消</el-button>
         <el-button type="primary" @click="saveScene">保存</el-button>
@@ -271,7 +311,183 @@
       </template>
     </el-dialog>
 
-    <!-- 选择设备启动 -->
+    <!-- 设备配置编辑 -->
+    <el-dialog v-model="showDeviceConfigDialog" :title="'设备配置 - ' + deviceConfigForm.deviceName" width="780px">
+      <el-form :model="deviceConfigForm" label-width="100px">
+        <!-- 锁定的设备 -->
+        <el-form-item label="绑定设备">
+          <el-tag type="primary" size="large">{{ deviceConfigForm.deviceName }}</el-tag>
+        </el-form-item>
+
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="区服">
+              <el-select v-model="deviceConfigForm.gameType" style="width:100%">
+                <el-option label="点卡服" value="dianka" />
+                <el-option label="畅玩服" value="changwan" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="大区">
+              <el-input v-model="deviceConfigForm.gameArea" placeholder="如：生日快乐" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="服务器">
+              <el-input v-model="deviceConfigForm.gameServer" placeholder="如：生日快乐10" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="角色名">
+              <el-input v-model="deviceConfigForm.roleName" placeholder="角色名称" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="角色等级">
+              <el-input-number v-model="deviceConfigForm.characterLevel" :min="1" :max="175" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="模式">
+              <el-radio-group v-model="deviceConfigForm.characterTeam">
+                <el-radio label="single">单人</el-radio>
+                <el-radio label="team">组队</el-radio>
+              </el-radio-group>
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <!-- 目标怪物 -->
+        <el-form-item label="目标怪物">
+          <el-input v-model="deviceConfigForm.targetMonsters" placeholder="如：噬天虎,炎魔神,金饶僧" />
+        </el-form-item>
+
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="人物加血方式">
+              <el-select v-model="deviceConfigForm.battleStrategy.hpReplenish" style="width:100%">
+                <el-option label="酒肆" value="酒肆" />
+                <el-option label="红碗" value="红碗" />
+                <el-option label="秘制" value="秘制" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="人物加蓝方式">
+              <el-select v-model="deviceConfigForm.battleStrategy.mpReplenish" style="width:100%">
+                <el-option label="酒肆" value="酒肆" />
+                <el-option label="蓝碗" value="蓝碗" />
+                <el-option label="秘制" value="秘制" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="血量阈值">
+              <div class="threshold-row">
+                <el-slider v-model="deviceConfigForm.battleStrategy.hpThreshold" :min="0" :max="100" :step="5" show-stops />
+                <span class="threshold-value">{{ deviceConfigForm.battleStrategy.hpThreshold }}%</span>
+              </div>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="蓝量阈值">
+              <div class="threshold-row">
+                <el-slider v-model="deviceConfigForm.battleStrategy.mpThreshold" :min="0" :max="100" :step="5" show-stops />
+                <span class="threshold-value">{{ deviceConfigForm.battleStrategy.mpThreshold }}%</span>
+              </div>
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <!-- 战斗操作 -->
+        <div class="battle-ops-row">
+          <div class="battle-ops-section">
+            <div class="battle-ops-header">
+              <div class="battle-ops-title">人物战斗操作：</div>
+              <el-form-item label="自动导路" class="inline-auto-nav">
+                <el-switch v-model="deviceConfigForm.battleStrategy.autoNavigate" active-text="开启" inactive-text="关闭" />
+              </el-form-item>
+            </div>
+            <div class="battle-ops-body">
+              <div class="battle-op-item">
+                <span>一、捕捉</span>
+                <el-switch v-model="deviceConfigForm.battleStrategy.battleOps['1_capture']" />
+              </div>
+              <div class="battle-op-item">
+                <span>二、妙手空空</span>
+                <el-switch v-model="deviceConfigForm.battleStrategy.battleOps['2_steal']" />
+              </div>
+              <div class="battle-op-item vertical after-options">
+                <div v-for="opt in afterOptions" :key="opt.key" class="after-option" :class="{ active: deviceAfterAction === opt.key }">
+                  <el-switch :model-value="deviceAfterAction === opt.key" @change="selectDeviceAfterAction(opt.key)" />
+                  <span>{{ opt.label }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <el-row :gutter="20" style="margin-top:12px">
+          <el-col :span="12">
+            <el-form-item label="地图点击区域">
+              <el-input v-model="deviceConfigForm.mapClickArea" placeholder="x1,y1,x2,y2" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="模板置信度">
+              <el-input-number v-model="deviceConfigForm.templateConfidence" :min="0.5" :max="1.0" :step="0.05" :precision="2" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="行走间隔(ms)">
+              <el-input-number v-model="deviceConfigForm.walkInterval" :min="100" :max="2000" :step="50" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="偷卡次数">
+              <el-input-number v-model="deviceConfigForm.stealAttempts" :min="1" :max="10" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="6">
+            <el-form-item label="自动战斗">
+              <el-switch v-model="deviceConfigForm.autoBattle" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item label="自动恢复">
+              <el-switch v-model="deviceConfigForm.autoRecovery" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item label="自动复活">
+              <el-switch v-model="deviceConfigForm.autoRevival" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item label="自动拾取">
+              <el-switch v-model="deviceConfigForm.autoPickup" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+      </el-form>
+      <template #footer>
+        <el-button @click="showDeviceConfigDialog = false">取消</el-button>
+        <el-button type="primary" @click="saveDeviceConfig">保存配置</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 选择设备启动 -->    <!-- 选择设备启动 -->
     <el-dialog v-model="showDeviceDialog" title="选择设备" width="450px">
       <el-form label-width="80px">
         <el-form-item label="选择设备">
@@ -295,7 +511,9 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, VideoPlay, VideoPause, Edit, Delete, Operation } from '@element-plus/icons-vue'
 import {
   getBattleSceneList, addBattleScene, updateBattleScene, deleteBattleScene,
-  startBattleScene, stopBattleScene, getBattleExecutionList, startSteal, stopSteal
+  startBattleScene, stopBattleScene, getBattleExecutionList, startSteal, stopSteal,
+  getStealConfigByDevice, saveStealConfig, startStealByDevice, stopStealByDevice,
+  getStealConfigList, getStealRunningDevices
 } from '@/api/battle'
 import { getDeviceList } from '@/api/device'
 
@@ -305,10 +523,43 @@ const runningTasks = ref([])
 const allDevices = ref([])
 const onlineDevices = ref([])
 const showFormDialog = ref(false)
+const formTab = ref('scene')
 const showDeviceDialog = ref(false)
 const isEdit = ref(false)
 const editingSceneId = ref(null)
 const selectedDeviceId = ref(null)
+
+// 设备级配置状态
+const showDeviceConfigDialog = ref(false)
+const editingDeviceId = ref(null)
+const deviceConfigs = reactive({})
+const deviceRunning = reactive({})
+const deviceConfigForm = reactive({
+  deviceId: null, deviceName: '',
+  gameType: 'dianka', gameArea: '', gameServer: '', roleName: '',
+  characterLevel: null, characterTeam: 'single',
+  configName: '偷卡配置',
+  targetMonsters: '噬天虎,炎魔神,金饶僧',
+  battleStrategy: {
+    hpReplenish: '酒肆', mpReplenish: '酒肆',
+    hpThreshold: 40, mpThreshold: 30,
+    autoNavigate: true,
+    battleOps: {
+      '1_capture': true,
+      '2_steal': true,
+      '3_1_after_skill': true,
+      '3_2_after_normal_attack': false,
+      '3_3_after_defense': false,
+      '3_4_direct_battle': false,
+      '3_5_escape': false
+    }
+  },
+  mapClickArea: '80,180,980,2200',
+  templateConfidence: 0.80,
+  walkInterval: 500,
+  stealAttempts: 3,
+  autoBattle: true, autoRecovery: true, autoRevival: true, autoPickup: true
+})
 const pendingSceneId = ref(null)
 const pendingSceneType = ref('')
 const runningSceneIds = ref({})
@@ -502,6 +753,21 @@ const selectAfterAction = (key) => {
   ops[key] = true
 }
 
+// 设备配置的战斗操作辅助
+const deviceAfterAction = computed({
+  get() {
+    const ops = deviceConfigForm.battleStrategy.battleOps || {}
+    return afterOptions.find(o => ops[o.key])?.key || '3_1_after_skill'
+  },
+  set(val) { selectDeviceAfterAction(val) }
+})
+
+const selectDeviceAfterAction = (key) => {
+  const ops = deviceConfigForm.battleStrategy.battleOps || {}
+  afterOptions.forEach(o => { ops[o.key] = false })
+  ops[key] = true
+}
+
 const showStealSettingsDialog = ref(false)
 const stealSettingsForm = reactive({
   stealScenes: []
@@ -532,6 +798,135 @@ const openStealSettings = () => {
   showStealSettingsDialog.value = true
 }
 
+
+// ========== 设备级配置方法 ==========
+const getDeviceConfigField = (deviceId, field) => {
+  const c = deviceConfigs[deviceId]
+  if (!c) return null
+  if (field === 'targetMonsters') return c.targetMonsters
+  return c[field]
+}
+
+const getDeviceConfigRunning = (deviceId) => {
+  return !!deviceRunning[deviceId]
+}
+
+const loadDeviceConfigs = async () => {
+  try {
+    const res = await getStealConfigList()
+    if (res.data) {
+      for (const cfg of res.data) {
+        deviceConfigs[cfg.deviceId] = cfg
+      }
+    }
+  } catch (e) { /* ignore */ }
+}
+
+const loadDeviceRunningStatus = async () => {
+  try {
+    const res = await getStealRunningDevices()
+    if (res.data) {
+      // Clear old states
+      Object.keys(deviceRunning).forEach(k => delete deviceRunning[k])
+      for (const d of res.data) {
+        deviceRunning[d.deviceId] = true
+      }
+    }
+  } catch (e) { /* ignore */ }
+}
+
+const openDeviceConfigDialog = async (device) => {
+  editingDeviceId.value = device.id
+  try {
+    const res = await getStealConfigByDevice(device.id)
+    const cfg = res.data || {}
+    const defaultOps = {
+      '1_capture': true, '2_steal': true,
+      '3_1_after_skill': true, '3_2_after_normal_attack': false,
+      '3_3_after_defense': false, '3_4_direct_battle': false,
+      '3_5_escape': false
+    }
+    const bs = cfg.battleStrategy || {}
+    Object.assign(deviceConfigForm, {
+      deviceId: device.id,
+      deviceName: device.deviceName,
+      gameType: bs.gameType || cfg.gameType || 'dianka',
+      gameArea: bs.gameArea || cfg.gameArea || '',
+      gameServer: bs.gameServer || cfg.gameServer || '',
+      roleName: bs.roleName || cfg.roleName || '',
+      characterLevel: bs.characterLevel || cfg.characterLevel || null,
+      characterTeam: bs.characterTeam || cfg.characterTeam || 'single',
+      configName: cfg.configName || '偷卡配置',
+      targetMonsters: cfg.targetMonsters || '噬天虎,炎魔神,金饶僧',
+      battleStrategy: {
+        hpReplenish: bs.hpReplenish || '酒肆',
+        mpReplenish: bs.mpReplenish || '酒肆',
+        hpThreshold: bs.hpThreshold ?? 40,
+        mpThreshold: bs.mpThreshold ?? 30,
+        autoNavigate: bs.autoNavigate !== undefined ? !!bs.autoNavigate : true,
+        battleOps: { ...defaultOps, ...(bs.battleOps || {}) }
+      },
+      mapClickArea: cfg.mapClickArea || '80,180,980,2200',
+      templateConfidence: cfg.templateConfidence ?? 0.80,
+      walkInterval: cfg.walkInterval || 500,
+      stealAttempts: cfg.stealAttempts || 3,
+      autoBattle: cfg.autoBattle !== undefined ? !!cfg.autoBattle : true,
+      autoRecovery: cfg.autoRecovery !== undefined ? !!cfg.autoRecovery : true,
+      autoRevival: cfg.autoRevival !== undefined ? !!cfg.autoRevival : true,
+      autoPickup: cfg.autoPickup !== undefined ? !!cfg.autoPickup : true
+    })
+  } catch (e) { /* load failed */ }
+  showDeviceConfigDialog.value = true
+}
+
+const saveDeviceConfig = async () => {
+  if (!editingDeviceId.value) return
+  try {
+    const data = {
+      configName: deviceConfigForm.configName,
+      targetMonsters: deviceConfigForm.targetMonsters,
+      battleStrategy: {
+        ...deviceConfigForm.battleStrategy,
+        gameType: deviceConfigForm.gameType,
+        gameArea: deviceConfigForm.gameArea,
+        gameServer: deviceConfigForm.gameServer,
+        roleName: deviceConfigForm.roleName,
+        characterLevel: deviceConfigForm.characterLevel,
+        characterTeam: deviceConfigForm.characterTeam
+      },
+      mapClickArea: deviceConfigForm.mapClickArea,
+      templateConfidence: deviceConfigForm.templateConfidence,
+      walkInterval: deviceConfigForm.walkInterval,
+      stealAttempts: deviceConfigForm.stealAttempts,
+      autoBattle: deviceConfigForm.autoBattle ? 1 : 0,
+      autoRecovery: deviceConfigForm.autoRecovery ? 1 : 0,
+      autoRevival: deviceConfigForm.autoRevival ? 1 : 0,
+      autoPickup: deviceConfigForm.autoPickup ? 1 : 0
+    }
+    const res = await saveStealConfig(editingDeviceId.value, data)
+    // Update local cache
+    deviceConfigs[editingDeviceId.value] = res.data || data
+    ElMessage.success('设备配置已保存')
+    showDeviceConfigDialog.value = false
+  } catch (e) { ElMessage.error('保存失败') }
+}
+
+const startDeviceSteal = async (device) => {
+  try {
+    await startStealByDevice(device.id)
+    deviceRunning[device.id] = true
+    ElMessage.success(`已启动 ${device.deviceName} 偷卡`)
+  } catch (e) { ElMessage.error('启动失败') }
+}
+
+const stopDeviceSteal = async (device) => {
+  try {
+    await ElMessageBox.confirm(`确定要停止 "${device.deviceName}" 的偷卡吗？`, '提示', { type: 'warning' })
+    await stopStealByDevice(device.id)
+    delete deviceRunning[device.id]
+    ElMessage.success(`已停止 ${device.deviceName}`)
+  } catch (e) { /* cancelled */ }
+}
 const saveStealSettings = () => {
   if (!form.battleStrategy.stealConfig) form.battleStrategy.stealConfig = {}
   form.battleStrategy.stealConfig.stealScenes = JSON.parse(JSON.stringify(stealSettingsForm.stealScenes))
@@ -554,7 +949,9 @@ onMounted(() => {
   loadScenes()
   loadExecutions()
   loadDevices()
-  pollTimer = setInterval(() => { loadExecutions() }, 3000)
+  loadDeviceConfigs()
+  loadDeviceRunningStatus()
+  pollTimer = setInterval(() => { loadExecutions(); loadDeviceRunningStatus() }, 3000)
 })
 
 onUnmounted(() => {
@@ -629,5 +1026,16 @@ onUnmounted(() => {
     .row-select { width:120px; }
     .row-select.scene-select { width:120px; }
   }
+}
+
+.device-config-tab {
+  .monster-preview {
+    color: #409eff;
+    font-size: 13px;
+  }
+}
+
+.device-config-dialog {
+  .el-form-item { margin-bottom: 16px; }
 }
 </style>
