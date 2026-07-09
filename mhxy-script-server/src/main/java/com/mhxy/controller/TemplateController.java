@@ -6,6 +6,8 @@ import com.mhxy.mapper.TemplateImageMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.opencv.core.Mat;
+import org.opencv.imgcodecs.Imgcodecs;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -15,7 +17,6 @@ import com.mhxy.service.DeviceService;
 import com.mhxy.util.ImageMatchUtil;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -97,15 +98,28 @@ public class TemplateController {
             Path dest = dir.resolve(fileName);
             file.transferTo(dest.toFile());
 
+            // 优先用ImageIO读尺寸，失败则使用OpenCV兜底
+            int width = 0, height = 0;
             BufferedImage img = ImageIO.read(dest.toFile());
+            if (img != null) {
+                width = img.getWidth();
+                height = img.getHeight();
+            } else {
+                Mat mat = Imgcodecs.imread(dest.toString(), Imgcodecs.IMREAD_COLOR);
+                if (!mat.empty()) {
+                    width = mat.cols();
+                    height = mat.rows();
+                    mat.release();
+                }
+            }
 
             TemplateImage template = new TemplateImage();
             template.setTemplateName(templateName);
             template.setCategory(category);
             template.setTemplatePath(dest.toString());
             template.setFileSize((int) file.getSize());
-            template.setWidth(img != null ? img.getWidth() : 0);
-            template.setHeight(img != null ? img.getHeight() : 0);
+            template.setWidth(width);
+            template.setHeight(height);
             template.setMatchThreshold(threshold);
             template.setDescription(description);
             template.setUsageCount(0);
@@ -113,14 +127,16 @@ public class TemplateController {
             template.setStatus(1);
 
             templateImageMapper.insert(template);
-            log.info("Template uploaded: {} ({})", templateName, fileName);
+            log.info("Template uploaded: {} ({}), size={}x{}", templateName, fileName, width, height);
 
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("id", template.getId());
             result.put("templateName", templateName);
+            result.put("width", width);
+            result.put("height", height);
             return ApiResponse.success("Uploaded", result);
         } catch (Exception e) {
-            log.error("Upload failed: {}", e.getMessage());
+            log.error("Upload failed: {}", e.getMessage(), e);
             return ApiResponse.fail(e.getMessage());
         }
     }
@@ -148,19 +164,28 @@ public class TemplateController {
             return ApiResponse.fail("模板不存在");
         }
         try {
-            BufferedImage targetImage = ImageIO.read(new ByteArrayInputStream(file.getBytes()));
-            if (targetImage == null) return ApiResponse.fail("无法读取目标图片");
+            // 统一使用OpenCV读取，避免ImageIO与OpenCV通道不一致
+            Mat targetMat = imageMatchUtil.decodeImageMat(file.getBytes());
+            Mat templateMat = imageMatchUtil.readImageMat(template.getTemplatePath());
 
-            double similarity = imageMatchUtil.getMatchSimilarity(targetImage, template.getTemplatePath());
-            java.util.List<org.opencv.core.Point> matches = imageMatchUtil.findAllTemplates(targetImage, template.getTemplatePath());
+            if (targetMat.empty()) return ApiResponse.fail("无法读取目标图片");
+            if (templateMat.empty()) return ApiResponse.fail("无法读取模板图片");
+
+            double threshold = template.getMatchThreshold() != null ? template.getMatchThreshold() : 0.85;
+            double similarity = imageMatchUtil.getMatchSimilarity(targetMat, templateMat);
+            java.util.List<org.opencv.core.Point> matches = imageMatchUtil.findAllTemplates(targetMat, templateMat, threshold);
+
+            log.info("模板匹配测试 id={}: target={}x{}, template={}x{}, similarity={}, matched={}, threshold={}",
+                    id, targetMat.cols(), targetMat.rows(), templateMat.cols(), templateMat.rows(),
+                    String.format("%.4f", similarity), !matches.isEmpty(), threshold);
 
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("templateId", id);
             result.put("templateName", template.getTemplateName());
-            result.put("templateWidth", template.getWidth());
-            result.put("templateHeight", template.getHeight());
-            result.put("imageWidth", targetImage.getWidth());
-            result.put("imageHeight", targetImage.getHeight());
+            result.put("templateWidth", template.getWidth() != null && template.getWidth() > 0 ? template.getWidth() : templateMat.cols());
+            result.put("templateHeight", template.getHeight() != null && template.getHeight() > 0 ? template.getHeight() : templateMat.rows());
+            result.put("imageWidth", targetMat.cols());
+            result.put("imageHeight", targetMat.rows());
             result.put("similarity", Math.round(similarity * 10000) / 10000.0);
             result.put("matched", !matches.isEmpty());
             if (!matches.isEmpty()) {
@@ -173,9 +198,12 @@ public class TemplateController {
                 }
                 result.put("matchPoints", points);
             }
+
+            targetMat.release();
+            templateMat.release();
             return ApiResponse.success(result);
         } catch (Exception e) {
-            log.error("Match failed: {}", e.getMessage());
+            log.error("Match failed: {}", e.getMessage(), e);
             return ApiResponse.fail(e.getMessage());
         }
     }
@@ -198,21 +226,24 @@ public class TemplateController {
             if (pngBytes == null || pngBytes.length == 0) {
                 return ApiResponse.fail("设备截图失败");
             }
-            BufferedImage screenImage = ImageIO.read(new ByteArrayInputStream(pngBytes));
-            if (screenImage == null) return ApiResponse.fail("无法读取设备截图");
+            Mat screenMat = imageMatchUtil.decodeImageMat(pngBytes);
+            Mat templateMat = imageMatchUtil.readImageMat(template.getTemplatePath());
+            if (screenMat.empty()) return ApiResponse.fail("无法读取设备截图");
+            if (templateMat.empty()) return ApiResponse.fail("无法读取模板图片");
 
-            double similarity = imageMatchUtil.getMatchSimilarity(screenImage, template.getTemplatePath());
-            java.util.List<org.opencv.core.Point> matches = imageMatchUtil.findAllTemplates(screenImage, template.getTemplatePath());
+            double threshold = template.getMatchThreshold() != null ? template.getMatchThreshold() : 0.85;
+            double similarity = imageMatchUtil.getMatchSimilarity(screenMat, templateMat);
+            java.util.List<org.opencv.core.Point> matches = imageMatchUtil.findAllTemplates(screenMat, templateMat, threshold);
 
             String base64 = Base64.getEncoder().encodeToString(pngBytes);
 
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("templateId", id);
             result.put("templateName", template.getTemplateName());
-            result.put("templateWidth", template.getWidth());
-            result.put("templateHeight", template.getHeight());
-            result.put("imageWidth", screenImage.getWidth());
-            result.put("imageHeight", screenImage.getHeight());
+            result.put("templateWidth", template.getWidth() != null && template.getWidth() > 0 ? template.getWidth() : templateMat.cols());
+            result.put("templateHeight", template.getHeight() != null && template.getHeight() > 0 ? template.getHeight() : templateMat.rows());
+            result.put("imageWidth", screenMat.cols());
+            result.put("imageHeight", screenMat.rows());
             result.put("similarity", Math.round(similarity * 10000) / 10000.0);
             result.put("matched", !matches.isEmpty());
             result.put("deviceName", device.getDeviceName());
@@ -227,9 +258,12 @@ public class TemplateController {
                 }
                 result.put("matchPoints", points);
             }
+
+            screenMat.release();
+            templateMat.release();
             return ApiResponse.success(result);
         } catch (Exception e) {
-            log.error("Device match failed: {}", e.getMessage());
+            log.error("Device match failed: {}", e.getMessage(), e);
             return ApiResponse.fail(e.getMessage());
         }
     }

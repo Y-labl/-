@@ -9,6 +9,8 @@ import org.springframework.stereotype.Component;
 
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -36,18 +38,20 @@ public class ImageMatchUtil {
      * @return 匹配到的中心点坐标，如果没有找到返回Optional.empty()
      */
     public Optional<Point> findTemplate(BufferedImage screenImage, String templatePath) {
-        File templateFile = new File(templatePath);
-        if (!templateFile.exists()) {
-            log.warn("模板文件不存在: {}", templatePath);
-            return Optional.empty();
-        }
+        return findTemplate(screenImage, templatePath, matchThreshold);
+    }
 
-        // 将BufferedImage转换为Mat
+    public Optional<Point> findTemplate(BufferedImage screenImage, String templatePath, double threshold) {
         Mat screenMat = bufferedImageToMat(screenImage);
-        Mat templateMat = Imgcodecs.imread(templatePath);
+        Mat templateMat = readImageMat(templatePath);
+        Optional<Point> result = findTemplate(screenMat, templateMat, threshold);
+        screenMat.release();
+        templateMat.release();
+        return result;
+    }
 
-        if (templateMat.empty()) {
-            log.warn("无法读取模板图片: {}", templatePath);
+    public Optional<Point> findTemplate(Mat screenMat, Mat templateMat, double threshold) {
+        if (screenMat.empty() || templateMat.empty()) {
             return Optional.empty();
         }
 
@@ -55,59 +59,48 @@ public class ImageMatchUtil {
         Mat result = new Mat();
         Imgproc.matchTemplate(screenMat, templateMat, result, Imgproc.TM_CCOEFF_NORMED);
 
-        // 找到最佳匹配位置
-        double minVal = 0, maxVal = 0;
-        Point maxLoc = new Point();
         Core.MinMaxLocResult minMaxResult = Core.minMaxLoc(result);
-        
-        // 对于TM_CCOEFF_NORMED，最大值位置是最佳匹配
-        maxVal = minMaxResult.maxVal;
-        maxLoc = minMaxResult.maxLoc;
-
-        log.debug("模板匹配结果: 相似度={}, 阈值={}", String.format("%.2f", maxVal), matchThreshold);
-
-        // 释放内存
-        screenMat.release();
-        templateMat.release();
+        double maxVal = minMaxResult.maxVal;
+        Point maxLoc = minMaxResult.maxLoc;
         result.release();
 
-        // 判断是否达到阈值
-        if (maxVal >= matchThreshold) {
-            // 计算中心点
+        log.debug("模板匹配结果: 相似度={}, 阈值={}", String.format("%.4f", maxVal), threshold);
+
+        if (maxVal >= threshold) {
             Point center = new Point(
                 maxLoc.x + templateMat.cols() / 2.0,
                 maxLoc.y + templateMat.rows() / 2.0
             );
             return Optional.of(center);
         }
-
         return Optional.empty();
     }
 
     /**
      * 在截图中查找所有匹配位置
      */
-    public java.util.List<Point> findAllTemplates(BufferedImage screenImage, String templatePath) {
-        java.util.List<Point> matches = new java.util.ArrayList<>();
-        
-        File templateFile = new File(templatePath);
-        if (!templateFile.exists()) {
-            log.warn("模板文件不存在: {}", templatePath);
-            return matches;
-        }
+    public List<Point> findAllTemplates(BufferedImage screenImage, String templatePath) {
+        return findAllTemplates(screenImage, templatePath, matchThreshold);
+    }
 
+    public List<Point> findAllTemplates(BufferedImage screenImage, String templatePath, double threshold) {
         Mat screenMat = bufferedImageToMat(screenImage);
-        Mat templateMat = Imgcodecs.imread(templatePath);
+        Mat templateMat = readImageMat(templatePath);
+        List<Point> matches = findAllTemplates(screenMat, templateMat, threshold);
+        screenMat.release();
+        templateMat.release();
+        return matches;
+    }
 
-        if (templateMat.empty()) {
+    public List<Point> findAllTemplates(Mat screenMat, Mat templateMat, double threshold) {
+        List<Point> matches = new ArrayList<>();
+        if (screenMat.empty() || templateMat.empty()) {
             return matches;
         }
 
         Mat result = new Mat();
         Imgproc.matchTemplate(screenMat, templateMat, result, Imgproc.TM_CCOEFF_NORMED);
 
-        // 查找所有超过阈值的匹配
-        double threshold = matchThreshold;
         int matchCount = 0;
         while (matchCount < MAX_MATCHES) {
             Core.MinMaxLocResult minMaxResult = Core.minMaxLoc(result);
@@ -132,10 +125,7 @@ public class ImageMatchUtil {
             log.warn("findAllTemplates 达到最大匹配数限制({})，可能遗漏部分匹配", MAX_MATCHES);
         }
 
-        screenMat.release();
-        templateMat.release();
         result.release();
-
         return matches;
     }
 
@@ -143,42 +133,71 @@ public class ImageMatchUtil {
      * 获取匹配的相似度
      */
     public double getMatchSimilarity(BufferedImage screenImage, String templatePath) {
-        File templateFile = new File(templatePath);
-        if (!templateFile.exists()) {
-            return 0;
-        }
-
         Mat screenMat = bufferedImageToMat(screenImage);
-        Mat templateMat = Imgcodecs.imread(templatePath);
+        Mat templateMat = readImageMat(templatePath);
+        double similarity = getMatchSimilarity(screenMat, templateMat);
+        screenMat.release();
+        templateMat.release();
+        return similarity;
+    }
 
-        if (templateMat.empty()) {
+    public double getMatchSimilarity(Mat screenMat, Mat templateMat) {
+        if (screenMat.empty() || templateMat.empty()) {
             return 0;
         }
 
         Mat result = new Mat();
         Imgproc.matchTemplate(screenMat, templateMat, result, Imgproc.TM_CCOEFF_NORMED);
-        
         Core.MinMaxLocResult minMaxResult = Core.minMaxLoc(result);
         double maxVal = minMaxResult.maxVal;
-
-        screenMat.release();
-        templateMat.release();
         result.release();
-
         return maxVal;
+    }
+
+    /**
+     * 使用OpenCV读取图片文件为Mat
+     */
+    public Mat readImageMat(String filePath) {
+        File file = new File(filePath);
+        if (!file.exists()) {
+            log.warn("图片文件不存在: {}", filePath);
+            return new Mat();
+        }
+        Mat mat = Imgcodecs.imread(filePath, Imgcodecs.IMREAD_COLOR);
+        if (mat.empty()) {
+            log.warn("OpenCV无法读取图片: {}", filePath);
+        }
+        return mat;
+    }
+
+    /**
+     * 使用OpenCV解码字节数组为Mat
+     */
+    public Mat decodeImageMat(byte[] imageBytes) {
+        if (imageBytes == null || imageBytes.length == 0) {
+            return new Mat();
+        }
+        Mat mat = Imgcodecs.imdecode(new MatOfByte(imageBytes), Imgcodecs.IMREAD_COLOR);
+        if (mat.empty()) {
+            log.warn("OpenCV无法解码图片字节流");
+        }
+        return mat;
     }
 
     /**
      * BufferedImage 转换为 OpenCV Mat
      */
     private Mat bufferedImageToMat(BufferedImage image) {
+        if (image == null) {
+            return new Mat();
+        }
         try (java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream()) {
             javax.imageio.ImageIO.write(image, "png", baos);
             byte[] bytes = baos.toByteArray();
-            return Imgcodecs.imdecode(new Mat(1, bytes.length, CvType.CV_8UC1),
-                Imgcodecs.IMREAD_COLOR);
+            return decodeImageMat(bytes);
         } catch (Exception e) {
             throw new RuntimeException("图片转换失败: " + e.getMessage(), e);
         }
     }
 }
+
