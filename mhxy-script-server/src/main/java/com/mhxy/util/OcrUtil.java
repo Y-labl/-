@@ -71,7 +71,7 @@ public class OcrUtil {
             if (path == null) {
                 path = System.getProperty("user.dir");
             }
-            String tessPath = new File(path, "tessdata").getAbsolutePath();
+            String tessPath = new File(path, "tessdata").getAbsolutePath().replace("\\", "/");
             log.info("reinit tessdata path: {}", tessPath);
             setTessEnv(tessPath);
             tesseract = new Tesseract();
@@ -145,7 +145,7 @@ public class OcrUtil {
         effectiveDataPath = new File(effectiveDataPath).getAbsolutePath();
         log.info("OCR final effectiveDataPath: {}", effectiveDataPath);
         // Tesseract datapath must point to the tessdata/ subdirectory directly
-        String tessdataDir = new File(effectiveDataPath, "tessdata").getAbsolutePath();
+        String tessdataDir = new File(effectiveDataPath, "tessdata").getAbsolutePath().replace("\\", "/");
         log.info("OCR tessdata directory: {}", tessdataDir);
         // 注入 OS 环境变量 + Java 缓存
         setTessEnv(tessdataDir);
