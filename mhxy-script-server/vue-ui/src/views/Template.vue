@@ -248,6 +248,7 @@ const loadTemplates = async () => {
     const res = await axios.get('/api/template/list', { params })
     templateList.value = res.data.data || []
   } catch (e) { ElMessage.error('加载模板失败') }
+  finally { testDuration.value = (performance.now() - t0).toFixed(1); testRunning.value = false }
 }
 
 const handleFileChange = (file) => { uploadForm.file = file.raw }
@@ -275,6 +276,7 @@ const handleUpload = async () => {
     showUploadDialog.value = false
     loadTemplates()
   } catch (e) { ElMessage.error('上传失败') }
+  finally { testDuration.value = (performance.now() - t0).toFixed(1); testRunning.value = false }
 }
 
 const openEditDialog = (t) => {
@@ -298,6 +300,7 @@ const handleEdit = async () => {
     showEditDialog.value = false
     loadTemplates()
   } catch (e) { ElMessage.error('保存失败') }
+  finally { testDuration.value = (performance.now() - t0).toFixed(1); testRunning.value = false }
 }
 
 const deleteTemplate = async (t) => {
@@ -350,6 +353,7 @@ const runMatchTest = async () => {
       ElMessage.warning('未找到匹配位置')
     }
   } catch (e) { ElMessage.error(e.code === 'ECONNABORTED' ? '请求超时' : '匹配失败') }
+  finally { testDuration.value = (performance.now() - t0).toFixed(1); testRunning.value = false }
 }
 
 const runDeviceMatchTest = async () => {
@@ -370,6 +374,7 @@ const runDeviceMatchTest = async () => {
       ElMessage.warning('未找到匹配位置')
     }
   } catch (e) { ElMessage.error(e.code === 'ECONNABORTED' ? '请求超时' : '匹配失败') }
+  finally { testDuration.value = (performance.now() - t0).toFixed(1); testRunning.value = false }
 }
 const onResultImageLoad = () => {
   if (resultImage.value) {
