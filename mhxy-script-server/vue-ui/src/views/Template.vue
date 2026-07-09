@@ -154,20 +154,16 @@
           </div>
         </div>
 
+
         <!-- 匹配结果 -->
         <div v-if="testResult" class="test-result">
           <div class="panel-title">匹配结果</div>
+
           <div class="result-status">
             <el-tag :type="testResult.data.matched ? 'success' : 'danger'" size="large">
               {{ testResult.data.matched ? '匹配成功' : '未匹配' }}
             </el-tag>
             <span class="similarity-text">相似度：{{ (testResult.data.similarity * 100).toFixed(2) }}%</span>
-          </div>
-
-          <div v-if="testResult.data.matched" class="match-positions">
-            <div v-for="(pt, idx) in testResult.data.matchPoints" :key="idx" class="match-position-item">
-              位置{{ idx + 1 }}：中心 ({{ pt.x }}, {{ pt.y }})
-            </div>
           </div>
 
           <!-- 目标图片 + 矩形标注 -->
@@ -185,6 +181,12 @@
               class="match-rect"
               :style="getRectStyle(pt)"
             />
+          </div>
+
+          <div v-if="testResult.data.matched" class="match-positions">
+            <div v-for="(pt, idx) in testResult.data.matchPoints" :key="idx" class="match-position-item">
+              位置{{ idx + 1 }}：中心 ({{ pt.x }}, {{ pt.y }})
+            </div>
           </div>
         </div>
       </div>
@@ -458,15 +460,15 @@ onMounted(() => { loadTemplates() })
     }
 
     .test-result {
-      .result-status { display: flex; align-items: center; gap: 12px; margin-bottom: 12px;
+      .result-status { display: flex; align-items: center; gap: 12px; margin-bottom: 10px;
         .similarity-text { font-size: 14px; color: #666; font-weight: 500; }
-      }
-      .match-positions { margin-bottom: 12px;
-        .match-position-item { font-size: 13px; color: #409eff; padding: 2px 0; }
       }
       .result-image-wrapper {
         position: relative; display: inline-block; max-width: 100%; border: 1px solid #eee; border-radius: 4px; overflow: hidden;
         .result-image { display: block; max-width: 100%; max-height: 500px; }
+      }
+      .match-positions { margin-top: 10px;
+        .match-position-item { font-size: 13px; color: #409eff; padding: 2px 0; }
       }
     }
   }
