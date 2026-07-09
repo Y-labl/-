@@ -28,7 +28,7 @@ public class DeviceService extends ServiceImpl<DeviceMapper, Device> {
     public boolean disconnectDevice(Long id) {
         Device device = getById(id);
         if (device == null) return false;
-        device.setStatus(1);
+        device.setStatus(0);
         return updateById(device);
     }
 }

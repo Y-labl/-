@@ -34,7 +34,10 @@
                 <Iphone v-else />
               </el-icon>
               <div class="device-info">
-                <h4>{{ device.deviceName }}</h4>
+                <div class="device-title">
+                  <h4>{{ device.deviceName }}</h4>
+                  <el-button size="small" :icon="Edit" circle @click.stop="handleEditTitle(device)" class="edit-title-btn" />
+                </div>
                 <p>{{ device.ipAddress }}:{{ device.port }}</p>
               </div>
               <el-tag :type="getStatusType(device.status)" size="small">
@@ -155,7 +158,8 @@
 <script setup>
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getDeviceList, getDeviceScreenshot, addDevice, deleteDevice, connectDevice, disconnectDevice, scanDevices, bindDevice } from '@/api/device'
+import { Loading, Search, Refresh, Plus, Iphone, Monitor, VideoCamera, Edit } from '@element-plus/icons-vue'
+import { getDeviceList, getDeviceScreenshot, addDevice, deleteDevice, connectDevice, disconnectDevice, scanDevices, bindDevice, updateDevice } from '@/api/device'
 
 const showAddDialog = ref(false)
 const showScanDialog = ref(false)
@@ -291,6 +295,24 @@ const handleDelete = async (device) => {
   }
 }
 
+const handleEditTitle = async (device) => {
+  try {
+    const { value } = await ElMessageBox.prompt('请输入设备标题', '编辑标题', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      inputValue: device.deviceName,
+      inputPlaceholder: '输入设备标题，如 RVL_AL09',
+    })
+    if (value && value.trim()) {
+      await updateDevice(device.id, { deviceName: value.trim() })
+      ElMessage.success('标题已更新')
+      loadDevices()
+    }
+  } catch (e) {
+    // user cancelled
+  }
+}
+
 const handleAddDevice = async () => {
   try {
     await addDevice(deviceForm)
@@ -352,7 +374,13 @@ onUnmounted(() => {
 
       .device-info {
         flex: 1;
-        h4 { margin: 0 0 5px; font-size: 14px; }
+        .device-title {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          margin-bottom: 5px;
+          h4 { margin: 0; font-size: 14px; }
+        }
         p { margin: 0; font-size: 12px; color: #999; }
       }
     }
@@ -396,6 +424,7 @@ onUnmounted(() => {
       .device-size { font-size: 12px; color: #999; }
       .device-actions { display: flex; gap: 6px; }
     }
+    .edit-title-btn { width: 24px; height: 24px; font-size: 12px; }
   }
 }
 </style>
