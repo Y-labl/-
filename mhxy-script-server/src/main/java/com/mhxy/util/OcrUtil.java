@@ -126,43 +126,85 @@ public class OcrUtil {
 
     @PostConstruct
     public void init() {
-        // 将路径标准化为操作系统原生格式，避免正斜杠在 Windows 原生层不兼容
+        // 获取配置的 datapath（可能来自 application.yml）
         effectiveDataPath = dataPath;
-        if (effectiveDataPath == null || effectiveDataPath.isEmpty()) {
-            // 从 classpath 所在目录向上查找项目根下的 tessdata
-            try {
-                java.net.URL classUrl = OcrUtil.class.getProtectionDomain().getCodeSource().getLocation();
-                File classDir = new File(classUrl.toURI());
-                // 从 classes 目录向上找到项目根
-                File projectRoot = classDir;
-                while (projectRoot != null && !"mhxy-script-server".equals(projectRoot.getName())) {
-                    // 也检查当前目录是否包含 tessdata
-                    if (new File(new File(projectRoot, "tessdata"), "chi_sim.traineddata").exists()) {
-                        effectiveDataPath = projectRoot.getAbsolutePath();
-                        break;
-                    }
-                    projectRoot = projectRoot.getParentFile();
-                }
-                if (effectiveDataPath == null && projectRoot != null) {
-                    effectiveDataPath = projectRoot.getAbsolutePath();
-                }
-            } catch (Exception e) {
-                log.warn("Failed to resolve tessdata from classpath: {}", e.getMessage());
-            }
-            if (effectiveDataPath == null) {
-                effectiveDataPath = System.getProperty("user.dir");
+        log.info("OCR configured datapath from config: {}", effectiveDataPath);
+        // 如果配置了但路径无效（无 tessdata 子目录），则回退到自动解析
+        if (effectiveDataPath != null && !effectiveDataPath.isEmpty()) {
+            File testDir = new File(new File(effectiveDataPath), "tessdata");
+            if (!testDir.exists() || !testDir.isDirectory()) {
+                log.warn("Configured datapath has no tessdata/ subdir: {}, falling back to auto-resolve", effectiveDataPath);
+                effectiveDataPath = null;
             }
         }
+        if (effectiveDataPath == null || effectiveDataPath.isEmpty()) {
+            effectiveDataPath = autoResolveTessdataDir();
+        }
         effectiveDataPath = new File(effectiveDataPath).getAbsolutePath();
-        // 设置环境变量，让 Tesseract 原生库也能找到训练数据
+        log.info("OCR final effectiveDataPath: {}", effectiveDataPath);
+        // 注入 OS 环境变量 + Java 缓存
         setTessEnv(effectiveDataPath);
         tesseract = new Tesseract();
         tesseract.setDatapath(effectiveDataPath);
+        log.info("Tesseract initialized with datapath={}, language={}", effectiveDataPath, language);
         tesseract.setLanguage(language);
         tesseract.setOcrEngineMode(1);
         tesseract.setPageSegMode(7);
         checkLanguageData(effectiveDataPath, language);
-        log.info("OCR engine initialized: datapath={}, language={}", effectiveDataPath, language);
+    }
+
+    /** 多策略自动解析包含 tessdata/ 子目录的路径 */
+    private String autoResolveTessdataDir() {
+        // 策略1: classpath 向上查找
+        try {
+            java.net.URL classUrl = OcrUtil.class.getProtectionDomain().getCodeSource().getLocation();
+            File classDir = new File(classUrl.toURI());
+            File root = classDir;
+            while (root != null && !"mhxy-script-server".equals(root.getName())) {
+                if (new File(new File(root, "tessdata"), "chi_sim.traineddata").exists()) {
+                    log.info("OCR resolved tessdata via classpath walk: {}", root.getAbsolutePath());
+                    return root.getAbsolutePath();
+                }
+                root = root.getParentFile();
+            }
+            if (root != null) {
+                File f = new File(new File(root, "tessdata"), "chi_sim.traineddata");
+                if (f.exists()) {
+                    log.info("OCR resolved tessdata via project root: {}", root.getAbsolutePath());
+                    return root.getAbsolutePath();
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Classpath resolution failed: {}", e.getMessage());
+        }
+        // 策略2: user.dir
+        String userDir = System.getProperty("user.dir");
+        if (userDir != null) {
+            File f = new File(new File(userDir, "tessdata"), "chi_sim.traineddata");
+            if (f.exists()) {
+                log.info("OCR resolved tessdata via user.dir: {}", userDir);
+                return userDir;
+            }
+            // 也检查父目录
+            File parent = new File(userDir).getParentFile();
+            if (parent != null) {
+                f = new File(new File(parent, "tessdata"), "chi_sim.traineddata");
+                if (f.exists()) {
+                    log.info("OCR resolved tessdata via user.dir parent: {}", parent.getAbsolutePath());
+                    return parent.getAbsolutePath();
+                }
+            }
+        }
+        // 策略3: 硬编码路径
+        String[] hard = {"D:/Program Files/mhxy-project/mhxy-script-server", "D:/mhxy-script-server"};
+        for (String h : hard) {
+            if (new File(new File(h, "tessdata"), "chi_sim.traineddata").exists()) {
+                log.info("OCR resolved tessdata via hardcoded path: {}", h);
+                return h;
+            }
+        }
+        log.warn("Cannot find tessdata directory, using user.dir as fallback");
+        return System.getProperty("user.dir");
     }
 
     /** 检查训练数据文件是否存在，返回缺失的语言列表 */
