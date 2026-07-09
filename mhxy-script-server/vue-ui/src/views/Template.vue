@@ -186,31 +186,48 @@
             </div>
           </el-tab-pane>
 
-          <el-tab-pane label="文字识别" name="ocr">
+﻿          <el-tab-pane label="文字识别" name="ocr">
             <div class="ocr-tab">
-              <div class="ocr-upload-row">
-                <div class="ocr-upload-panel">
-                  <div class="panel-title">上传图片</div>
-                  <el-upload
-                    v-if="!ocrImageUrl"
-                    drag
-                    :auto-upload="false"
-                    :on-change="handleOcrFileChange"
-                    accept="image/*"
-                  >
-                    <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
-                    <div class="el-upload__text">上传需识别的图片</div>
-                  </el-upload>
-                  <img v-else :src="ocrImageUrl" class="preview-image" />
+              <div class="test-actions">
+                <el-select v-model="testDeviceId" placeholder="选择设备" style="width:100%">
+                  <el-option v-for="dev in testDevices" :key="dev.id" :label="dev.deviceName" :value="dev.id" />
+                </el-select>
+                <el-button type="primary" @click="runDeviceOcrTest" :loading="ocrRunning" :disabled="!testDeviceId" style="margin-top:12px;width:100%">
+                  截图并识别
+                </el-button>
+              </div>
+              <div class="image-preview-row">
+                <div class="preview-panel template-preview-panel">
+                  <div class="panel-title">模板图片</div>
+                  <div class="preview-image-wrapper">
+                    <img :src="testTemplate.thumbnail" class="preview-image" />
+                  </div>
+                  <div class="preview-meta">
+                    <span class="template-name">{{ testTemplate.templateName }}</span>
+                  </div>
                 </div>
-                <div class="ocr-options">
-                  <el-checkbox v-model="ocrUseTemplate">使用模板裁剪区域</el-checkbox>
-                  <el-button type="primary" @click="runOcrTest" :loading="ocrRunning" :disabled="!ocrFile" style="margin-top:12px;width:100%">
+                <div class="preview-panel uploaded-preview-panel">
+                  <div class="panel-title">上传图片</div>
+                  <div class="preview-image-wrapper upload-wrapper">
+                    <el-upload
+                      v-if="!ocrImageUrl"
+                      drag
+                      :auto-upload="false"
+                      :on-change="handleOcrFileChange"
+                      accept="image/*"
+                      class="preview-upload"
+                    >
+                      <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
+                      <div class="el-upload__text">上传需识别的图片</div>
+                    </el-upload>
+                    <img v-else :src="ocrImageUrl" class="preview-image" />
+                  </div>
+                  <el-checkbox v-model="ocrUseTemplate" style="margin: 8px 0">使用模板裁剪区域</el-checkbox>
+                  <el-button type="primary" @click="runOcrTest" :loading="ocrRunning" :disabled="!ocrFile" style="width:100%">
                     开始识别
                   </el-button>
                 </div>
               </div>
-
               <div v-if="ocrResult" class="ocr-result">
                 <div class="result-status">
                   <el-tag type="success" size="large">识别完成</el-tag>
@@ -225,7 +242,7 @@
                 </div>
                 <div class="ocr-text-result">
                   <div class="panel-title">识别文字</div>
-                  <div class="ocr-text-box">{{ ocrResult.data.text || '（未识别到文字）' }}</div>
+                  <div class="ocr-text-box">{{ ocrResult.data.text || '(未识别到文字)' }}</div>
                 </div>
               </div>
             </div>
@@ -449,6 +466,25 @@ const getRectStyle = (pt) => {
 }
 
 // ========== OCR 方法 ==========
+
+const runDeviceOcrTest = async () => {
+  if (!testDeviceId.value) { ElMessage.warning('请选择设备'); return }
+  ocrRunning.value = true
+  const t0 = performance.now()
+  try {
+    const fd = new FormData()
+    fd.append('deviceId', testDeviceId.value)
+    if (ocrUseTemplate.value) {
+      fd.append('templateId', testTemplate.id)
+    }
+    const res = await axios.post('/api/template/ocr-device', fd, { timeout: 30000 })
+    ocrResult.value = res.data
+    if (res.data.data?.screenshotBase64) {
+      ocrImageUrl.value = res.data.data.screenshotBase64
+    }
+  } catch (e) { ElMessage.error(e.code === 'ECONNABORTED' ? '请求超时' : '识别失败') }
+  finally { ocrDuration.value = (performance.now() - t0).toFixed(1); ocrRunning.value = false }
+}
 const handleOcrFileChange = (file) => {
   ocrFile.value = file.raw
   ocrImageUrl.value = URL.createObjectURL(file.raw)

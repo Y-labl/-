@@ -159,7 +159,83 @@ public class TemplateController {
     }
 
 
-    /** 文字识别：对上传图片进行OCR（可选模板裁剪区域识别） */
+
+    /** 文字识别：对设备截图进行OCR（可选模板裁剪区域识别） */
+    @PostMapping("/ocr-device")
+    public ApiResponse<Map<String, Object>> ocrDevice(
+            @RequestParam("deviceId") Long deviceId,
+            @RequestParam(value = "templateId", required = false) Long templateId) {
+        Device device = deviceService.getById(deviceId);
+        if (device == null || device.getDeviceId() == null) {
+            return ApiResponse.fail("设备不存在或未绑定");
+        }
+        try {
+            byte[] pngBytes = scannerService.captureAdbScreenshot(device.getDeviceId());
+            if (pngBytes == null || pngBytes.length == 0) return ApiResponse.fail("设备截图失败");
+
+            BufferedImage image = ImageIO.read(new ByteArrayInputStream(pngBytes));
+            if (image == null) return ApiResponse.fail("无法读取设备截图");
+
+            String base64 = Base64.getEncoder().encodeToString(pngBytes);
+            BufferedImage targetRegion = image;
+            Map<String, Object> matchInfo = null;
+
+            if (templateId != null) {
+                TemplateImage template = templateImageMapper.selectById(templateId);
+                if (template != null && template.getTemplatePath() != null) {
+                    Mat screenMat = imageMatchUtil.decodeImageMat(pngBytes);
+                    Mat templateMat = imageMatchUtil.readImageMat(template.getTemplatePath());
+                    if (!screenMat.empty() && !templateMat.empty()) {
+                        double threshold = template.getMatchThreshold() != null ? template.getMatchThreshold() : 0.75;
+                        java.util.Optional<org.opencv.core.Point> match = imageMatchUtil.findTemplate(screenMat, templateMat, threshold);
+                        if (match.isPresent()) {
+                            org.opencv.core.Point p = match.get();
+                            int tx = templateMat.cols();
+                            int ty = templateMat.rows();
+                            int cx = Math.max(0, (int)(p.x - tx / 2.0));
+                            int cy = Math.max(0, (int)(p.y - ty / 2.0));
+                            int cw = Math.min(tx, image.getWidth() - cx);
+                            int ch = Math.min(ty, image.getHeight() - cy);
+                            if (cw > 0 && ch > 0) {
+                                targetRegion = image.getSubimage(cx, cy, cw, ch);
+                                matchInfo = new LinkedHashMap<>();
+                                matchInfo.put("x", cx);
+                                matchInfo.put("y", cy);
+                                matchInfo.put("width", cw);
+                                matchInfo.put("height", ch);
+                            }
+                        }
+                        screenMat.release();
+                        templateMat.release();
+                    }
+                }
+            }
+
+            long t0 = System.currentTimeMillis();
+            String text = ocrUtil.recognize(targetRegion);
+            long elapsed = System.currentTimeMillis() - t0;
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("text", text);
+            result.put("elapsedMs", elapsed);
+            result.put("deviceName", device.getDeviceName());
+            result.put("imageWidth", image.getWidth());
+            result.put("imageHeight", image.getHeight());
+            result.put("screenshotBase64", "data:image/png;base64," + base64);
+            if (matchInfo != null) {
+                result.put("cropRegion", matchInfo);
+            }
+            if (templateId != null && matchInfo == null) {
+                result.put("matchFailed", true);
+            }
+            return ApiResponse.success(result);
+        } catch (Exception e) {
+            log.error("Device OCR failed: {}", e.getMessage(), e);
+            return ApiResponse.fail(e.getMessage());
+        }
+    }
+
+        /** 文字识别：对上传图片进行OCR（可选模板裁剪区域识别） */
     @PostMapping("/ocr")
     public ApiResponse<Map<String, Object>> ocrImage(
             @RequestParam("file") MultipartFile file,
