@@ -84,20 +84,43 @@ public class OcrUtil {
     }
 
     /**
-     * Inject TESSDATA_PREFIX into the OS environment map so that new Tesseract()
-     * (which calls System.getenv in its constructor) can find traineddata files.
+     * Kernel32 interface for calling SetEnvironmentVariableW via JNA (already on classpath from Tess4J).
+     */
+    private interface Kernel32 extends com.sun.jna.Library {
+        Kernel32 INSTANCE = com.sun.jna.Native.load("kernel32", Kernel32.class);
+        boolean SetEnvironmentVariableW(com.sun.jna.WString lpName, com.sun.jna.WString lpValue);
+    }
+
+    /**
+     * Set TESSDATA_PREFIX at the OS level.  The Win32 call makes it visible to the
+     * native Tesseract C library immediately.  The ProcessEnvironment call updates
+     * Java cached env map used by System.getenv().
      */
     private static void setTessEnv(String tessDataPrefix) {
+        boolean ok = false;
         try {
-            Map<String, String> getenv = System.getenv();
-            Field field = getenv.getClass().getDeclaredField("m");
-            field.setAccessible(true);
+            Kernel32.INSTANCE.SetEnvironmentVariableW(
+                new com.sun.jna.WString("TESSDATA_PREFIX"),
+                new com.sun.jna.WString(tessDataPrefix));
+            ok = true;
+            log.info("TESSDATA_PREFIX set via Win32 API: {}", tessDataPrefix);
+        } catch (Throwable e) {
+            log.debug("Win32 SetEnvironmentVariableW failed: {}", e.getMessage());
+        }
+        try {
+            Class<?> pe = Class.forName("java.lang.ProcessEnvironment");
+            java.lang.reflect.Field f = pe.getDeclaredField("theCaseInsensitiveEnvironment");
+            f.setAccessible(true);
             @SuppressWarnings("unchecked")
-            Map<String, String> map = (Map<String, String>) field.get(getenv);
-            map.put("TESSDATA_PREFIX", tessDataPrefix);
-            log.debug("TESSDATA_PREFIX env set to: {}", tessDataPrefix);
-        } catch (Exception e) {
-            log.warn("Cannot set OS TESSDATA_PREFIX: {}", e.getMessage());
+            java.util.Map<String, String> env = (java.util.Map<String, String>) f.get(null);
+            env.put("TESSDATA_PREFIX", tessDataPrefix);
+            ok = true;
+            log.info("TESSDATA_PREFIX set via ProcessEnvironment: {}", tessDataPrefix);
+        } catch (Throwable e) {
+            log.debug("ProcessEnvironment fallback failed: {}", e.getMessage());
+        }
+        if (!ok) {
+            log.warn("Failed to set TESSDATA_PREFIX at OS level, relying on setDatapath only");
         }
     }
 
