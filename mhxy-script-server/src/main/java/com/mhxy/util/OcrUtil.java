@@ -11,8 +11,10 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
+import java.awt.image.RescaleOp;
 import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
@@ -64,11 +66,12 @@ public class OcrUtil {
             System.gc();
             Thread.sleep(100);
             tesseract = new Tesseract();
-            if (dataPath != null && !dataPath.isEmpty()) {
-                tesseract.setDatapath(dataPath);
-            } else {
-                tesseract.setDatapath(new File("tessdata").getAbsolutePath());
+            String path = effectiveDataPath;
+            if (path == null) {
+                path = new File("tessdata").getAbsolutePath();
             }
+            System.setProperty("TESSDATA_PREFIX", path);
+            tesseract.setDatapath(path);
             tesseract.setLanguage(language);
             tesseract.setOcrEngineMode(1);
             tesseract.setPageSegMode(7);
@@ -79,11 +82,31 @@ public class OcrUtil {
     }
     @PostConstruct
     public void init() {
-        tesseract = new Tesseract();
+        // 将路径标准化为操作系统原生格式，避免正斜杠在 Windows 原生层不兼容
         effectiveDataPath = dataPath;
         if (effectiveDataPath == null || effectiveDataPath.isEmpty()) {
-            effectiveDataPath = new File("tessdata").getAbsolutePath();
+            // Tess4J 5.x datapath应指向tessdata的父目录
+            // 多路径fallback：找到包含chi_sim.traineddata的tessdata目录，取其父目录
+            String userDir = System.getProperty("user.dir");
+            String[] searchPaths = {
+                new File(userDir, "tessdata").getAbsolutePath(),
+                new File(userDir, "../tessdata").getAbsolutePath(),
+                new File("tessdata").getAbsolutePath()
+            };
+            for (String sp : searchPaths) {
+                if (new File(sp, "chi_sim.traineddata").exists()) {
+                    effectiveDataPath = new File(sp).getParentFile().getAbsolutePath();
+                    break;
+                }
+            }
+            if (effectiveDataPath == null) {
+                effectiveDataPath = userDir;
+            }
         }
+        effectiveDataPath = new File(effectiveDataPath).getAbsolutePath();
+        // 设置环境变量，让 Tesseract 原生库也能找到训练数据
+        System.setProperty("TESSDATA_PREFIX", effectiveDataPath);
+        tesseract = new Tesseract();
         tesseract.setDatapath(effectiveDataPath);
         tesseract.setLanguage(language);
         tesseract.setOcrEngineMode(1);
@@ -96,9 +119,10 @@ public class OcrUtil {
     private List<String> getMissingLanguages(String datapath, String lang) {
         List<String> missing = new ArrayList<>();
         if (lang == null || lang.isEmpty()) return missing;
-        File dir = new File(datapath);
+        // Tess4J 5.x 内部会拼接 /tessdata/ 子目录，所以检查 datapath/tessdata/ 下的文件
+        File tessdataDir = new File(datapath, "tessdata");
+        File dir = tessdataDir.exists() && tessdataDir.isDirectory() ? tessdataDir : new File(datapath);
         if (!dir.exists() || !dir.isDirectory()) {
-            // 目录不存在时认为配置的所有语言都缺失
             for (String l : lang.split("\\+")) {
                 missing.add(l);
             }
@@ -182,28 +206,37 @@ public class OcrUtil {
     }
 
     /**
-     * 中文识别：放大 ROI 并切换到 chi_sim 语言模型
+     * 中文识别：放大 ROI、增强对比度并切换到 chi_sim 语言模型
      */
     @SuppressWarnings("deprecation")
     public String recognizeChinese(BufferedImage image) {
         if (image == null) return "";
-        List<String> missing = getMissingLanguages(effectiveDataPath, "chi_sim+eng");
+        List<String> missing = getMissingLanguages(effectiveDataPath, "chi_sim");
         if (!missing.isEmpty()) {
             String msg = "[OCR 失败：缺少语言训练数据 " + missing + ".traineddata，请放到 " + effectiveDataPath + "]";
             log.warn(msg);
             return msg;
         }
+        // 放大 2 倍并做灰度/对比度增强，提升小字体识别率
         BufferedImage scaled = scaleForOcr(image, 2.0);
-        BufferedImage safe = preprocess(scaled);
+        BufferedImage enhanced = enhanceForOcr(scaled);
+        BufferedImage safe = preprocess(enhanced);
         if (safe == null) return "";
+
+        saveDebugImage(safe, "ocr_chinese_input.png");
+
         lock.lock();
         try {
-            // 临时切换到中文语言包；若不存在会回退到 eng
-            tesseract.setLanguage("chi_sim+eng");
+            // 仅使用 chi_sim，避免 eng 对中文的干扰
+            tesseract.setLanguage("chi_sim");
+            // 对整块文字区域进行识别，比单行模式更适合地名+坐标的多行结构
+            tesseract.setPageSegMode(6);
             tesseract.setTessVariable("tessedit_char_whitelist", "");
             String text = tesseract.doOCR(safe).trim();
-            // 恢复默认语言
+            // 恢复默认语言和页面模式
             tesseract.setLanguage(language);
+            tesseract.setPageSegMode(7);
+            log.debug("Chinese OCR result: {}", text);
             return text;
         } catch (TesseractException e) {
             String msg = e.getMessage() != null ? e.getMessage() : "";
@@ -220,6 +253,33 @@ public class OcrUtil {
             return "";
         } finally {
             lock.unlock();
+        }
+    }
+
+    /** 灰度化并增强对比度，让文字更清晰 */
+    private BufferedImage enhanceForOcr(BufferedImage image) {
+        if (image == null) return null;
+        BufferedImage gray = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_BYTE_GRAY);
+        java.awt.Graphics2D g = gray.createGraphics();
+        g.drawImage(image, 0, 0, null);
+        g.dispose();
+
+        // 简单对比度增强：1.5 倍对比度，10 亮度偏移
+        RescaleOp rescale = new RescaleOp(1.5f, 10f, null);
+        BufferedImage enhanced = rescale.filter(gray, null);
+        return enhanced;
+    }
+
+    /** 保存调试图片，便于排查识别问题 */
+    private void saveDebugImage(BufferedImage image, String fileName) {
+        try {
+            File debugDir = new File("screenshots/ocr-debug");
+            if (!debugDir.exists()) debugDir.mkdirs();
+            File file = new File(debugDir, System.currentTimeMillis() + "_" + fileName);
+            ImageIO.write(image, "png", file);
+            log.debug("OCR debug image saved: {}", file.getAbsolutePath());
+        } catch (IOException e) {
+            log.debug("Failed to save OCR debug image: {}", e.getMessage());
         }
     }
 

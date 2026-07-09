@@ -192,7 +192,7 @@
                 <el-select v-model="testDeviceId" placeholder="选择设备" style="width:100%">
                   <el-option v-for="dev in testDevices" :key="dev.id" :label="dev.deviceName" :value="dev.id" />
                 </el-select>
-                <el-button type="primary" @click="runDeviceOcrTest" :loading="ocrRunning" :disabled="!testDeviceId" style="margin-top:12px;width:100%">
+                <el-button type="primary" @click="runDeviceOcrTest" :loading="ocrDeviceRunning" :disabled="!testDeviceId" style="margin-top:12px;width:100%">
                   截图并识别
                 </el-button>
               </div>
@@ -316,6 +316,7 @@ const testDuration = ref(0)
 const ocrFile = ref(null)
 const ocrImageUrl = ref(null)
 const ocrRunning = ref(false)
+const ocrDeviceRunning = ref(false)
 const ocrResult = ref(null)
 const ocrDuration = ref(0)
 const ocrUseTemplate = ref(false)
@@ -578,7 +579,7 @@ const clearRect = () => {
 
 const runDeviceOcrTest = async () => {
   if (!testDeviceId.value) { ElMessage.warning('请选择设备'); return }
-  ocrRunning.value = true
+  ocrDeviceRunning.value = true
   const t0 = performance.now()
   try {
     const fd = new FormData()
@@ -598,7 +599,7 @@ const runDeviceOcrTest = async () => {
       ocrImageUrl.value = res.data.data.screenshotBase64
     }
   } catch (e) { ElMessage.error(e.code === 'ECONNABORTED' ? '请求超时' : '识别失败') }
-  finally { ocrDuration.value = (performance.now() - t0).toFixed(1); ocrRunning.value = false }
+  finally { ocrDuration.value = (performance.now() - t0).toFixed(1); ocrDeviceRunning.value = false }
 }
 
 const handleOcrFileChange = (file) => {
