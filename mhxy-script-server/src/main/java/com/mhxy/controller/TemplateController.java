@@ -15,6 +15,7 @@ import com.mhxy.entity.Device;
 import com.mhxy.service.DeviceScannerService;
 import com.mhxy.service.DeviceService;
 import com.mhxy.util.ImageMatchUtil;
+import com.mhxy.util.OcrUtil;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
@@ -39,6 +40,9 @@ public class TemplateController {
 
     @Autowired
     private DeviceScannerService scannerService;
+
+    @Autowired
+    private OcrUtil ocrUtil;
 
     @Value("${script.template-path:${user.dir}/templates}")
     private String templatePath;
@@ -154,7 +158,73 @@ public class TemplateController {
         return ApiResponse.success("Updated", null);
     }
 
-    /** 测试：用上传的图片进行模板匹配 */
+
+    /** 文字识别：对上传图片进行OCR（可选模板裁剪区域识别） */
+    @PostMapping("/ocr")
+    public ApiResponse<Map<String, Object>> ocrImage(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "templateId", required = false) Long templateId) {
+        try {
+            BufferedImage image = ImageIO.read(new ByteArrayInputStream(file.getBytes()));
+            if (image == null) return ApiResponse.fail("无法读取图片");
+
+            BufferedImage targetRegion = image;
+            Map<String, Object> matchInfo = null;
+
+            if (templateId != null) {
+                TemplateImage template = templateImageMapper.selectById(templateId);
+                if (template != null && template.getTemplatePath() != null) {
+                    Mat targetMat = imageMatchUtil.decodeImageMat(file.getBytes());
+                    Mat templateMat = imageMatchUtil.readImageMat(template.getTemplatePath());
+                    if (!targetMat.empty() && !templateMat.empty()) {
+                        double threshold = template.getMatchThreshold() != null ? template.getMatchThreshold() : 0.75;
+                        java.util.Optional<org.opencv.core.Point> match = imageMatchUtil.findTemplate(targetMat, templateMat, threshold);
+                        if (match.isPresent()) {
+                            org.opencv.core.Point p = match.get();
+                            int tx = templateMat.cols();
+                            int ty = templateMat.rows();
+                            int cx = Math.max(0, (int)(p.x - tx / 2.0));
+                            int cy = Math.max(0, (int)(p.y - ty / 2.0));
+                            int cw = Math.min(tx, image.getWidth() - cx);
+                            int ch = Math.min(ty, image.getHeight() - cy);
+                            if (cw > 0 && ch > 0) {
+                                targetRegion = image.getSubimage(cx, cy, cw, ch);
+                                matchInfo = new LinkedHashMap<>();
+                                matchInfo.put("x", cx);
+                                matchInfo.put("y", cy);
+                                matchInfo.put("width", cw);
+                                matchInfo.put("height", ch);
+                            }
+                        }
+                        targetMat.release();
+                        templateMat.release();
+                    }
+                }
+            }
+
+            long t0 = System.currentTimeMillis();
+            String text = ocrUtil.recognize(targetRegion);
+            long elapsed = System.currentTimeMillis() - t0;
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("text", text);
+            result.put("elapsedMs", elapsed);
+            result.put("imageWidth", image.getWidth());
+            result.put("imageHeight", image.getHeight());
+            if (matchInfo != null) {
+                result.put("cropRegion", matchInfo);
+            }
+            if (templateId != null && matchInfo == null) {
+                result.put("matchFailed", true);
+            }
+            return ApiResponse.success(result);
+        } catch (Exception e) {
+            log.error("OCR failed: {}", e.getMessage(), e);
+            return ApiResponse.fail(e.getMessage());
+        }
+    }
+
+        /** 测试：用上传的图片进行模板匹配 */
     @PostMapping("/{id}/match")
     public ApiResponse<Map<String, Object>> matchTemplate(
             @PathVariable Long id,

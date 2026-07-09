@@ -110,86 +110,127 @@
     <!-- 测试匹配 -->
     <el-dialog v-model="showTestDialog" title="模板匹配测试" width="900px" class="test-dialog">
       <div class="test-body">
-        <!-- 选择设备 -->
-        <div class="test-actions">
-          <el-select v-model="testDeviceId" placeholder="选择设备" style="width:100%">
-            <el-option v-for="dev in testDevices" :key="dev.id" :label="dev.deviceName" :value="dev.id" />
-          </el-select>
-          <el-button type="primary" @click="runDeviceMatchTest" :loading="testRunning" :disabled="!testDeviceId" style="margin-top:12px;width:100%">
-            截图并匹配
-          </el-button>
-        </div>
-
-        <!-- 模板图片与目标图片并列 -->
-        <div class="image-preview-row">
-          <div class="preview-panel template-preview-panel">
-            <div class="panel-title">模板图片</div>
-            <div class="preview-image-wrapper">
-              <img :src="testTemplate.thumbnail" class="preview-image" />
+        <el-tabs v-model="testActiveTab" type="border-card">
+          <el-tab-pane label="模板匹配" name="match">
+            <div class="test-actions">
+              <el-select v-model="testDeviceId" placeholder="选择设备" style="width:100%">
+                <el-option v-for="dev in testDevices" :key="dev.id" :label="dev.deviceName" :value="dev.id" />
+              </el-select>
+              <el-button type="primary" @click="runDeviceMatchTest" :loading="testRunning" :disabled="!testDeviceId" style="margin-top:12px;width:100%">
+                截图并匹配
+              </el-button>
             </div>
-            <div class="preview-meta">
-              <span class="template-name">{{ testTemplate.templateName }}</span>
-              <span class="template-size">{{ testTemplate.width || '?' }}x{{ testTemplate.height || '?' }}</span>
+
+            <div class="image-preview-row">
+              <div class="preview-panel template-preview-panel">
+                <div class="panel-title">模板图片</div>
+                <div class="preview-image-wrapper">
+                  <img :src="testTemplate.thumbnail" class="preview-image" />
+                </div>
+                <div class="preview-meta">
+                  <span class="template-name">{{ testTemplate.templateName }}</span>
+                  <span class="template-size">{{ testTemplate.width || '?' }}x{{ testTemplate.height || '?' }}</span>
+                </div>
+              </div>
+              <div class="preview-panel uploaded-preview-panel">
+                <div class="panel-title">目标图片</div>
+                <div class="preview-image-wrapper upload-wrapper">
+                  <el-upload
+                    v-if="!testTargetUrl"
+                    drag
+                    :auto-upload="false"
+                    :on-change="handleTestFileChange"
+                    accept="image/*"
+                    class="preview-upload"
+                  >
+                    <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
+                    <div class="el-upload__text">拖拽或点击上传目标图片</div>
+                  </el-upload>
+                  <img v-else :src="testTargetUrl" class="preview-image" />
+                </div>
+                <el-button type="primary" @click="runMatchTest" :loading="testRunning" :disabled="!testFile" style="margin-top:12px;width:100%">
+                  开始匹配
+                </el-button>
+              </div>
             </div>
-          </div>
-          <div class="preview-panel uploaded-preview-panel">
-            <div class="panel-title">目标图片</div>
-            <div class="preview-image-wrapper upload-wrapper">
-              <el-upload
-                v-if="!testTargetUrl"
-                drag
-                :auto-upload="false"
-                :on-change="handleTestFileChange"
-                accept="image/*"
-                class="preview-upload"
-              >
-                <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
-                <div class="el-upload__text">拖拽或点击上传目标图片</div>
-              </el-upload>
-              <img v-else :src="testTargetUrl" class="preview-image" />
+
+            <div v-if="testResult" class="test-result">
+              <div class="panel-title">匹配结果</div>
+              <div class="result-status">
+                <el-tag :type="testResult.data.matched ? 'success' : 'danger'" size="large">
+                  {{ testResult.data.matched ? '匹配成功' : '未匹配' }}
+                </el-tag>
+                  <span class="similarity-text">相似度：{{ (testResult.data.similarity * 100).toFixed(2) }}%</span>
+                  <span class="duration-text">耗时：{{ testDuration }}ms</span>
+              </div>
+              <div class="result-image-wrapper" ref="resultImageWrap">
+                <img
+                  v-if="testTargetUrl"
+                  :src="testTargetUrl"
+                  class="result-image"
+                  @load="onResultImageLoad"
+                  ref="resultImage"
+                />
+                <div
+                  v-for="(pt, idx) in (testResult.data.matchPoints || [])"
+                  :key="'rect-' + idx"
+                  class="match-rect"
+                  :style="getRectStyle(pt)"
+                />
+              </div>
+              <div v-if="testResult.data.matched" class="match-positions">
+                <div v-for="(pt, idx) in testResult.data.matchPoints" :key="idx" class="match-position-item">
+                  位置{{ idx + 1 }}：中心 ({{ pt.x }}, {{ pt.y }})
+                </div>
+              </div>
             </div>
-            <el-button type="primary" @click="runMatchTest" :loading="testRunning" :disabled="!testFile" style="margin-top:12px;width:100%">
-              开始匹配
-            </el-button>
-          </div>
-        </div>
+          </el-tab-pane>
 
+          <el-tab-pane label="文字识别" name="ocr">
+            <div class="ocr-tab">
+              <div class="ocr-upload-row">
+                <div class="ocr-upload-panel">
+                  <div class="panel-title">上传图片</div>
+                  <el-upload
+                    v-if="!ocrImageUrl"
+                    drag
+                    :auto-upload="false"
+                    :on-change="handleOcrFileChange"
+                    accept="image/*"
+                  >
+                    <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
+                    <div class="el-upload__text">上传需识别的图片</div>
+                  </el-upload>
+                  <img v-else :src="ocrImageUrl" class="preview-image" />
+                </div>
+                <div class="ocr-options">
+                  <el-checkbox v-model="ocrUseTemplate">使用模板裁剪区域</el-checkbox>
+                  <el-button type="primary" @click="runOcrTest" :loading="ocrRunning" :disabled="!ocrFile" style="margin-top:12px;width:100%">
+                    开始识别
+                  </el-button>
+                </div>
+              </div>
 
-        <!-- 匹配结果 -->
-        <div v-if="testResult" class="test-result">
-          <div class="panel-title">匹配结果</div>
-
-          <div class="result-status">
-            <el-tag :type="testResult.data.matched ? 'success' : 'danger'" size="large">
-              {{ testResult.data.matched ? '匹配成功' : '未匹配' }}
-            </el-tag>
-              <span class="similarity-text">相似度：{{ (testResult.data.similarity * 100).toFixed(2) }}%</span>
-              <span class="duration-text">耗时：{{ testDuration }}ms</span>
-          </div>
-
-          <!-- 目标图片 + 矩形标注 -->
-          <div class="result-image-wrapper" ref="resultImageWrap">
-            <img
-              v-if="testTargetUrl"
-              :src="testTargetUrl"
-              class="result-image"
-              @load="onResultImageLoad"
-              ref="resultImage"
-            />
-            <div
-              v-for="(pt, idx) in (testResult.data.matchPoints || [])"
-              :key="'rect-' + idx"
-              class="match-rect"
-              :style="getRectStyle(pt)"
-            />
-          </div>
-
-          <div v-if="testResult.data.matched" class="match-positions">
-            <div v-for="(pt, idx) in testResult.data.matchPoints" :key="idx" class="match-position-item">
-              位置{{ idx + 1 }}：中心 ({{ pt.x }}, {{ pt.y }})
+              <div v-if="ocrResult" class="ocr-result">
+                <div class="result-status">
+                  <el-tag type="success" size="large">识别完成</el-tag>
+                  <span class="duration-text">耗时：{{ ocrDuration }}ms</span>
+                </div>
+                <div v-if="ocrResult.data.cropRegion" class="ocr-crop-info">
+                  裁剪区域：x={{ ocrResult.data.cropRegion.x }}, y={{ ocrResult.data.cropRegion.y }},
+                  {{ ocrResult.data.cropRegion.width }}x{{ ocrResult.data.cropRegion.height }}
+                </div>
+                <div v-if="ocrResult.data.matchFailed" class="ocr-warn">
+                  <el-tag type="warning">模板未匹配到，已对整张图片进行识别</el-tag>
+                </div>
+                <div class="ocr-text-result">
+                  <div class="panel-title">识别文字</div>
+                  <div class="ocr-text-box">{{ ocrResult.data.text || '（未识别到文字）' }}</div>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+          </el-tab-pane>
+        </el-tabs>
       </div>
     </el-dialog>
   </div>
@@ -223,9 +264,16 @@ const testTargetUrl = ref(null)
 const testDeviceId = ref(null)
 const testDevices = ref([])
 const testRunning = ref(false)
+const testActiveTab = ref('match')
 const testThreshold = ref(0.75)
 const testResult = ref(null)
 const testDuration = ref(0)
+const ocrFile = ref(null)
+const ocrImageUrl = ref(null)
+const ocrRunning = ref(false)
+const ocrResult = ref(null)
+const ocrDuration = ref(0)
+const ocrUseTemplate = ref(false)
 const resultImageSize = reactive({ width: 0, height: 0 })
 const resultImage = ref(null)
 const resultImageWrap = ref(null)
@@ -399,6 +447,29 @@ const getRectStyle = (pt) => {
     pointerEvents: 'none'
 }
 }
+
+// ========== OCR 方法 ==========
+const handleOcrFileChange = (file) => {
+  ocrFile.value = file.raw
+  ocrImageUrl.value = URL.createObjectURL(file.raw)
+  ocrResult.value = null
+}
+
+const runOcrTest = async () => {
+  if (!ocrFile.value) { ElMessage.warning('请先选择图片'); return }
+  ocrRunning.value = true
+  const t0 = performance.now()
+  try {
+    const fd = new FormData()
+    fd.append('file', ocrFile.value)
+    if (ocrUseTemplate.value) {
+      fd.append('templateId', testTemplate.id)
+    }
+    const res = await axios.post('/api/template/ocr', fd, { timeout: 30000 })
+    ocrResult.value = res.data
+  } catch (e) { ElMessage.error(e.code === 'ECONNABORTED' ? '请求超时' : '识别失败') }
+  finally { ocrDuration.value = (performance.now() - t0).toFixed(1); ocrRunning.value = false }
+}
 onMounted(() => { loadTemplates() })
 </script>
 
@@ -423,6 +494,26 @@ onMounted(() => { loadTemplates() })
   }
 }
 .test-dialog {
+
+  .ocr-tab {
+    .ocr-upload-row { display: flex; gap: 20px;
+      .ocr-upload-panel { flex: 1; }
+      .ocr-options { width: 200px; flex-shrink: 0; display: flex; flex-direction: column; justify-content: center; }
+    }
+    .ocr-result {
+      margin-top: 16px;
+      .result-status { display: flex; align-items: center; gap: 12px; margin-bottom: 8px;
+        .duration-text { font-size: 13px; color: #999; }
+      }
+      .ocr-crop-info { font-size: 13px; color: #67c23a; margin-bottom: 8px; }
+      .ocr-warn { margin-bottom: 8px; }
+      .ocr-text-box {
+        background: #1a1a2e; color: #67c23a; padding: 12px 16px; border-radius: 6px;
+        font-family: 'Courier New', monospace; font-size: 15px; line-height: 1.8;
+        min-height: 60px; white-space: pre-wrap; word-break: break-all;
+      }
+    }
+  }
   .test-body {
     display: flex; flex-direction: column; gap: 20px;
     .panel-title { font-size: 14px; font-weight: bold; margin-bottom: 10px; color: #333; }
