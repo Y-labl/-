@@ -71,7 +71,7 @@ public class OcrUtil {
             if (path == null) {
                 path = System.getProperty("user.dir");
             }
-            String tessPath = new File(path, "tessdata").getAbsolutePath().replace("\\", "/");
+            String tessPath = toShortPath(new File(path, "tessdata").getAbsolutePath()).replace("\\", "/");
             log.info("reinit tessdata path: {}", tessPath);
             setTessEnv(tessPath);
             tesseract = new Tesseract();
@@ -91,6 +91,28 @@ public class OcrUtil {
     private interface Kernel32 extends com.sun.jna.Library {
         Kernel32 INSTANCE = com.sun.jna.Native.load("kernel32", Kernel32.class);
         boolean SetEnvironmentVariableW(com.sun.jna.WString lpName, com.sun.jna.WString lpValue);
+        int GetShortPathNameW(com.sun.jna.WString lpszLongPath, char[] lpszShortPath, int cchBuffer);
+    }
+
+    /**
+     * Convert a long Windows path to short 8.3 format to avoid spaces.
+     * Falls back to original path if conversion fails.
+     */
+    private static String toShortPath(String longPath) {
+        if (longPath == null || !longPath.contains(" ")) return longPath;
+        try {
+            char[] buffer = new char[512];
+            int result = Kernel32.INSTANCE.GetShortPathNameW(
+                new com.sun.jna.WString(longPath), buffer, buffer.length);
+            if (result > 0 && result < buffer.length) {
+                String shortPath = new String(buffer, 0, result);
+                log.debug("Short path: {} -> {}", longPath, shortPath);
+                return shortPath;
+            }
+        } catch (Throwable e) {
+            log.debug("GetShortPathNameW failed: {}", e.getMessage());
+        }
+        return longPath;
     }
 
     /**
@@ -145,7 +167,7 @@ public class OcrUtil {
         effectiveDataPath = new File(effectiveDataPath).getAbsolutePath();
         log.info("OCR final effectiveDataPath: {}", effectiveDataPath);
         // Tesseract datapath must point to the tessdata/ subdirectory directly
-        String tessdataDir = new File(effectiveDataPath, "tessdata").getAbsolutePath().replace("\\", "/");
+        String tessdataDir = toShortPath(new File(effectiveDataPath, "tessdata").getAbsolutePath()).replace("\\", "/");
         log.info("OCR tessdata directory: {}", tessdataDir);
         // 注入 OS 环境变量 + Java 缓存
         setTessEnv(tessdataDir);
