@@ -163,7 +163,8 @@
             <el-tag :type="testResult.data.matched ? 'success' : 'danger'" size="large">
               {{ testResult.data.matched ? '匹配成功' : '未匹配' }}
             </el-tag>
-            <span class="similarity-text">相似度：{{ (testResult.data.similarity * 100).toFixed(2) }}%</span>
+              <span class="similarity-text">相似度：{{ (testResult.data.similarity * 100).toFixed(2) }}%</span>
+              <span class="duration-text">耗时：{{ testDuration }}ms</span>
           </div>
 
           <!-- 目标图片 + 矩形标注 -->
@@ -224,6 +225,7 @@ const testDevices = ref([])
 const testRunning = ref(false)
 const testThreshold = ref(0.75)
 const testResult = ref(null)
+const testDuration = ref(0)
 const resultImageSize = reactive({ width: 0, height: 0 })
 const resultImage = ref(null)
 const resultImageWrap = ref(null)
@@ -334,6 +336,7 @@ const handleTestFileChange = (file) => {
 const runMatchTest = async () => {
   if (!testFile.value) { ElMessage.warning('请先选择目标图片'); return }
   testRunning.value = true
+  const t0 = performance.now()
   try {
     const fd = new FormData()
     fd.append('file', testFile.value)
@@ -345,18 +348,17 @@ const runMatchTest = async () => {
       ElMessage.warning('未找到匹配位置')
     }
   } catch (e) { ElMessage.error(e.code === 'ECONNABORTED' ? '请求超时' : '匹配失败') }
-  finally { testRunning.value = false }
 }
 
 const runDeviceMatchTest = async () => {
   if (!testDeviceId.value) { ElMessage.warning('请选择设备'); return }
   testRunning.value = true
+  const t0 = performance.now()
   try {
     const fd = new FormData()
     fd.append('deviceId', testDeviceId.value)
     const res = await axios.post('/api/template/' + testTemplate.id + '/match-device', fd, { timeout: 30000 })
     testResult.value = res.data
-    // 设置设备截图为目标图片
     if (res.data.data?.screenshotBase64) {
       testTargetUrl.value = res.data.data.screenshotBase64
     }
@@ -366,9 +368,7 @@ const runDeviceMatchTest = async () => {
       ElMessage.warning('未找到匹配位置')
     }
   } catch (e) { ElMessage.error(e.code === 'ECONNABORTED' ? '请求超时' : '匹配失败') }
-  finally { testRunning.value = false }
 }
-
 const onResultImageLoad = () => {
   if (resultImage.value) {
     resultImageSize.width = resultImage.value.offsetWidth
