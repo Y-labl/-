@@ -2,7 +2,7 @@ package com.mhxy.util;
 
 import lombok.extern.slf4j.Slf4j;
 import net.sourceforge.tess4j.ITesseract;
-import net.sourceforge.tess4j.Tesseract;
+import net.sourceforge.tess4j.Tesseract1;
 import net.sourceforge.tess4j.TesseractException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -29,7 +29,7 @@ import java.util.concurrent.locks.ReentrantLock;
 @Component
 public class OcrUtil {
 
-    private ITesseract tesseract;
+    private Tesseract1 tesseract;
 
     @Value("${script.tesseract.datapath:#{null}}")
     private String dataPath;
@@ -75,7 +75,7 @@ public class OcrUtil {
             effectiveDataPath = tessPath;
             log.info("reinit tessdata path: {}", tessPath);
             setTessEnv(tessPath);
-            tesseract = new Tesseract();
+            tesseract = new Tesseract1();
             tesseract.setDatapath(tessPath);
             tesseract.setLanguage(language);
             tesseract.setOcrEngineMode(1);
@@ -155,7 +155,7 @@ public class OcrUtil {
         effectiveDataPath = resolveTessdataPath(dataPath);
         log.info("OCR resolved tessdata path: {}", effectiveDataPath);
         setTessEnv(effectiveDataPath);
-        tesseract = new Tesseract();
+        tesseract = new Tesseract1();
         tesseract.setDatapath(effectiveDataPath);
         log.info("Tesseract initialized with datapath={}, language={}", effectiveDataPath, language);
         tesseract.setLanguage(language);
