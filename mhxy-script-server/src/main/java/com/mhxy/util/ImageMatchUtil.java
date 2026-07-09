@@ -163,13 +163,17 @@ public class ImageMatchUtil {
             log.warn("图片文件不存在: {}", filePath);
             return new Mat();
         }
-                // 用Java NIO读字节绕过OpenCV imread不支持中文路径的问题
-        byte[] bytes = java.nio.file.Files.readAllBytes(file.toPath());
-        Mat mat = Imgcodecs.imdecode(new MatOfByte(bytes), Imgcodecs.IMREAD_GRAYSCALE);
-        if (mat.empty()) {
-            log.warn("OpenCV无法解码图片: {}", filePath);
+        try {
+            byte[] bytes = java.nio.file.Files.readAllBytes(file.toPath());
+            Mat mat = Imgcodecs.imdecode(new MatOfByte(bytes), Imgcodecs.IMREAD_GRAYSCALE);
+            if (mat.empty()) {
+                log.warn("OpenCV无法解码图片: {}", filePath);
+            }
+            return mat;
+        } catch (java.io.IOException e) {
+            log.warn("读取图片文件失败: {}, 原因: {}", filePath, e.getMessage());
+            return new Mat();
         }
-        return mat;
     }
 
     /**
