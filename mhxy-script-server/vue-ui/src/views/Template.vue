@@ -320,6 +320,8 @@ const openTestDialog = async (t) => {
   testTargetUrl.value = null
   testDeviceId.value = null
   testResult.value = null
+  testRunning.value = false
+  testDuration.value = 0
   // 加载设备列表
   try {
     const res = await getDeviceList()
