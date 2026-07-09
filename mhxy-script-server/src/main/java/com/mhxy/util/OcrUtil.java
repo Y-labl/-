@@ -107,17 +107,29 @@ public class OcrUtil {
         // 将路径标准化为操作系统原生格式，避免正斜杠在 Windows 原生层不兼容
         effectiveDataPath = dataPath;
         if (effectiveDataPath == null || effectiveDataPath.isEmpty()) {
-            // Tess4J 5.x datapath应指向tessdata的父目录
-            // 从 user.dir 向上递归 + 向下递归搜索 tessdata 目录
-            String userDir = System.getProperty("user.dir");
-            log.info("OCR searching tessdata from user.dir={}", userDir);
-            File found = findTessdataParent(new File(userDir), 0, 4);
-            if (found == null) {
-                // 也搜索当前目录
-                found = findTessdataParent(new File("."), 0, 4);
+            // 从 classpath 所在目录向上查找项目根下的 tessdata
+            try {
+                java.net.URL classUrl = OcrUtil.class.getProtectionDomain().getCodeSource().getLocation();
+                File classDir = new File(classUrl.toURI());
+                // 从 classes 目录向上找到项目根
+                File projectRoot = classDir;
+                while (projectRoot != null && !"mhxy-script-server".equals(projectRoot.getName())) {
+                    // 也检查当前目录是否包含 tessdata
+                    if (new File(new File(projectRoot, "tessdata"), "chi_sim.traineddata").exists()) {
+                        effectiveDataPath = projectRoot.getAbsolutePath();
+                        break;
+                    }
+                    projectRoot = projectRoot.getParentFile();
+                }
+                if (effectiveDataPath == null && projectRoot != null) {
+                    effectiveDataPath = projectRoot.getAbsolutePath();
+                }
+            } catch (Exception e) {
+                log.warn("Failed to resolve tessdata from classpath: {}", e.getMessage());
             }
-            effectiveDataPath = found != null ? found.getAbsolutePath() : userDir;
-            log.info("OCR tessdata resolved: effectiveDataPath={}", effectiveDataPath);
+            if (effectiveDataPath == null) {
+                effectiveDataPath = System.getProperty("user.dir");
+            }
         }
         effectiveDataPath = new File(effectiveDataPath).getAbsolutePath();
         // 设置环境变量，让 Tesseract 原生库也能找到训练数据
