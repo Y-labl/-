@@ -71,7 +71,7 @@ public class OcrUtil {
             if (path == null) {
                 path = System.getProperty("user.dir");
             }
-            String tessPath = toShortPath(new File(path, "tessdata").getAbsolutePath()).replace("\\", "/");
+            String tessPath = resolveTessdataPath(path);
             log.info("reinit tessdata path: {}", tessPath);
             setTessEnv(tessPath);
             tesseract = new Tesseract();
@@ -150,26 +150,10 @@ public class OcrUtil {
 
     @PostConstruct
     public void init() {
-        // 获取配置的 datapath（可能来自 application.yml）
         effectiveDataPath = dataPath;
         log.info("OCR configured datapath from config: {}", effectiveDataPath);
-        // 如果配置了但路径无效（无 tessdata 子目录），则回退到自动解析
-        if (effectiveDataPath != null && !effectiveDataPath.isEmpty()) {
-            File testDir = new File(new File(effectiveDataPath), "tessdata");
-            if (!testDir.exists() || !testDir.isDirectory()) {
-                log.warn("Configured datapath has no tessdata/ subdir: {}, falling back to auto-resolve", effectiveDataPath);
-                effectiveDataPath = null;
-            }
-        }
-        if (effectiveDataPath == null || effectiveDataPath.isEmpty()) {
-            effectiveDataPath = autoResolveTessdataDir();
-        }
-        effectiveDataPath = new File(effectiveDataPath).getAbsolutePath();
-        log.info("OCR final effectiveDataPath: {}", effectiveDataPath);
-        // Tesseract datapath must point to the tessdata/ subdirectory directly
-        String tessdataDir = toShortPath(new File(effectiveDataPath, "tessdata").getAbsolutePath()).replace("\\", "/");
+        String tessdataDir = resolveTessdataPath(effectiveDataPath);
         log.info("OCR tessdata directory: {}", tessdataDir);
-        // 注入 OS 环境变量 + Java 缓存
         setTessEnv(tessdataDir);
         tesseract = new Tesseract();
         tesseract.setDatapath(tessdataDir);
@@ -178,6 +162,43 @@ public class OcrUtil {
         tesseract.setOcrEngineMode(1);
         tesseract.setPageSegMode(7);
         checkLanguageData(tessdataDir, language);
+    }
+
+
+    /**
+     * Resolve the tessdata directory path from the configured datapath.
+     * Handles cases where datapath IS the tessdata dir, or is its parent.
+     */
+    private String resolveTessdataPath(String configuredPath) {
+        if (configuredPath != null && !configuredPath.isEmpty()) {
+            java.io.File f = new java.io.File(configuredPath);
+            if (f.exists() && f.isDirectory()) {
+                java.io.File testFile = new java.io.File(f, "chi_sim.traineddata");
+                if (testFile.exists()) {
+                    log.info("Using configured datapath directly: {}", f.getAbsolutePath());
+                    return f.getAbsolutePath().replace("\\", "/");
+                }
+                java.io.File subDir = new java.io.File(f, "tessdata");
+                testFile = new java.io.File(subDir, "chi_sim.traineddata");
+                if (testFile.exists()) {
+                    log.info("Using configured datapath + tessdata/: {}", subDir.getAbsolutePath());
+                    return subDir.getAbsolutePath().replace("\\", "/");
+                }
+            }
+        }
+        String auto = autoResolveTessdataDir();
+        java.io.File autoTess = new java.io.File(auto, "tessdata");
+        if (new java.io.File(autoTess, "chi_sim.traineddata").exists()) {
+            log.info("Auto-resolved tessdata/: {}", autoTess.getAbsolutePath());
+            return autoTess.getAbsolutePath().replace("\\", "/");
+        }
+        java.io.File autoDir = new java.io.File(auto);
+        if (new java.io.File(autoDir, "chi_sim.traineddata").exists()) {
+            log.info("Auto-resolved direct: {}", autoDir.getAbsolutePath());
+            return autoDir.getAbsolutePath().replace("\\", "/");
+        }
+        log.warn("Cannot find tessdata, using fallback");
+        return new java.io.File(auto, "tessdata").getAbsolutePath().replace("\\", "/");
     }
 
     /** 多策略自动解析包含 tessdata/ 子目录的路径 */

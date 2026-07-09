@@ -32,7 +32,7 @@ script:
   screenshot-timeout: 5000
   click-interval: 300
   tesseract:
-    datapath: ${user.dir}
+    datapath: D:/tessdata${user.dir}
     language: chi_sim+eng
   ocr:
     preprocess-scale: 0.7
