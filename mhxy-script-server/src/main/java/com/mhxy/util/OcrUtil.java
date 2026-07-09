@@ -80,39 +80,42 @@ public class OcrUtil {
             log.error("Tesseract reinit failed: {}", e.getMessage());
         }
     }
+
+    /** 递归搜索包含 tessdata/chi_sim.traineddata 的目录，返回父目录 */
+    private File findTessdataParent(File dir, int depth, int maxDepth) {
+        if (dir == null || depth > maxDepth) return null;
+        // 检查当前目录
+        if (new File(new File(dir, "tessdata"), "chi_sim.traineddata").exists()) {
+            return dir;
+        }
+        // 向上一级搜索
+        File parent = findTessdataParent(dir.getParentFile(), depth + 1, maxDepth);
+        if (parent != null) return parent;
+        // 向下一级搜索
+        File[] subDirs = dir.listFiles(File::isDirectory);
+        if (subDirs != null) {
+            for (File sub : subDirs) {
+                File found = findTessdataParent(sub, depth + 1, maxDepth);
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
     @PostConstruct
     public void init() {
         // 将路径标准化为操作系统原生格式，避免正斜杠在 Windows 原生层不兼容
         effectiveDataPath = dataPath;
         if (effectiveDataPath == null || effectiveDataPath.isEmpty()) {
             // Tess4J 5.x datapath应指向tessdata的父目录
-            // 从 user.dir 向上递归搜索 tessdata 目录
+            // 从 user.dir 向上递归 + 向下递归搜索 tessdata 目录
             String userDir = System.getProperty("user.dir");
-            File searchDir = new File(userDir);
-            while (searchDir != null) {
-                File tessdata = new File(searchDir, "tessdata");
-                if (new File(tessdata, "chi_sim.traineddata").exists()) {
-                    effectiveDataPath = searchDir.getAbsolutePath();
-                    break;
-                }
-                searchDir = searchDir.getParentFile();
+            File found = findTessdataParent(new File(userDir), 0, 4);
+            if (found == null) {
+                // 也搜索当前目录
+                found = findTessdataParent(new File("."), 0, 4);
             }
-            // 也搜索子目录（处理 IDE 多模块场景）
-            if (effectiveDataPath == null) {
-                File[] subDirs = new File(userDir).listFiles(File::isDirectory);
-                if (subDirs != null) {
-                    for (File sub : subDirs) {
-                        File tessdata = new File(sub, "tessdata");
-                        if (new File(tessdata, "chi_sim.traineddata").exists()) {
-                            effectiveDataPath = sub.getAbsolutePath();
-                            break;
-                        }
-                    }
-                }
-            }
-            if (effectiveDataPath == null) {
-                effectiveDataPath = userDir;
-            }
+            effectiveDataPath = found != null ? found.getAbsolutePath() : userDir;
         }
         effectiveDataPath = new File(effectiveDataPath).getAbsolutePath();
         // 设置环境变量，让 Tesseract 原生库也能找到训练数据
