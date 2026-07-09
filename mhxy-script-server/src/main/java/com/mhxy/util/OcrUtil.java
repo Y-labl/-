@@ -69,11 +69,13 @@ public class OcrUtil {
             Thread.sleep(100);
             String path = effectiveDataPath;
             if (path == null) {
-                path = new File("tessdata").getAbsolutePath();
+                path = System.getProperty("user.dir");
             }
-            setTessEnv(path);
+            String tessPath = new File(path, "tessdata").getAbsolutePath();
+            log.info("reinit tessdata path: {}", tessPath);
+            setTessEnv(tessPath);
             tesseract = new Tesseract();
-            tesseract.setDatapath(path);
+            tesseract.setDatapath(tessPath);
             tesseract.setLanguage(language);
             tesseract.setOcrEngineMode(1);
             tesseract.setPageSegMode(7);
@@ -142,11 +144,14 @@ public class OcrUtil {
         }
         effectiveDataPath = new File(effectiveDataPath).getAbsolutePath();
         log.info("OCR final effectiveDataPath: {}", effectiveDataPath);
+        // Tesseract datapath must point to the tessdata/ subdirectory directly
+        String tessdataDir = new File(effectiveDataPath, "tessdata").getAbsolutePath();
+        log.info("OCR tessdata directory: {}", tessdataDir);
         // 注入 OS 环境变量 + Java 缓存
-        setTessEnv(effectiveDataPath);
+        setTessEnv(tessdataDir);
         tesseract = new Tesseract();
-        tesseract.setDatapath(effectiveDataPath);
-        log.info("Tesseract initialized with datapath={}, language={}", effectiveDataPath, language);
+        tesseract.setDatapath(tessdataDir);
+        log.info("Tesseract initialized with datapath={}, language={}", tessdataDir, language);
         tesseract.setLanguage(language);
         tesseract.setOcrEngineMode(1);
         tesseract.setPageSegMode(7);
@@ -211,9 +216,13 @@ public class OcrUtil {
     private List<String> getMissingLanguages(String datapath, String lang) {
         List<String> missing = new ArrayList<>();
         if (lang == null || lang.isEmpty()) return missing;
-        // Tess4J 5.x 内部会拼接 /tessdata/ 子目录，所以检查 datapath/tessdata/ 下的文件
-        File tessdataDir = new File(datapath, "tessdata");
-        File dir = tessdataDir.exists() && tessdataDir.isDirectory() ? tessdataDir : new File(datapath);
+        // datapath now points directly to tessdata/ directory
+        File dir = new File(datapath);
+        // Also check parent/tessdata for backward compatibility
+        if (!dir.exists() || !dir.isDirectory()) {
+            File alt = new File(new File(datapath), "tessdata");
+            if (alt.exists() && alt.isDirectory()) dir = alt;
+        }
         if (!dir.exists() || !dir.isDirectory()) {
             for (String l : lang.split("\\+")) {
                 missing.add(l);
