@@ -197,8 +197,11 @@
                 </el-button>
               </div>
               <div class="image-preview-row">
-                <div class="preview-panel template-preview-panel">
-                  <div class="panel-title">模板图片</div>
+                <div class="preview-panel template-preview-panel" v-if="ocrShowTemplate">
+                  <div class="panel-title">
+                    模板图片
+                    <el-icon class="remove-tpl-icon" @click="ocrShowTemplate = false" title="移除模板"><Close /></el-icon>
+                  </div>
                   <div class="preview-image-wrapper">
                     <img :src="testTemplate.thumbnail" class="preview-image" />
                   </div>
@@ -206,23 +209,42 @@
                     <span class="template-name">{{ testTemplate.templateName }}</span>
                   </div>
                 </div>
-                <div class="preview-panel uploaded-preview-panel">
-                  <div class="panel-title">上传图片</div>
-                  <div class="preview-image-wrapper upload-wrapper">
-                    <el-upload
-                      v-if="!ocrImageUrl"
-                      drag
-                      :auto-upload="false"
-                      :on-change="handleOcrFileChange"
-                      accept="image/*"
-                      class="preview-upload"
-                    >
-                      <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
-                      <div class="el-upload__text">上传需识别的图片</div>
-                    </el-upload>
-                    <img v-else :src="ocrImageUrl" class="preview-image" />
+                <div class="preview-panel uploaded-preview-panel" :class="{ full: !ocrShowTemplate }">
+                  <div class="panel-title">
+                    上传图片
+                    <span v-if="!ocrShowTemplate && testTemplate.id" class="add-tpl" @click="ocrShowTemplate = true; ocrUseTemplate = true">[使用模板]</span>
                   </div>
-                  <el-checkbox v-model="ocrUseTemplate" style="margin: 8px 0">使用模板裁剪区域</el-checkbox>
+                  <div class="preview-image-wrapper ocr-image-select">
+                    <template v-if="!ocrImageUrl">
+                      <el-upload
+                        drag
+                        :auto-upload="false"
+                        :on-change="handleOcrFileChange"
+                        accept="image/*"
+                        class="preview-upload"
+                      >
+                        <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
+                        <div class="el-upload__text">上传需识别的图片</div>
+                      </el-upload>
+                    </template>
+                    <template v-else>
+                      <img ref="ocrImageRef" :src="ocrImageUrl" class="preview-image ocr-sel-image" @load="onOcrImageLoad" />
+                      <div class="ocr-sel-overlay"
+                           @mousedown="startRectSelect"
+                           @mousemove="updateRectSelect"
+                           @mouseup="endRectSelect"
+                           @mouseleave="endRectSelect">
+                        <div v-if="ocrRect.show" class="ocr-sel-rect" :style="ocrRect.style">
+                          <span class="rect-size-label">{{ ocrRect.w }}×{{ ocrRect.h }}</span>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                  <div v-if="ocrRect.show" class="rect-info">
+                    选区：x={{ ocrRect.x }}, y={{ ocrRect.y }}, {{ ocrRect.w }}×{{ ocrRect.h }}
+                    <el-button size="small" type="danger" plain @click="clearRect">清除选区</el-button>
+                  </div>
+                  <el-checkbox v-if="ocrShowTemplate" v-model="ocrUseTemplate" style="margin: 8px 0">使用模板裁剪区域</el-checkbox>
                   <el-button type="primary" @click="runOcrTest" :loading="ocrRunning" :disabled="!ocrFile" style="width:100%">
                     开始识别
                   </el-button>
@@ -234,8 +256,8 @@
                   <span class="duration-text">耗时：{{ ocrDuration }}ms</span>
                 </div>
                 <div v-if="ocrResult.data.cropRegion" class="ocr-crop-info">
-                  裁剪区域：x={{ ocrResult.data.cropRegion.x }}, y={{ ocrResult.data.cropRegion.y }},
-                  {{ ocrResult.data.cropRegion.width }}x{{ ocrResult.data.cropRegion.height }}
+                  识别区域：x={{ ocrResult.data.cropRegion.x }}, y={{ ocrResult.data.cropRegion.y }},
+                  {{ ocrResult.data.cropRegion.width }}×{{ ocrResult.data.cropRegion.height }}
                 </div>
                 <div v-if="ocrResult.data.matchFailed" class="ocr-warn">
                   <el-tag type="warning">模板未匹配到，已对整张图片进行识别</el-tag>
@@ -295,6 +317,12 @@ const ocrRunning = ref(false)
 const ocrResult = ref(null)
 const ocrDuration = ref(0)
 const ocrUseTemplate = ref(false)
+const ocrShowTemplate = ref(true)
+const ocrImageRef = ref(null)
+const ocrImageNatural = reactive({ w: 0, h: 0 })
+const ocrRect = reactive({ show: false, x: 0, y: 0, w: 0, h: 0, style: {} })
+const ocrSelecting = ref(false)
+const ocrSelectStart = reactive({ x: 0, y: 0 })
 const resultImageSize = reactive({ width: 0, height: 0 })
 const resultImage = ref(null)
 const resultImageWrap = ref(null)
@@ -391,6 +419,13 @@ const openTestDialog = async (t) => {
   testResult.value = null
   testRunning.value = false
   testDuration.value = 0
+  // 重置 OCR 状态
+  ocrFile.value = null
+  ocrImageUrl.value = null
+  ocrResult.value = null
+  ocrUseTemplate.value = false
+  ocrShowTemplate.value = true
+  clearRect()
   // 加载设备列表
   try {
     const res = await getDeviceList()
@@ -471,6 +506,69 @@ const getRectStyle = (pt) => {
 
 // ========== OCR 方法 ==========
 
+const onOcrImageLoad = () => {
+  if (ocrImageRef.value) {
+    ocrImageNatural.w = ocrImageRef.value.naturalWidth
+    ocrImageNatural.h = ocrImageRef.value.naturalHeight
+  }
+  clearRect()
+}
+
+const startRectSelect = (e) => {
+  if (!ocrImageRef.value) return
+  const imgRect = ocrImageRef.value.getBoundingClientRect()
+  ocrSelectStart.x = e.clientX - imgRect.left
+  ocrSelectStart.y = e.clientY - imgRect.top
+  ocrSelecting.value = true
+  ocrRect.show = false
+}
+
+const updateRectSelect = (e) => {
+  if (!ocrSelecting.value || !ocrImageRef.value) return
+  const imgRect = ocrImageRef.value.getBoundingClientRect()
+  const displayW = imgRect.width
+  const displayH = imgRect.height
+
+  const curX = Math.max(0, Math.min(e.clientX - imgRect.left, displayW))
+  const curY = Math.max(0, Math.min(e.clientY - imgRect.top, displayH))
+
+  const left = Math.min(ocrSelectStart.x, curX)
+  const top = Math.min(ocrSelectStart.y, curY)
+  const w = Math.abs(curX - ocrSelectStart.x)
+  const h = Math.abs(curY - ocrSelectStart.y)
+
+  if (ocrImageNatural.w > 0 && ocrImageNatural.h > 0) {
+    const scaleX = ocrImageNatural.w / displayW
+    const scaleY = ocrImageNatural.h / displayH
+    ocrRect.x = Math.round(left * scaleX)
+    ocrRect.y = Math.round(top * scaleY)
+    ocrRect.w = Math.round(w * scaleX)
+    ocrRect.h = Math.round(h * scaleY)
+  }
+
+  ocrRect.style = {
+    position: 'absolute',
+    left: left + 'px',
+    top: top + 'px',
+    width: w + 'px',
+    height: h + 'px',
+    border: '2px dashed #409eff',
+    backgroundColor: 'rgba(64,158,255,0.1)',
+    pointerEvents: 'none'
+  }
+  ocrRect.show = w > 4 && h > 4
+}
+
+const endRectSelect = () => {
+  ocrSelecting.value = false
+}
+
+const clearRect = () => {
+  ocrRect.show = false
+  ocrRect.x = 0; ocrRect.y = 0; ocrRect.w = 0; ocrRect.h = 0
+  ocrRect.style = {}
+}
+
 const runDeviceOcrTest = async () => {
   if (!testDeviceId.value) { ElMessage.warning('请选择设备'); return }
   ocrRunning.value = true
@@ -478,8 +576,14 @@ const runDeviceOcrTest = async () => {
   try {
     const fd = new FormData()
     fd.append('deviceId', testDeviceId.value)
-    if (ocrUseTemplate.value) {
+    if (ocrShowTemplate.value && ocrUseTemplate.value && testTemplate.id) {
       fd.append('templateId', testTemplate.id)
+    }
+    if (ocrRect.show && ocrRect.w > 0 && ocrRect.h > 0) {
+      fd.append('cropX', ocrRect.x)
+      fd.append('cropY', ocrRect.y)
+      fd.append('cropW', ocrRect.w)
+      fd.append('cropH', ocrRect.h)
     }
     const res = await axios.post('/api/template/ocr-device', fd, { timeout: 30000 })
     ocrResult.value = res.data
@@ -489,10 +593,12 @@ const runDeviceOcrTest = async () => {
   } catch (e) { ElMessage.error(e.code === 'ECONNABORTED' ? '请求超时' : '识别失败') }
   finally { ocrDuration.value = (performance.now() - t0).toFixed(1); ocrRunning.value = false }
 }
+
 const handleOcrFileChange = (file) => {
   ocrFile.value = file.raw
   ocrImageUrl.value = URL.createObjectURL(file.raw)
   ocrResult.value = null
+  clearRect()
 }
 
 const runOcrTest = async () => {
@@ -502,8 +608,14 @@ const runOcrTest = async () => {
   try {
     const fd = new FormData()
     fd.append('file', ocrFile.value)
-    if (ocrUseTemplate.value) {
+    if (ocrShowTemplate.value && ocrUseTemplate.value && testTemplate.id) {
       fd.append('templateId', testTemplate.id)
+    }
+    if (ocrRect.show && ocrRect.w > 0 && ocrRect.h > 0) {
+      fd.append('cropX', ocrRect.x)
+      fd.append('cropY', ocrRect.y)
+      fd.append('cropW', ocrRect.w)
+      fd.append('cropH', ocrRect.h)
     }
     const res = await axios.post('/api/template/ocr', fd, { timeout: 30000 })
     ocrResult.value = res.data
@@ -536,10 +648,35 @@ onMounted(() => { loadTemplates() })
 .test-dialog {
 
   .ocr-tab {
-    .ocr-upload-row { display: flex; gap: 20px;
-      .ocr-upload-panel { flex: 1; }
-      .ocr-options { width: 200px; flex-shrink: 0; display: flex; flex-direction: column; justify-content: center; }
+    .ocr-image-select {
+      position: relative; overflow: hidden;
+      .ocr-sel-image { position: relative; z-index: 1; }
+      .ocr-sel-overlay {
+        position: absolute; inset: 0; z-index: 2; cursor: crosshair;
+        .ocr-sel-rect {
+          .rect-size-label {
+            position: absolute; bottom: -20px; left: 0;
+            font-size: 11px; color: #409eff; white-space: nowrap; background: rgba(255,255,255,0.8); padding: 1px 4px; border-radius: 2px;
+          }
+        }
+      }
     }
+    .rect-info {
+      display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 12px; color: #409eff;
+      .el-button { margin-left: auto; }
+    }
+    .remove-tpl-icon {
+      font-size: 16px; color: #999; cursor: pointer; float: right;
+      &:hover { color: #f56c6c; }
+    }
+    .add-tpl {
+      font-size: 12px; color: #409eff; cursor: pointer; margin-left: 8px;
+      &:hover { text-decoration: underline; }
+    }
+    .panel-title {
+      .remove-tpl-icon, .add-tpl { vertical-align: middle; }
+    }
+    .preview-panel.full { flex: 2; }
     .ocr-result {
       margin-top: 16px;
       .result-status { display: flex; align-items: center; gap: 12px; margin-bottom: 8px;

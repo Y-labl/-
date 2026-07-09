@@ -165,7 +165,11 @@ public class TemplateController {
     @PostMapping("/ocr-device")
     public ApiResponse<Map<String, Object>> ocrDevice(
             @RequestParam("deviceId") Long deviceId,
-            @RequestParam(value = "templateId", required = false) Long templateId) {
+            @RequestParam(value = "templateId", required = false) Long templateId,
+            @RequestParam(value = "cropX", required = false) Integer cropX,
+            @RequestParam(value = "cropY", required = false) Integer cropY,
+            @RequestParam(value = "cropW", required = false) Integer cropW,
+            @RequestParam(value = "cropH", required = false) Integer cropH) {
         Device device = deviceService.getById(deviceId);
         if (device == null || device.getDeviceId() == null) {
             return ApiResponse.fail("设备不存在或未绑定");
@@ -181,7 +185,21 @@ public class TemplateController {
             BufferedImage targetRegion = image;
             Map<String, Object> matchInfo = null;
 
-            if (templateId != null) {
+            // 手动矩形选区优先
+            if (cropX != null && cropY != null && cropW != null && cropH != null) {
+                int cx = Math.max(0, cropX);
+                int cy = Math.max(0, cropY);
+                int cw = Math.min(cropW, image.getWidth() - cx);
+                int ch = Math.min(cropH, image.getHeight() - cy);
+                if (cw > 0 && ch > 0) {
+                    targetRegion = image.getSubimage(cx, cy, cw, ch);
+                    matchInfo = new LinkedHashMap<>();
+                    matchInfo.put("x", cx);
+                    matchInfo.put("y", cy);
+                    matchInfo.put("width", cw);
+                    matchInfo.put("height", ch);
+                }
+            } else if (templateId != null) {
                 TemplateImage template = templateImageMapper.selectById(templateId);
                 if (template != null && template.getTemplatePath() != null) {
                     Mat screenMat = imageMatchUtil.decodeImageMat(pngBytes);
@@ -243,11 +261,15 @@ public class TemplateController {
         }
     }
 
-        /** 文字识别：对上传图片进行OCR（可选模板裁剪区域识别） */
+        /** 文字识别：对上传图片进行OCR（可选手动区域或模板裁剪） */
     @PostMapping("/ocr")
     public ApiResponse<Map<String, Object>> ocrImage(
             @RequestParam("file") MultipartFile file,
-            @RequestParam(value = "templateId", required = false) Long templateId) {
+            @RequestParam(value = "templateId", required = false) Long templateId,
+            @RequestParam(value = "cropX", required = false) Integer cropX,
+            @RequestParam(value = "cropY", required = false) Integer cropY,
+            @RequestParam(value = "cropW", required = false) Integer cropW,
+            @RequestParam(value = "cropH", required = false) Integer cropH) {
         try {
             BufferedImage image = ImageIO.read(new ByteArrayInputStream(file.getBytes()));
             if (image == null) return ApiResponse.fail("无法读取图片");
@@ -255,7 +277,21 @@ public class TemplateController {
             BufferedImage targetRegion = image;
             Map<String, Object> matchInfo = null;
 
-            if (templateId != null) {
+            // 手动矩形选区优先
+            if (cropX != null && cropY != null && cropW != null && cropH != null) {
+                int cx = Math.max(0, cropX);
+                int cy = Math.max(0, cropY);
+                int cw = Math.min(cropW, image.getWidth() - cx);
+                int ch = Math.min(cropH, image.getHeight() - cy);
+                if (cw > 0 && ch > 0) {
+                    targetRegion = image.getSubimage(cx, cy, cw, ch);
+                    matchInfo = new LinkedHashMap<>();
+                    matchInfo.put("x", cx);
+                    matchInfo.put("y", cy);
+                    matchInfo.put("width", cw);
+                    matchInfo.put("height", ch);
+                }
+            } else if (templateId != null) {
                 TemplateImage template = templateImageMapper.selectById(templateId);
                 if (template != null && template.getTemplatePath() != null) {
                     Mat targetMat = imageMatchUtil.decodeImageMat(file.getBytes());
