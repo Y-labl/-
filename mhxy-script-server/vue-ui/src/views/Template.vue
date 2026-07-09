@@ -389,10 +389,10 @@ const getRectStyle = (pt) => {
     top: top + 'px',
     width: tw + 'px',
     height: th + 'px',
-    border: '2px solid #f56c6c',
-    background: 'rgba(245, 108, 108, 0.15)',
+    border: '3px solid #ffd700',
+    background: 'rgba(255, 215, 0, 0.2)',
+    boxShadow: '0 0 8px rgba(255, 215, 0, 0.5)',
     pointerEvents: 'none'
-  }
 }
 onMounted(() => { loadTemplates() })
 </script>
