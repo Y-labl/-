@@ -17,6 +17,8 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.lang.reflect.Field;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -65,12 +67,12 @@ public class OcrUtil {
             tesseract = null;
             System.gc();
             Thread.sleep(100);
-            tesseract = new Tesseract();
             String path = effectiveDataPath;
             if (path == null) {
                 path = new File("tessdata").getAbsolutePath();
             }
-            System.setProperty("TESSDATA_PREFIX", path);
+            setTessEnv(path);
+            tesseract = new Tesseract();
             tesseract.setDatapath(path);
             tesseract.setLanguage(language);
             tesseract.setOcrEngineMode(1);
@@ -78,6 +80,24 @@ public class OcrUtil {
             log.info("Tesseract reinitialized after crash");
         } catch (Exception e) {
             log.error("Tesseract reinit failed: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Inject TESSDATA_PREFIX into the OS environment map so that new Tesseract()
+     * (which calls System.getenv in its constructor) can find traineddata files.
+     */
+    private static void setTessEnv(String tessDataPrefix) {
+        try {
+            Map<String, String> getenv = System.getenv();
+            Field field = getenv.getClass().getDeclaredField("m");
+            field.setAccessible(true);
+            @SuppressWarnings("unchecked")
+            Map<String, String> map = (Map<String, String>) field.get(getenv);
+            map.put("TESSDATA_PREFIX", tessDataPrefix);
+            log.debug("TESSDATA_PREFIX env set to: {}", tessDataPrefix);
+        } catch (Exception e) {
+            log.warn("Cannot set OS TESSDATA_PREFIX: {}", e.getMessage());
         }
     }
 
@@ -112,7 +132,7 @@ public class OcrUtil {
         }
         effectiveDataPath = new File(effectiveDataPath).getAbsolutePath();
         // 设置环境变量，让 Tesseract 原生库也能找到训练数据
-        System.setProperty("TESSDATA_PREFIX", effectiveDataPath);
+        setTessEnv(effectiveDataPath);
         tesseract = new Tesseract();
         tesseract.setDatapath(effectiveDataPath);
         tesseract.setLanguage(language);
