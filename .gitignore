@@ -1,0 +1,7 @@
+﻿__pycache__/
+*.pyc
+*.pyo
+screenshots/*.png
+screenshots/*.jpg
+.DS_Store
+*.log
