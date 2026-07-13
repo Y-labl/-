@@ -70,6 +70,8 @@ DEFAULT_CONFIG = {
         "bb_y": 6, "bb_xs": 654, "bb_xe": 697,
         "pp": 2.38,
     },
+    # 四小人检测 ROI（流分辨率坐标）
+    "four_person_roi": {"left": 540, "top": 170, "width": 880, "height": 380},
 }
 
 
@@ -108,6 +110,8 @@ def migrate_config(cfg):
 
     for k, v in DEFAULT_CONFIG.items():
         cfg.setdefault(k, v)
+    # 确保 four_person_roi 存在
+    cfg.setdefault("four_person_roi", {"left": 540, "top": 170, "width": 880, "height": 380})
     return cfg
 
 

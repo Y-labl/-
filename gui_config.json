@@ -111,5 +111,11 @@
     "bb_xs": 654,
     "bb_xe": 697,
     "pp": 2.38
+  },
+  "four_person_roi": {
+    "left": 540,
+    "top": 170,
+    "width": 880,
+    "height": 380
   }
 }

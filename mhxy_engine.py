@@ -12,7 +12,9 @@
   7. 实时日志 + 血量显示
 """
 import os, sys, json, re, random, time, threading, queue, subprocess as sp
+import base64
 from datetime import datetime
+import requests
 import cv2, numpy as np
 
 # ======================== GUI ========================
@@ -124,6 +126,21 @@ DETECT_PARAMS = {
     "pp": 2.38,   # 每像素对应百分比
 }
 
+# ======================== 图灵云 API 配置（四小人检测） ========================
+TULING_API_URL = "http://www.tulingcloud.com/tuling/predict"
+TULING_AUTH = {
+    "username": "qq326646683",
+    "password": "dashuai5",
+    "ID": 48117555,
+    "version": "3.1.1",
+}
+
+# 四小人检测 ROI（设备分辨率 1920x1080 下的坐标）
+FOUR_PERSON_ROI = {
+    "left": 540, "top": 170, "width": 880, "height": 380,
+}
+
+
 
 def is_hp_pixel(b, g, r):
     """判断是否为血量像素（红色）"""
@@ -184,7 +201,7 @@ def detect_hp_mp_bb(frame, params=None):
         if is_hp_pixel(b, g, r):
             bb_count += pp
 
-    return min(hp_count, 100), min(mp_count, 100), min(bb_count, 100), False
+    return min(hp_count, 100), min(mp_count, 100), min(bb_count, 100), bb_count == 0
 
 
 # ======================== 配置管理 ========================
@@ -210,6 +227,8 @@ DEFAULT_CONFIG = {
     ],
     # 检测参数（可调）
     "detect_params": dict(DETECT_PARAMS),
+    # 四小人检测 ROI（流分辨率 800x448 下的坐标）
+    "four_person_roi": dict(FOUR_PERSON_ROI),
 }
 
 _item_hotkey_map = {
@@ -228,6 +247,10 @@ def load_config():
                 cfg = json.load(f)
             for k, v in DEFAULT_CONFIG.items():
                 cfg.setdefault(k, v)
+            # 确保 four_person_roi 每个键都存在
+            cfg.setdefault("four_person_roi", dict(FOUR_PERSON_ROI))
+            for rk, rv in FOUR_PERSON_ROI.items():
+                cfg["four_person_roi"].setdefault(rk, rv)
             return cfg
         except Exception:
             pass
@@ -279,7 +302,10 @@ class AutoFightEngine:
             f = self.client.last_frame
             return f.copy() if f is not None else None
 
-    def tap(self, x, y):
+    def tap(self, x, y, offset=True):
+        if offset:
+            x += random.randint(-3, 3)
+            y += random.randint(-3, 3)
         adb_tap(self.serial, int(x * self.scale_x), int(y * self.scale_y))
 
     def press_key(self, key_name):
@@ -339,6 +365,15 @@ class AutoFightEngine:
 
     def is_in_pk(self, frame):
         if self.is_map_open(frame):
+            # 好友入口+右侧任务都不可见：可能是地图打开，也可能是四小人界面
+            # 区分：地图打开时「地图-筛选」可见，四小人界面时不可见
+            map_elem = self.find(frame, "地图-筛选", threshold=0.6)
+            if map_elem is None:
+                # 不是地图 -> 检查是否是四小人界面（PK按钮也未出现）
+                friend = self.find(frame, "好友入口")
+                auto = self.find(frame, "PK-自动按钮")
+                if friend is None and auto is None:
+                    return True  # 四小人界面 = 战斗中
             return False
         friend = self.find(frame, "好友入口")
         return friend is None or friend[0] < 100
@@ -347,13 +382,14 @@ class AutoFightEngine:
     def detect_hp_mp_bb(self, frame):
         """像素扫描检测血量，返回 (hp, mp, bb, no_bb)"""
         params = self.cfg.get("detect_params", DETECT_PARAMS)
-        hp, mp, bb, _ = detect_hp_mp_bb(frame, params)
+        hp, mp, bb, bb_pixel_zero = detect_hp_mp_bb(frame, params)
 
-        # 检测是否没带宝宝
-        no_bb = False
-        bb_tmpl = self.templates.get("没带宝宝")
-        if bb_tmpl is not None and match_template(frame, bb_tmpl, 0.75):
-            no_bb = True
+        # 检测是否没带宝宝：像素扫描 BB 区域无红色 + 模板匹配
+        no_bb = bb_pixel_zero
+        if not no_bb:
+            bb_tmpl = self.templates.get("没带宝宝")
+            if bb_tmpl is not None and match_template(frame, bb_tmpl, 0.75):
+                no_bb = True
 
         self.last_hp = hp
         self.last_mp = mp
@@ -492,17 +528,16 @@ class AutoFightEngine:
 
         jiusi_bb = self.cfg.get("jiusi_bb_threshold", 50)
 
-        # 取几帧确保稳定
+        # 取几帧确保脱离战斗
         for _ in range(3):
+            time.sleep(0.15)
             f = self.get_frame()
             if f is None:
-                time.sleep(0.3)
                 continue
             if self.is_in_pk(f):
                 # 还在战斗中，不检测
                 self._log("  ⚠️ 仍在战斗中，跳过血量检测")
                 return
-            time.sleep(0.3)
 
         f = self.get_frame()
         if f is None:
@@ -655,9 +690,7 @@ class AutoFightEngine:
             self._try_escape()
             return
 
-        if self._is_show_four_person():
-            self._handle_four_person()
-            time.sleep(2)
+        self._handle_four_person()
 
         frame = self.get_frame()
         if frame is None or not self.is_in_pk(frame):
@@ -766,17 +799,18 @@ class AutoFightEngine:
 
     def _wait_combat_end(self):
         for _ in range(15):
-            time.sleep(1)
             frame = self.get_frame()
             if frame is not None and not self.is_in_pk(frame):
                 self._log("  🏁 战斗结束")
                 return
-
+            time.sleep(1)
     def _is_show_four_person(self):
+        """检测是否处于四小人（组队）界面"""
         for _ in range(3):
             frame = self.get_frame()
             if frame is None:
                 return False
+            # 好友入口不可见 + PK自动按钮不可见 = 可能在四小人界面
             if self.find(frame, "好友入口") is not None:
                 return False
             if self.find(frame, "PK-自动按钮") is not None:
@@ -784,10 +818,106 @@ class AutoFightEngine:
             time.sleep(0.5)
         return True
 
+
     def _handle_four_person(self):
-        self._log("  👥 四小人界面，点击选择")
-        self.tap(250, 115)
-        time.sleep(random.uniform(1, 2))
+        """四小人检测：截取区域 -> 图灵云API识别 -> 点击坐标"""
+        if not self._is_show_four_person():
+            self._log("  👥 非四小人界面，跳过检测")
+            return
+
+        self._log("  👅 检测到四小人界面，开始识别...")
+        result = self._detect_four_person()
+        if result["success"]:
+            x, y = result["x"], result["y"]
+            self._log(f"  ✅ 四小人识别成功: ({x}, {y})")
+            self.tap(x, y)
+            time.sleep(random.uniform(1, 2))
+        else:
+            self._log("  ⚠️ 四小人识别失败: " + str(result.get("error", "未知")))
+
+
+    # ========== 四小人检测（图灵云API） ==========
+    def _detect_four_person(self):
+        """
+        全分辨率 ADB 截图 -> 裁剪 ROI -> 上传图灵云 API -> 返回识别坐标（流坐标）
+        返回: {"success": bool, "x": int, "y": int, "error": str, ...}
+        坐标转换: 设备坐标 / scale -> 流坐标, tap() 再 * scale -> 设备坐标
+        """
+        result = {
+            "success": False,
+            "x": None, "y": None,
+            "error": None,
+        }
+
+        try:
+            # 使用全分辨率 ADB 截图（质量更好，ROI 值直接对应设备分辨率）
+            frame = adb_screencap(self.serial)
+            if frame is None:
+                result["error"] = "全分辨率截图失败"
+                return result
+
+            h, w = frame.shape[:2]
+            roi_cfg = self.cfg.get("four_person_roi", FOUR_PERSON_ROI)
+            left = roi_cfg.get("left", FOUR_PERSON_ROI["left"])
+            top = roi_cfg.get("top", FOUR_PERSON_ROI["top"])
+            width = roi_cfg.get("width", FOUR_PERSON_ROI["width"])
+            height = roi_cfg.get("height", FOUR_PERSON_ROI["height"])
+
+            # 根据实际设备分辨率缩放 ROI
+            # FOUR_PERSON_ROI 基于 1920x1080，按比例映射到实际设备
+            ref_w, ref_h = 1920, 1080
+            scale_roi_x = w / ref_w
+            scale_roi_y = h / ref_h
+            left = int(left * scale_roi_x)
+            top = int(top * scale_roi_y)
+            width = int(width * scale_roi_x)
+            height = int(height * scale_roi_y)
+
+            # 边界安全
+            left = max(0, min(left, w - 1))
+            top = max(0, min(top, h - 1))
+            width = min(width, w - left)
+            height = min(height, h - top)
+
+            if width <= 0 or height <= 0:
+                result["error"] = f"ROI 无效: ({left},{top},{width},{height}) 图片 {w}x{h}"
+                return result
+
+            roi = frame[top:top + height, left:left + width]
+            retval, buffer = cv2.imencode(".png", roi)
+            if not retval:
+                result["error"] = "ROI 编码失败"
+                return result
+
+            roi_base64 = base64.b64encode(buffer).decode("utf-8")
+            data = {}
+            data.update(TULING_AUTH)
+            data["b64"] = roi_base64
+            data_json = json.dumps(data, ensure_ascii=False)
+
+            resp = requests.post(TULING_API_URL, data=data_json, timeout=15)
+            api_result = json.loads(resp.text)
+
+            if api_result.get("data") and api_result["data"]:
+                x_val = api_result["data"].get("X坐标值")
+                y_val = api_result["data"].get("Y坐标值")
+                if x_val is not None and y_val is not None:
+                    # API 返回 ROI 内的坐标 -> 加上 ROI 偏移 -> 设备坐标
+                    dev_x = left + int(x_val)
+                    dev_y = top + int(y_val)
+                    # 转换为流坐标，tap() 会自动乘以 scale_x/scale_y 转回设备坐标
+                    result["success"] = True
+                    result["x"] = int(dev_x / self.scale_x)
+                    result["y"] = int(dev_y / self.scale_y)
+                    return result
+
+            result["error"] = f"API 未返回坐标: {api_result}"
+            return result
+
+        except Exception as e:
+            result["error"] = str(e)
+            return result
+
 
     def post_combat(self, frame):
         """战斗结束后清理 + 血量检测 + 酒肆恢复"""
@@ -804,7 +934,7 @@ class AutoFightEngine:
             time.sleep(0.5)
 
         # ===== 战斗后血量检测 + 酒肆恢复 =====
-        time.sleep(0.5)
+        time.sleep(0.2)
         self.check_and_heal_after_combat()
 
     # ========== 主循环 ==========
@@ -918,7 +1048,7 @@ class AutoFightEngine:
                         # 阶段2：点击随机地图位置
                         cx = random.randint(mc["x1"], min(mc["x2"], self.stream_w - 1))
                         cy = random.randint(mc["y1"], min(mc["y2"], self.stream_h - 1))
-                        self.tap(cx, cy)
+                        self.tap(cx, cy, offset=False)
                         pk = False
                         for _ in range(3):
                             time.sleep(0.3)
