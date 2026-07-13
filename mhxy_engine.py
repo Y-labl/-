@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 小西天 / 女娲神迹 自动打怪 GUI 控制面板 v2.0
 ===============================================
@@ -16,6 +16,7 @@ import base64
 from datetime import datetime
 import requests
 import cv2, numpy as np
+from rapidocr_onnxruntime import RapidOCR
 
 # ======================== GUI ========================
 import tkinter as tk
@@ -26,6 +27,22 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 IMAGE_DIR = os.path.join(SCRIPT_DIR, "image")
 IMAGES_DIR = os.path.join(SCRIPT_DIR, "images")
 GUI_CONFIG_FILE = os.path.join(SCRIPT_DIR, "gui_config.json")
+
+# ======================== 实时地图坐标 OCR 检测配置 ========================
+# OCR区域（设备坐标，直接使用全分辨率ADB截图）
+OCR_CROP = {"x": 131, "y": 40, "w": 200, "h": 100}
+OCR_INTERVAL = 0.15
+OCR_CONF_THRESHOLD = 0.5
+COORD_STOP_TIMEOUT = 1.0  # 坐标停止超过1秒触发跑图
+VALID_MAP_PREFIXES = [
+    "小西天", "长安城", "大唐国境", "五庄观", "花果山",
+    "傲来国", "朱紫国", "宝象国", "乌鸡国", "车迟国",
+    "东海湾", "长寿村", "化生寺", "方寸山", "女儿村",
+    "大雷音寺", "龙窟一层", "龙窟二层", "龙窟三层",
+    "龙窟四层", "凤巢一层", "凤巢二层", "凤巢三层",
+    "凤巢四层", "狮驼岭", "盘丝洞", "魔王寨", "天宫",
+    "地府", "江南野外", "建邺城", "普陀山",
+]
 
 # 地图配置
 MAP_CONFIG = {
@@ -262,6 +279,45 @@ def save_config(cfg):
         json.dump(cfg, f, ensure_ascii=False, indent=2)
 
 
+def extract_coordinates(text):
+    """从 OCR 文本提取坐标，支持 (393,66) / (393, 66) 格式"""
+    text = str(text).strip()
+    m = re.search(r"[(（]\s*(\d{1,4})\s*[,，]\s*(\d{1,4})\s*[)）]", text)
+    if m:
+        x, y = int(m.group(1)), int(m.group(2))
+        if 0 <= x <= 2500 and 0 <= y <= 2500:
+            return (x, y)
+    return None
+
+
+def is_valid_map_name(text):
+    """判断 OCR 文本是否为有效地名"""
+    text = str(text).strip()
+    for prefix in VALID_MAP_PREFIXES:
+        if text.startswith(prefix):
+            return True
+    return False
+
+
+def filter_ocr_result(result):
+    """过滤 OCR 结果，仅保留地图名和坐标"""
+    if result is None:
+        return [], []
+    maps, coords = [], []
+    for box, text, conf in result:
+        text = str(text).strip()
+        if conf < OCR_CONF_THRESHOLD or len(text) < 2:
+            continue
+        if any(k in text for k in ["正在", "发现", "意外", "系统", "设置"]):
+            continue
+        coord = extract_coordinates(text)
+        if coord:
+            coords.append((coord, conf))
+        if is_valid_map_name(text):
+            maps.append((text, conf))
+    return maps, coords
+
+
 # ======================== 自动化引擎 ========================
 class AutoFightEngine:
     """后台自动化引擎"""
@@ -289,6 +345,14 @@ class AutoFightEngine:
         self.jiusi_used_time = 0
         self._frame_lock = threading.Lock()
         self.last_skill = None
+        # 实时坐标 OCR 检测
+        self.ocr_engine = None
+        self.last_coord = None
+        self.last_map_name = None
+        self.last_coord_time = 0
+        self.coord_enabled = True
+        self.battle_count = 0
+        self.start_time = 0
 
     def _log(self, msg):
         ts = datetime.now().strftime("%H:%M:%S")
@@ -706,16 +770,7 @@ class AutoFightEngine:
             return
         if not self.is_in_pk(frame) and not self._is_show_four_person():
             return
-        # 保存战斗原始截图
-        try:
-            raw_dir = os.path.join(SCRIPT_DIR, "screenshots")
-            os.makedirs(raw_dir, exist_ok=True)
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            raw_path = os.path.join(raw_dir, f"battle_{steal_target}_{ts}.png")
-            cv2.imwrite(raw_path, frame)
-            self._log(f"  📸 战斗截图: {raw_path}")
-        except:
-            pass
+        # 战斗截图已关闭
         targets = self._find_all(frame, steal_target, threshold=0.81)
         # 距离去重：相距<15px的只保留置信度最高的
         deduped = []
@@ -726,7 +781,7 @@ class AutoFightEngine:
         self._log(f"  🔍 检测到 {len(targets)} 个 {steal_target}")
         for i, t in enumerate(targets):
             self._log(f"    [{i+1}] ({t[0]},{t[1]}) conf={t[2]:.2f}")
-        self._save_detection_debug(frame, steal_target, targets)
+        # self._save_detection_debug(frame, steal_target, targets)  # 调试截图已关闭
 
         plan = self._build_plan(targets)
         if not plan:
@@ -747,6 +802,7 @@ class AutoFightEngine:
                 if not cur:
                     self._log(f"  ⚠️ {steal_target}已全部消失")
                     break
+                self._log(f"  \U0001f50d \u91cd\u65b0\u68c0\u6d4b\u5230 {len(cur)} \u4e2a {steal_target}")
                 # 过滤已点击过的位置（相距<30px视为同一个）
                 available = [c for c in cur if not any(abs(c[0]-px)**2+abs(c[1]-py)**2 < 900 for px, py in clicked)]
                 if not available:
@@ -870,7 +926,7 @@ class AutoFightEngine:
             if frame is not None and not self.is_in_pk(frame):
                 self._log("  🏁 战斗结束")
                 return
-            time.sleep(1)
+            time.sleep(0.3)
     def _is_show_four_person(self):
         """检测是否处于四小人（组队）界面"""
         for _ in range(3):
@@ -986,6 +1042,103 @@ class AutoFightEngine:
             return result
 
 
+    # ========== 实时坐标 OCR 检测 ==========
+    def init_ocr(self):
+        """初始化 OCR"""
+        if self.ocr_engine is not None:
+            return
+        self._log("初始化 RapidOCR ...")
+        try:
+            self.ocr_engine = RapidOCR()
+            self.ocr_engine(np.zeros((64, 64, 3), dtype=np.uint8))
+            self._log("RapidOCR 初始化完成")
+            # self._save_ocr_debug()  # OCR调试截图已关闭
+        except Exception as e:
+            self._log(f"OCR初始化失败: {e}")
+            self.ocr_engine = None
+
+    def _save_ocr_debug(self):
+        """保存 OCR 区域调试截图"""
+        try:
+            f = self.get_frame()
+            if f is None:
+                return
+            h, w = f.shape[:2]
+            cx = max(0, int(OCR_CROP["x"] / self.scale_x))
+            cy = max(0, int(OCR_CROP["y"] / self.scale_y))
+            cw = min(int(OCR_CROP["w"] / self.scale_x), w - cx)
+            ch = min(int(OCR_CROP["h"] / self.scale_y), h - cy)
+            ann = f.copy()
+            cv2.rectangle(ann, (cx, cy), (cx + cw, cy + ch), (0, 0, 255), 2)
+            cv2.putText(ann, f"OCR ({cx},{cy}) {cw}x{ch}", (cx, cy - 4),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255), 1)
+            dd = os.path.join(SCRIPT_DIR, "screenshots")
+            os.makedirs(dd, exist_ok=True)
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            fp = os.path.join(dd, f"ocr_region_{ts}.png")
+            cv2.imwrite(fp, ann)
+            self._log(f"OCR region screenshot: screenshots/ocr_region_{ts}.png")
+            self._log(f"  stream crop: ({cx},{cy}) {cw}x{ch}  stream: {w}x{h}  scale: {self.scale_x:.2f}x{self.scale_y:.2f}")
+        except Exception as e:
+            self._log(f"OCR debug failed: {e}")
+
+    def detect_map_coord(self, frame=None):
+        """OCR检测地图名和坐标（使用pyscrcpy流帧）"""
+        if self.ocr_engine is None:
+            return None, None, False
+        f = frame if frame is not None else self.get_frame()
+        if f is None:
+            return None, None, False
+        h, w = f.shape[:2]
+        cx = max(0, int(OCR_CROP["x"] / self.scale_x))
+        cy = max(0, int(OCR_CROP["y"] / self.scale_y))
+        cw = min(int(OCR_CROP["w"] / self.scale_x), w - cx)
+        ch = min(int(OCR_CROP["h"] / self.scale_y), h - cy)
+        if cw <= 0 or ch <= 0:
+            return None, None, False
+        crop = f[cy:cy+ch, cx:cx+cw]
+        try:
+            result, _ = self.ocr_engine(crop)
+            maps, coords = filter_ocr_result(result)
+            map_name = maps[0][0] if maps else None
+            coord = coords[0][0] if coords else None
+            # 调试：打印OCR识别到的原始文本
+            if result and len(result) > 0:
+                texts = [str(r[1]).strip() for r in result[:8] if len(str(r[1]).strip()) > 1]
+                if texts:
+                    self._log(f"OCR raw texts: {texts}")
+            return map_name, coord, True
+        except Exception as e:
+            self._log(f"OCR exception: {e}")
+            return None, None, False
+
+    def check_coord_stopped(self, frame=None):
+        """检测坐标是否停止超过1秒"""
+        if not self.coord_enabled:
+            return False, None, None
+        map_name, coord, ok = self.detect_map_coord(frame)
+        if not ok or coord is None:
+            return False, map_name, coord
+        now = time.time()
+        if self.last_coord is None:
+            self.last_coord = coord
+            self.last_map_name = map_name
+            self.last_coord_time = now
+            self._log(f"首次检测坐标: {map_name or '?'} ({coord[0]},{coord[1]})")
+            return False, map_name, coord
+        if coord != self.last_coord:
+            self.last_coord = coord
+            self.last_map_name = map_name
+            self.last_coord_time = now
+            return False, map_name, coord
+        if now - self.last_coord_time > COORD_STOP_TIMEOUT:
+            return True, map_name, coord
+        return False, map_name, coord
+
+    def reset_coord_tracking(self):
+        self.last_coord = None
+        self.last_coord_time = 0
+
     def post_combat(self, frame):
         """战斗结束后清理 + 血量检测 + 酒肆恢复"""
         self.was_in_pk = False
@@ -1043,6 +1196,8 @@ class AutoFightEngine:
             return
 
         self.running = True
+        self.start_time = time.time()
+        self.battle_count = 0
         hp_method = self.cfg.get("hp_method", "")
         mp_method = self.cfg.get("mp_method", "")
         if hp_method or mp_method:
@@ -1092,22 +1247,38 @@ class AutoFightEngine:
                     self._log(f"[{loop}] ⚔️ 进入战斗！")
                     self.check_hp_mp_battle(frame)
                     self.do_combat()
-                    time.sleep(random.uniform(1, 2))
+                    time.sleep(0.15)
                     continue
 
                 # === 刚结束战斗 → post_combat 里会触发酒肆恢复 ===
                 if not in_pk and self.was_in_pk:
                     self.post_combat(frame)
-                    time.sleep(random.uniform(0.5, 1))
+                    time.sleep(0.15)
                     continue
 
-                # === 非战斗：跑图 ===
+                # === 非战斗：跑图（坐标检测驱动） ===
                 if not in_pk:
                     if self.cfg.get("auto_path_enabled", True):
                         def _pk_check():
                             return self.running and self.is_in_pk(self.get_frame())
 
-                        self._log(f"[{loop}] 🏃 跑动中")
+                        # 确保 OCR 已初始化
+                        if self.coord_enabled and self.ocr_engine is None:
+                            self.init_ocr()
+
+                        # 检测坐标是否停止
+                        coord_stopped, cur_map, cur_coord = self.check_coord_stopped(frame)
+
+                        # 坐标还在变化中，无需跑图
+                        if not coord_stopped:
+                            if self.last_coord is not None and cur_coord is not None:
+                                self._log(f"[{loop}] \U0001f3c3 跑动中 ({cur_coord[0]},{cur_coord[1]})")
+                            self.close_pop(is_one_time=True)
+                            time.sleep(0.3)
+                            continue
+
+                        # 坐标停止超过1秒，触发跑图
+                        self._log(f"[{loop}] \u23f8 坐标停止 ({self.last_coord})，重新跑图")
 
                         pk_detected = False
 
@@ -1144,9 +1315,11 @@ class AutoFightEngine:
                         if pk_detected:
                             continue
 
+                        # 重置坐标跟踪（刚移动完，等坐标变化）
+                        self.reset_coord_tracking()
                         self.close_pop(is_one_time=True)
                     else:
-                        self._log(f"[{loop}] ⏸️ 自动寻路已关闭，等待遇怪")
+                        self._log(f"[{loop}] \u23f8\ufe0f 自动寻路已关闭，等待遇怪")
                         pk = False
                         for _ in range(3):
                             time.sleep(0.4)
@@ -1155,6 +1328,7 @@ class AutoFightEngine:
                                 break
                         if pk:
                             continue
+
 
                 time.sleep(0.3)
 

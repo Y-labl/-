@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 梦幻西游 自动打怪 - 现代 UI 控制面板
 ===============================
@@ -9,6 +9,7 @@ import os
 import queue
 import subprocess as sp
 import threading
+import time
 from datetime import datetime
 
 import tkinter as tk
@@ -53,6 +54,7 @@ DEFAULT_CONFIG = {
     "direct_auto": False,
     "escape_enabled": True,
     "auto_path_enabled": True,
+    "coord_enabled": True,
     # 妙手空空场景配置（参考图）
     "scene_config": [
         {"enabled": False, "scene": "龙窟五层", "rings": "得3个环", "cards": "得2张卡片", "time": "满180分钟", "after": "后换场景"},
@@ -162,6 +164,7 @@ class AutoFightGUI:
         self.direct_auto = tk.BooleanVar(value=cfg.get("direct_auto", False))
         self.escape_enabled = tk.BooleanVar(value=cfg.get("escape_enabled", True))
         self.auto_path_enabled = tk.BooleanVar(value=cfg.get("auto_path_enabled", True))
+        self.coord_enabled = tk.BooleanVar(value=cfg.get("coord_enabled", True))
 
     # ---------- UI 构建 ----------
     def _build_ui(self):
@@ -292,6 +295,8 @@ class AutoFightGUI:
         right.grid(row=0, column=1, sticky="ne")
         ttk.Checkbutton(right, text="自动寻路", variable=self.auto_path_enabled,
                         bootstyle="success-round-toggle").grid(row=0, column=0, sticky="w")
+        ttk.Checkbutton(right, text="坐标检测", variable=self.coord_enabled,
+                        bootstyle="success-round-toggle").grid(row=1, column=0, sticky="w", pady=(4,0))
 
         # ---- 日志 & 实时数据 ----
         log_card = ttk.Labelframe(main, text=" 运行日志 & 实时数据 ", padding=10)
@@ -310,8 +315,19 @@ class AutoFightGUI:
         self.mp_display.pack(side=tk.LEFT, padx=(0, 20))
         self.bb_display = ttk.Label(data_frame, text="BB: --%",
                                     font=("Microsoft YaHei", 11, "bold"), foreground="#6c757d")
-        self.bb_display.pack(side=tk.LEFT)
+        self.bb_display.pack(side=tk.LEFT, padx=(0, 20))
+        self.coord_display = ttk.Label(data_frame, text="📍 --",
+                                       font=("Microsoft YaHei", 11, "bold"), foreground="#6f42c1")
+        self.coord_display.pack(side=tk.LEFT)
 
+
+        self.battle_display = ttk.Label(data_frame, text="⚔ -- 场",
+                                    font=("Microsoft YaHei", 11, "bold"), foreground="#fd7e14")
+        self.battle_display.pack(side=tk.LEFT, padx=(0, 20))
+
+        self.time_display = ttk.Label(data_frame, text="⏱ 00:00",
+                                    font=("Microsoft YaHei", 11, "bold"), foreground="#198754")
+        self.time_display.pack(side=tk.LEFT)
         self.log_text = ttk.ScrolledText(
             log_card, height=10, font=("Consolas", 9),
             bg="#ffffff", fg="#333333", insertbackground="#333333")
@@ -433,6 +449,7 @@ class AutoFightGUI:
         self.status_label.configure(text="运行中")
 
         self.engine = AutoFightEngine(self.cfg, self.log_queue)
+        self.engine.coord_enabled = self.coord_enabled.get()
         self.engine_thread = threading.Thread(target=self.engine.run_loop, daemon=True)
         self.engine_thread.start()
 
@@ -449,6 +466,10 @@ class AutoFightGUI:
         self.hp_display.configure(text="HP: --%")
         self.mp_display.configure(text="MP: --%")
         self.bb_display.configure(text="BB: --%")
+        self.coord_display.configure(text="--")
+        self.battle_display.configure(text="⚔ -- 场")
+        self.time_display.configure(text="⏱ 00:00")
+        self.coord_display.configure(text="📍 --")
 
     # ---------- 日志 ----------
     def _poll_log(self):
@@ -467,6 +488,20 @@ class AutoFightGUI:
                     self.hp_display.configure(text=f"HP: {hp:.0f}%")
                     self.mp_display.configure(text=f"MP: {mp:.0f}%")
                     self.bb_display.configure(text=f"BB: {'--' if no_bb else f'{bb:.0f}%'}")
+                    # 坐标显示
+                    coord = self.engine.last_coord
+                    map_name = self.engine.last_map_name
+                    if coord:
+                        self.coord_display.configure(text=f"📍 {map_name or ''}({coord[0]},{coord[1]})")
+                    else:
+                        self.coord_display.configure(text="📍 --")
+                    # 战斗场次 运行时间
+                    bc = self.engine.battle_count
+                    self.battle_display.configure(text=f"⚔ {bc} 场")
+                    if self.engine.start_time > 0:
+                        elapsed = int(time.time() - self.engine.start_time)
+                        m, s = divmod(elapsed, 60)
+                        self.time_display.configure(text=f"⏱ {m:02d}:{s:02d}")
         except queue.Empty:
             pass
         self.root.after(300, self._poll_log)
@@ -506,6 +541,7 @@ class AutoFightGUI:
         self.direct_auto.set(cfg.get("direct_auto", False))
         self.escape_enabled.set(cfg.get("escape_enabled", True))
         self.auto_path_enabled.set(cfg.get("auto_path_enabled", True))
+        self.coord_enabled.set(cfg.get("coord_enabled", True))
 
         self.map_select.set(cfg.get("map", "小西天"))
         self.project_select.set("点卡场景(2币/天)")
@@ -553,6 +589,7 @@ class AutoFightGUI:
         cfg["direct_auto"] = self.direct_auto.get()
         cfg["escape_enabled"] = self.escape_enabled.get()
         cfg["auto_path_enabled"] = self.auto_path_enabled.get()
+        cfg["coord_enabled"] = self.coord_enabled.get()
 
     def _on_setting_change(self, event=None):
         pass
