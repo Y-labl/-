@@ -583,17 +583,8 @@ class AutoFightEngine:
 
         jiusi_bb = self.cfg.get("jiusi_bb_threshold", 50)
 
-        # 取几帧确保脱离战斗
-        for _ in range(3):
-            time.sleep(0.15)
-            f = self.get_frame()
-            if f is None:
-                continue
-            if self.is_in_pk(f):
-                # 还在战斗中，不检测
-                self._log("  ⚠️ 仍在战斗中，跳过血量检测")
-                return
-
+        # ????????????????
+        time.sleep(0.05)
         f = self.get_frame()
         if f is None:
             return
@@ -685,9 +676,9 @@ class AutoFightEngine:
                 self.tap(r[0] + random.randint(0, 20), r[1] + random.randint(0, 15))
                 close_found += 1
                 time.sleep(random.uniform(0.5, 0.7))
-                frame = self.get_frame()
-                if frame is None:
-                    return
+        frame = self.get_frame()
+        if frame is None:
+            return
         if self.find(frame, "菜单-指引"):
             self.tap(15, 78)
             time.sleep(random.uniform(0.3, 0.5))
@@ -706,7 +697,7 @@ class AutoFightEngine:
                 self.tap(close[0], close[1])
                 time.sleep(random.uniform(0.2, 0.3))
                 return True
-            time.sleep(0.15)
+        time.sleep(0.15)
         self.tap(60, 25)
         time.sleep(random.uniform(0.1, 0.2))
         return False
@@ -762,13 +753,10 @@ class AutoFightEngine:
             self._try_escape()
             return
 
-        # 四小人检测（战斗前）
-        self._handle_four_person()
-
         frame = self.get_frame()
         if frame is None:
             return
-        if not self.is_in_pk(frame) and not self._is_show_four_person():
+        if not self.is_in_pk(frame):
             return
         # 战斗截图已关闭
         targets = self._find_all(frame, steal_target, threshold=0.81)
@@ -921,26 +909,21 @@ class AutoFightEngine:
             time.sleep(0.3)
 
     def _wait_combat_end(self):
-        for _ in range(15):
+        for _ in range(30):
             frame = self.get_frame()
             if frame is not None and not self.is_in_pk(frame):
                 self._log("  🏁 战斗结束")
                 return
             time.sleep(0.3)
-    def _is_show_four_person(self):
-        """检测是否处于四小人（组队）界面"""
-        for _ in range(3):
-            frame = self.get_frame()
-            if frame is None:
-                return False
-            # 好友入口不可见 + PK自动按钮不可见 = 可能在四小人界面
-            if self.find(frame, "好友入口") is not None:
-                return False
-            if self.find(frame, "PK-自动按钮") is not None:
-                return False
-            time.sleep(0.5)
-        return True
 
+    def _is_show_four_person(self):
+        """????????HP?MP??????????"""
+        frame = self.get_frame()
+        if frame is None:
+            return False
+        hp, mp, bb, no_bb = self.detect_hp_mp_bb(frame)
+        # HP?MP???0 ? ????????????
+        return hp < 1 and mp < 1
 
     def _handle_four_person(self):
         """四小人检测：截取区域 -> 图灵云API识别 -> 点击坐标"""
@@ -1228,16 +1211,12 @@ class AutoFightEngine:
                     time.sleep(0.05)
                     continue
 
-                # 四小人快速检测
-                if self.is_map_open(frame):
-                    open_btn = self.find(frame, "打开地图")
-                    close_btn = self.find(frame, "关闭地图", threshold=0.5)
-                    map_filter = self.find(frame, "地图-筛选", threshold=0.6)
-                    if open_btn is None and close_btn is None and map_filter is None:
-                        self._log(f"[{loop}] 👥 检测到四小人界面")
-                        self._handle_four_person()
-                        time.sleep(random.uniform(0.5, 1))
-                        continue
+                # 四小人快速检测（没带宝宝模板不可见即四小人界面）
+                if self._is_show_four_person():
+                    self._log(f"[{loop}] 👥 检测到四小人界面")
+                    self._handle_four_person()
+                    time.sleep(random.uniform(0.5, 1))
+                    continue
 
                 in_pk = self.is_in_pk(frame)
 
