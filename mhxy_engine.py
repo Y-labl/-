@@ -717,6 +717,12 @@ class AutoFightEngine:
         except:
             pass
         targets = self._find_all(frame, steal_target, threshold=0.81)
+        # 距离去重：相距<15px的只保留置信度最高的
+        deduped = []
+        for t in sorted(targets, key=lambda x: x[2], reverse=True):
+            if not any(abs(t[0]-d[0])**2+abs(t[1]-d[1])**2 < 225 for d in deduped):
+                deduped.append(t)
+        targets = deduped
         self._log(f"  🔍 检测到 {len(targets)} 个 {steal_target}")
         for i, t in enumerate(targets):
             self._log(f"    [{i+1}] ({t[0]},{t[1]}) conf={t[2]:.2f}")
@@ -726,30 +732,38 @@ class AutoFightEngine:
         if not plan:
             self._log(f"  ⚠️ 未检测到 {steal_target}，跳过妙手空空")
 
-        if self.cfg.get("miaoshou_enabled", True) and plan:
-            self._log(f"  🎯 妙手空空 ×{len(plan)}")
-            for i, (tx, ty) in enumerate(plan):
+        if self.cfg.get("miaoshou_enabled", True):
+            clicked = []  # 已点击过的坐标，避免重复
+            max_attempts = min(len(plan), 3) if plan else 3
+            self._log(f"  🎯 妙手空空 ×{max_attempts}")
+            for i in range(max_attempts):
                 if not self._check_in_combat():
                     return
-                # 每次使用前重新检测目标是否还在，并更新坐标
-                if i > 0:
-                    f2 = self.get_frame()
-                    if f2 is not None:
-                        cur = self._find_all(f2, steal_target, threshold=0.78)
-                        if not cur:
-                            self._log(f"  第{i+1}次: {steal_target}已消失，跳过")
-                            continue
-                        # 找最近的目标更新坐标
-                        best = min(cur, key=lambda c: (c[0]-tx)**2 + (c[1]-ty)**2)
-                        tx, ty = best[0], best[1]
+                # 每次先重新检测目标
+                f2 = self.get_frame()
+                if f2 is None:
+                    break
+                cur = self._find_all(f2, steal_target, threshold=0.78)
+                if not cur:
+                    self._log(f"  ⚠️ {steal_target}已全部消失")
+                    break
+                # 过滤已点击过的位置（相距<30px视为同一个）
+                available = [c for c in cur if not any(abs(c[0]-px)**2+abs(c[1]-py)**2 < 900 for px, py in clicked)]
+                if not available:
+                    self._log(f"  ⚠️ 所有{steal_target}均已偷过")
+                    break
+                best = max(available, key=lambda c: c[2])
+                tx, ty, conf = best[0], best[1], best[2]
                 ms = self._wait_for_skill(timeout=10.0)
                 if ms is None:
                     self._log(f"  第{i+1}次: 超时，跳过")
                     continue
-                cx_ms, cy_ms, conf = ms
+                cx_ms, cy_ms, _ = ms
                 self.tap(cx_ms, cy_ms)
                 time.sleep(random.uniform(0.3, 0.5))
                 self.tap(tx, ty)
+                self._log(f"  🎯 第{i+1}次 妙手空空 -> ({tx},{ty}) conf={conf:.2f}")
+                clicked.append((tx, ty))
                 time.sleep(random.uniform(2.0, 3.0))
         else:
             if self.cfg.get("miaoshou_enabled", True):
@@ -813,12 +827,7 @@ class AutoFightEngine:
             return [(sorted_targets[0][0], sorted_targets[0][1])] * 2
 
     def _try_escape(self):
-        if not self.cfg.get("escape_enabled", True):
-            self._log("  ⏭️ 逃跑已关闭，等待战斗结束")
-            self._wait_combat_end()
-            return
-
-        if not self.cfg.get("escape_enabled", True):
+        if not self.cfg.get('escape_enabled', True):
             self._log("  ⏭️ 逃跑已关闭，等待战斗结束")
             self._wait_combat_end()
             return
@@ -1064,12 +1073,13 @@ class AutoFightEngine:
                     time.sleep(0.05)
                     continue
 
-                # 四小人快速检测（三重确认，避免误触发）
+                # 四小人快速检测
                 if self.is_map_open(frame):
                     open_btn = self.find(frame, "打开地图")
                     close_btn = self.find(frame, "关闭地图", threshold=0.5)
                     map_filter = self.find(frame, "地图-筛选", threshold=0.6)
                     if open_btn is None and close_btn is None and map_filter is None:
+                        self._log(f"[{loop}] 👥 检测到四小人界面")
                         self._handle_four_person()
                         time.sleep(random.uniform(0.5, 1))
                         continue
