@@ -146,8 +146,8 @@ DETECT_PARAMS = {
 # ======================== 图灵云 API 配置（四小人检测） ========================
 TULING_API_URL = "http://www.tulingcloud.com/tuling/predict"
 TULING_AUTH = {
-    "username": "qq326646683",
-    "password": "dashuai5",
+    "username": "yqning5",
+    "password": "sai+123",
     "ID": 48117555,
     "version": "3.1.1",
 }
