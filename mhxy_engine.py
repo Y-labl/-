@@ -30,7 +30,7 @@ GUI_CONFIG_FILE = os.path.join(SCRIPT_DIR, "gui_config.json")
 # 地图配置
 MAP_CONFIG = {
     "小西天": {
-        "map_click": {"x1": 148, "y1": 200, "x2": 532, "y2": 400},
+        "map_click": {"x1": 212, "y1": 21, "x2": 475, "y2": 415},
         "monsters": ["金饶僧", "炎魔神", "噬天虎"],
         "steal_target": "炎魔神",
     },
@@ -365,15 +365,6 @@ class AutoFightEngine:
 
     def is_in_pk(self, frame):
         if self.is_map_open(frame):
-            # 好友入口+右侧任务都不可见：可能是地图打开，也可能是四小人界面
-            # 区分：地图打开时「地图-筛选」可见，四小人界面时不可见
-            map_elem = self.find(frame, "地图-筛选", threshold=0.6)
-            if map_elem is None:
-                # 不是地图 -> 检查是否是四小人界面（PK按钮也未出现）
-                friend = self.find(frame, "好友入口")
-                auto = self.find(frame, "PK-自动按钮")
-                if friend is None and auto is None:
-                    return True  # 四小人界面 = 战斗中
             return False
         friend = self.find(frame, "好友入口")
         return friend is None or friend[0] < 100
@@ -644,16 +635,16 @@ class AutoFightEngine:
         for _ in range(3):
             f = self.get_frame()
             if f is None:
-                time.sleep(0.3)
+                time.sleep(0.15)
                 continue
             close = self.find(f, "关闭地图", threshold=0.5)
             if close:
                 self.tap(close[0], close[1])
-                time.sleep(random.uniform(0.5, 0.8))
+                time.sleep(random.uniform(0.2, 0.3))
                 return True
-            time.sleep(0.3)
+            time.sleep(0.15)
         self.tap(60, 25)
-        time.sleep(random.uniform(0.3, 0.5))
+        time.sleep(random.uniform(0.1, 0.2))
         return False
 
     # ========== 战斗 ==========
@@ -679,6 +670,23 @@ class AutoFightEngine:
         frame = self.get_frame()
         return frame is not None and self.is_in_pk(frame)
 
+    def _save_detection_debug(self, frame, name, targets):
+        """保存怪物检测标注截图用于调试"""
+        try:
+            debug_dir = os.path.join(SCRIPT_DIR, "screenshots")
+            os.makedirs(debug_dir, exist_ok=True)
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            path = os.path.join(debug_dir, f"detect_{name}_{ts}.png")
+            annotated = frame.copy()
+            for i, (x, y, conf) in enumerate(targets):
+                cv2.circle(annotated, (x, y), 20, (0, 0, 255), 3)
+                cv2.putText(annotated, f"{i+1} {conf:.2f}", (x+25, y-10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+            cv2.imwrite(path, annotated)
+            self._log("  📸 检测截图: " + path)
+        except Exception as e:
+            self._log("  ⚠️ 截图保存失败: " + str(e))
+
     def do_combat(self):
         self._log("⚔️ 开始战斗流程")
         map_name = self.cfg.get("map", "小西天")
@@ -690,13 +698,29 @@ class AutoFightEngine:
             self._try_escape()
             return
 
+        # 四小人检测（战斗前）
         self._handle_four_person()
 
         frame = self.get_frame()
-        if frame is None or not self.is_in_pk(frame):
+        if frame is None:
             return
+        if not self.is_in_pk(frame) and not self._is_show_four_person():
+            return
+        # 保存战斗原始截图
+        try:
+            raw_dir = os.path.join(SCRIPT_DIR, "screenshots")
+            os.makedirs(raw_dir, exist_ok=True)
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            raw_path = os.path.join(raw_dir, f"battle_{steal_target}_{ts}.png")
+            cv2.imwrite(raw_path, frame)
+            self._log(f"  📸 战斗截图: {raw_path}")
+        except:
+            pass
         targets = self._find_all(frame, steal_target, threshold=0.81)
         self._log(f"  🔍 检测到 {len(targets)} 个 {steal_target}")
+        for i, t in enumerate(targets):
+            self._log(f"    [{i+1}] ({t[0]},{t[1]}) conf={t[2]:.2f}")
+        self._save_detection_debug(frame, steal_target, targets)
 
         plan = self._build_plan(targets)
         if not plan:
@@ -707,6 +731,17 @@ class AutoFightEngine:
             for i, (tx, ty) in enumerate(plan):
                 if not self._check_in_combat():
                     return
+                # 每次使用前重新检测目标是否还在，并更新坐标
+                if i > 0:
+                    f2 = self.get_frame()
+                    if f2 is not None:
+                        cur = self._find_all(f2, steal_target, threshold=0.78)
+                        if not cur:
+                            self._log(f"  第{i+1}次: {steal_target}已消失，跳过")
+                            continue
+                        # 找最近的目标更新坐标
+                        best = min(cur, key=lambda c: (c[0]-tx)**2 + (c[1]-ty)**2)
+                        tx, ty = best[0], best[1]
                 ms = self._wait_for_skill(timeout=10.0)
                 if ms is None:
                     self._log(f"  第{i+1}次: 超时，跳过")
@@ -764,11 +799,18 @@ class AutoFightEngine:
         sorted_targets = sorted(targets, key=lambda x: x[2], reverse=True)
         n = len(sorted_targets)
         if n >= 3:
+            # 3个以上：各偷1次，共计3次
             return [(sorted_targets[j][0], sorted_targets[j][1]) for j in range(3)]
         elif n == 2:
-            return [(sorted_targets[0][0], sorted_targets[0][1])] * 2 + [(sorted_targets[1][0], sorted_targets[1][1])]
+            # 2个：交替 A、B、A，每个最多2次
+            return [
+                (sorted_targets[0][0], sorted_targets[0][1]),
+                (sorted_targets[1][0], sorted_targets[1][1]),
+                (sorted_targets[0][0], sorted_targets[0][1]),
+            ]
         else:
-            return [(sorted_targets[0][0], sorted_targets[0][1])] * 3
+            # 1个：最多2次
+            return [(sorted_targets[0][0], sorted_targets[0][1])] * 2
 
     def _try_escape(self):
         if not self.cfg.get("escape_enabled", True):
@@ -776,25 +818,41 @@ class AutoFightEngine:
             self._wait_combat_end()
             return
 
+        if not self.cfg.get("escape_enabled", True):
+            self._log("  ⏭️ 逃跑已关闭，等待战斗结束")
+            self._wait_combat_end()
+            return
+
         self._log("  🏃 尝试逃跑...")
-        for _ in range(30):
+        escape_count = 0
+        skill_visible = False
+        for _ in range(200):
             if not self._check_in_combat():
                 break
             frame = self.get_frame()
             if frame is None:
-                time.sleep(0.5)
+                time.sleep(0.3)
                 continue
+            # 检测妙手空空技能：可见=玩家回合，不可见=敌人回合
             ms = self.find(frame, "PK-妙手空空技能", threshold=0.60)
-            if ms:
+            if ms and not skill_visible:
+                # 玩家回合到了，尝试逃跑
+                skill_visible = True
                 esc = self.find(frame, "PK-逃跑", threshold=0.70)
                 if esc is None:
-                    esc = self.find(self.get_frame(), "PK-逃跑", threshold=0.50)
+                    esc = self.find(frame, "PK-逃跑", threshold=0.50)
                 if esc:
+                    escape_count += 1
+                    self._log(f"  🏃 第{escape_count}次逃跑")
                     self.tap(esc[0], esc[1])
-                    time.sleep(1.0)
-                    if not self.is_in_pk(self.get_frame()):
+                    time.sleep(1.2)
+                    if not self._check_in_combat():
                         self._log("  🏁 已逃跑")
                         break
+                    self._log("  ❌ 逃跑失败")
+            elif not ms:
+                # 敌人回合，等待下一轮
+                skill_visible = False
             time.sleep(0.3)
 
     def _wait_combat_end(self):
@@ -895,7 +953,7 @@ class AutoFightEngine:
             data["b64"] = roi_base64
             data_json = json.dumps(data, ensure_ascii=False)
 
-            resp = requests.post(TULING_API_URL, data=data_json, timeout=15)
+            resp = requests.post(TULING_API_URL, data=data_json, timeout=5)
             api_result = json.loads(resp.text)
 
             if api_result.get("data") and api_result["data"]:
@@ -1006,6 +1064,16 @@ class AutoFightEngine:
                     time.sleep(0.05)
                     continue
 
+                # 四小人快速检测（三重确认，避免误触发）
+                if self.is_map_open(frame):
+                    open_btn = self.find(frame, "打开地图")
+                    close_btn = self.find(frame, "关闭地图", threshold=0.5)
+                    map_filter = self.find(frame, "地图-筛选", threshold=0.6)
+                    if open_btn is None and close_btn is None and map_filter is None:
+                        self._handle_four_person()
+                        time.sleep(random.uniform(0.5, 1))
+                        continue
+
                 in_pk = self.is_in_pk(frame)
 
                 # === 刚进入战斗 ===
@@ -1026,47 +1094,44 @@ class AutoFightEngine:
                 # === 非战斗：跑图 ===
                 if not in_pk:
                     if self.cfg.get("auto_path_enabled", True):
-                        self._log(f"[{loop}] 🏃 跑动中")
-
                         def _pk_check():
                             return self.running and self.is_in_pk(self.get_frame())
 
-                        # 阶段1：打开地图
+                        self._log(f"[{loop}] 🏃 跑动中")
+
+                        pk_detected = False
+
+                        # 1. 打开地图
                         map_btn = self.find(frame, "打开地图")
                         if map_btn:
                             self.tap(map_btn[0], map_btn[1])
+                            for _ in range(4):
+                                time.sleep(0.15)
+                                if _pk_check():
+                                    pk_detected = True
+                                    break
 
-                        pk = False
-                        for _ in range(4):
-                            time.sleep(0.3)
-                            if _pk_check():
-                                pk = True
-                                break
-                        if pk:
-                            continue
+                        # 2. 随机点击地图
+                        if not pk_detected:
+                            cx = random.randint(mc["x1"], min(mc["x2"], self.stream_w - 1))
+                            cy = random.randint(mc["y1"], min(mc["y2"], self.stream_h - 1))
+                            self.tap(cx, cy, offset=False)
+                            for _ in range(5):
+                                time.sleep(0.15)
+                                if _pk_check():
+                                    pk_detected = True
+                                    break
 
-                        # 阶段2：点击随机地图位置
-                        cx = random.randint(mc["x1"], min(mc["x2"], self.stream_w - 1))
-                        cy = random.randint(mc["y1"], min(mc["y2"], self.stream_h - 1))
-                        self.tap(cx, cy, offset=False)
-                        pk = False
-                        for _ in range(3):
-                            time.sleep(0.3)
-                            if _pk_check():
-                                pk = True
-                                break
-                        if pk:
-                            continue
+                        # 3. 关闭地图
+                        if not pk_detected:
+                            self.close_map_if_open()
+                            for _ in range(4):
+                                time.sleep(0.15)
+                                if _pk_check():
+                                    pk_detected = True
+                                    break
 
-                        # 阶段3：关闭地图
-                        self.close_map_if_open()
-                        pk = False
-                        for _ in range(3):
-                            time.sleep(0.3)
-                            if _pk_check():
-                                pk = True
-                                break
-                        if pk:
+                        if pk_detected:
                             continue
 
                         self.close_pop(is_one_time=True)

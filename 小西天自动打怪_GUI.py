@@ -125,7 +125,7 @@ class AutoFightGUI:
     def __init__(self):
         self.root = ttk.Window(themename="litera")
         self.root.title("场景之妙手空空")
-        self.root.geometry("920x860")
+        self.root.geometry("1240x1240")
         self.root.minsize(800, 700)
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
