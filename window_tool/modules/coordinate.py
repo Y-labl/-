@@ -88,23 +88,22 @@ class CoordinateTracker(QObject):
 
     def test_click(self, x: int, y: int, double_click: bool = False):
         """
-        在绑定窗口内模拟点击指定相对坐标
-        :param x: 相对于窗口的 X 坐标
-        :param y: 相对于窗口的 Y 坐标
+        模拟点击指定坐标（优先相对窗口偏移，无窗口时使用绝对坐标）
+        :param x: X 坐标（有窗口时相对窗口，无窗口时绝对屏幕坐标）
+        :param y: Y 坐标（有窗口时相对窗口，无窗口时绝对屏幕坐标）
         :param double_click: 是否双击
         """
-        if not self._target_hwnd:
-            self.status_message.emit("请先绑定窗口")
-            return False
         try:
-            from modules.window_binder import get_window_rect_screen
-            rect = get_window_rect_screen(self._target_hwnd)
-            if not rect:
-                self.status_message.emit("无法获取窗口位置")
-                return False
-
-            target_x = rect[0] + x
-            target_y = rect[1] + y
+            if self._target_hwnd:
+                from modules.window_binder import get_window_rect_screen
+                rect = get_window_rect_screen(self._target_hwnd)
+                if not rect:
+                    self.status_message.emit("无法获取窗口位置")
+                    return False
+                target_x = rect[0] + x
+                target_y = rect[1] + y
+            else:
+                target_x, target_y = x, y
 
             win32api.SetCursorPos((target_x, target_y))
             time.sleep(0.02)
