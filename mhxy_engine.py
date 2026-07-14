@@ -71,17 +71,17 @@ ADB_EXE = _ADB_EXE
 
 def adb_tap(serial, x, y):
     sp.run([_ADB_EXE, "-s", serial, "shell", "input", "tap", str(x), str(y)],
-           capture_output=True, timeout=3)
+           capture_output=True, timeout=3, creationflags=sp.CREATE_NO_WINDOW)
 
 
 def adb_key(serial, keycode):
     sp.run([_ADB_EXE, "-s", serial, "shell", "input", "keyevent", str(keycode)],
-           capture_output=True, timeout=3)
+           capture_output=True, timeout=3, creationflags=sp.CREATE_NO_WINDOW)
 
 
 def adb_screencap(serial):
     r = sp.run([_ADB_EXE, "-s", serial, "exec-out", "screencap", "-p"],
-               capture_output=True, timeout=10)
+               capture_output=True, timeout=10, creationflags=sp.CREATE_NO_WINDOW)
     if r.returncode != 0:
         return None
     return cv2.imdecode(np.frombuffer(r.stdout, dtype=np.uint8), cv2.IMREAD_COLOR)
@@ -89,7 +89,7 @@ def adb_screencap(serial):
 
 def list_adb_devices():
     try:
-        r = sp.run([_ADB_EXE, "devices"], capture_output=True, text=True, timeout=5)
+        r = sp.run([_ADB_EXE, "devices"], capture_output=True, text=True, timeout=5, creationflags=sp.CREATE_NO_WINDOW)
         lines = r.stdout.strip().split("\n")[1:]
         return [l.split("\t")[0] for l in lines if "\tdevice" in l]
     except Exception:
@@ -614,7 +614,7 @@ class AutoFightEngine:
     def init_device_scale(self):
         try:
             r = sp.run([_ADB_EXE, "-s", self.serial, "shell", "dumpsys", "window", "displays"],
-                       capture_output=True, text=True, timeout=5)
+                       capture_output=True, text=True, timeout=5, creationflags=sp.CREATE_NO_WINDOW)
             m = re.search(r"cur=(\d+)x(\d+)", r.stdout)
             if not m:
                 m = re.search(r"app=(\d+)x(\d+)", r.stdout)

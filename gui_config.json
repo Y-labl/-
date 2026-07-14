@@ -1,5 +1,5 @@
 {
-  "serial": "WEENU18A18102828",
+  "serial": "WEENU18A15102480",
   "map": "小西天",
   "hp_enabled": false,
   "hp_threshold": 51,
@@ -118,5 +118,9 @@
     "width": 880,
     "height": 380
   },
-  "coord_enabled": true
+  "coord_enabled": true,
+  "device_names": {
+    "WEENU18A15102480": "129化生寺",
+    "WEENU18A18102828": "145龙宫"
+  }
 }
