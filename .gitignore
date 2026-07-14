@@ -5,3 +5,5 @@ screenshots/*.png
 screenshots/*.jpg
 .DS_Store
 *.log
+
+# IDE.idea/
