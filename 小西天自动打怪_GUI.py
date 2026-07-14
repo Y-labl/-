@@ -514,14 +514,14 @@ class AutoFightGUI:
         btn_frame = ttk.Frame(row_frame)
         btn_frame.grid(row=0, column=6, padx=2)
         if running:
-            ttk.Button(btn_frame, text="停止", width=5, bootstyle="danger",
+            ttk.Button(btn_frame, text="⏹ 停止", width=8, bootstyle="danger",
                        command=lambda s=serial: self._stop_device(s)).pack(
                 side=tk.LEFT, padx=1)
         else:
-            ttk.Button(btn_frame, text="启动", width=5, bootstyle="success",
+            ttk.Button(btn_frame, text="▶ 启动", width=8, bootstyle="success",
                        command=lambda s=serial: self._start_device(s)).pack(
                 side=tk.LEFT, padx=1)
-        ttk.Button(btn_frame, text="截图", width=5, bootstyle="outline",
+        ttk.Button(btn_frame, text="📸 截图", width=8, bootstyle="outline",
                    command=lambda s=serial: self._device_screenshot(s)).pack(
             side=tk.LEFT, padx=1)
 
@@ -614,15 +614,15 @@ class AutoFightGUI:
                   width=6, anchor="center").pack(side=tk.LEFT, padx=2)
 
         if running:
-            ttk.Button(row, text="停止", width=5, bootstyle="danger",
+            ttk.Button(row, text="⏹ 停止", width=8, bootstyle="danger",
                        command=lambda s=serial: self._stop_device_from_tab1(s)).pack(
                 side=tk.LEFT, padx=1)
         else:
-            ttk.Button(row, text="启动", width=5, bootstyle="success",
+            ttk.Button(row, text="▶ 启动", width=8, bootstyle="success",
                        command=lambda s=serial: self._start_device_from_tab1(s)).pack(
                 side=tk.LEFT, padx=1)
 
-        ttk.Button(row, text="截图", width=5, bootstyle="outline",
+        ttk.Button(row, text="📸 截图", width=8, bootstyle="outline",
                    command=lambda s=serial: self._device_screenshot(s)).pack(
             side=tk.LEFT, padx=1)
 
