@@ -200,28 +200,28 @@ class AutoFightGUI:
 
         # 每个设备有独立的启动/停止/截图按钮（见下方设备列表）
 
-                # ---- 设备列表（每设备独立控制） ----
-        dev_card = ttk.Labelframe(main, text=" 设备列表 ", padding=10)
+                # ---- 当前设备 ----
+        dev_card = ttk.Labelframe(main, text=" 当前设备 ", padding=12)
         dev_card.grid(row=1, column=0, sticky="ew", pady=(0, 12))
-        dev_card.columnconfigure(0, weight=1)
+        dev_card.columnconfigure(1, weight=1)
 
-        # 表头 + 刷新按钮
-        dev_hdr = ttk.Frame(dev_card)
-        dev_hdr.pack(fill=tk.X, pady=(0, 4))
-        ttk.Button(dev_hdr, text="刷新设备", command=self._refresh_devices,
-                   width=10, bootstyle="outline").pack(side=tk.LEFT)
+        ttk.Label(dev_card, text="设备选择：").grid(row=0, column=0, sticky="w", padx=(0, 8))
+        self.device_combo = ttk.Combobox(dev_card, state="readonly", width=28, bootstyle="primary")
+        self.device_combo.grid(row=0, column=1, sticky="w", padx=(0, 10))
+        self.device_combo.bind("<<ComboboxSelected>>", self._on_device_selected)
 
-        # 设备列表容器（可滚动）
-        self.devlist_canvas = tk.Canvas(dev_card, highlightthickness=0, height=120)
-        self.devlist_scrollbar = ttk.Scrollbar(dev_card, orient=tk.VERTICAL,
-                                               command=self.devlist_canvas.yview)
-        self.devlist_frame = ttk.Frame(self.devlist_canvas)
-        self.devlist_frame.bind("<Configure>",
-            lambda e: self.devlist_canvas.configure(scrollregion=self.devlist_canvas.bbox("all")))
-        self.devlist_canvas.create_window((0, 0), window=self.devlist_frame, anchor="nw")
-        self.devlist_canvas.configure(yscrollcommand=self.devlist_scrollbar.set)
-        self.devlist_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.devlist_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        ttk.Button(dev_card, text="刷新", command=self._refresh_devices,
+                   width=8, bootstyle="outline").grid(row=0, column=2, padx=(0, 10))
+
+        self.tab1_start_btn = ttk.Button(dev_card, text="▶ 启动", width=8,
+                                          bootstyle="success", command=self._tab1_start)
+        self.tab1_start_btn.grid(row=0, column=3, padx=1)
+        self.tab1_stop_btn = ttk.Button(dev_card, text="⏹ 停止", width=8,
+                                         bootstyle="danger", command=self._tab1_stop,
+                                         state=tk.DISABLED)
+        self.tab1_stop_btn.grid(row=0, column=4, padx=1)
+        ttk.Button(dev_card, text="📸 截图", width=8, bootstyle="outline",
+                   command=self._tab1_screenshot).grid(row=0, column=5, padx=1)
 
         # ---- 场景 & 地图 ----
         scene_card = ttk.Labelframe(main, text=" 场景 & 地图 ", padding=12)
@@ -439,7 +439,8 @@ class AutoFightGUI:
         self.dev_list_frame = ttk.Frame(self.dev_canvas)
         self.dev_list_frame.bind("<Configure>",
             lambda e: self.dev_canvas.configure(scrollregion=self.dev_canvas.bbox("all")))
-        self.dev_canvas.create_window((0, 0), window=self.dev_list_frame, anchor="nw")
+        self._dev_canvas_win = self.dev_canvas.create_window((0, 0), window=self.dev_list_frame, anchor="nw")
+        self.dev_canvas.bind("<Configure>", self._on_dev_canvas_resize)
         self.dev_canvas.configure(yscrollcommand=self.dev_scrollbar.set)
         self.dev_canvas.grid(row=0, column=0, sticky="nsew")
         self.dev_scrollbar.grid(row=0, column=1, sticky="ns")
@@ -451,6 +452,10 @@ class AutoFightGUI:
             lambda e: self.dev_canvas.unbind_all("<MouseWheel>"))
 
         self._refresh_device_tab()
+
+    def _on_dev_canvas_resize(self, event):
+        """让内部框自适应画布宽度"""
+        self.dev_canvas.itemconfig(self._dev_canvas_win, width=event.width)
 
     def _refresh_device_tab(self):
         """刷新设备管理 Tab"""
@@ -468,8 +473,9 @@ class AutoFightGUI:
         hdr = ttk.Frame(self.dev_list_frame)
         hdr.pack(fill=tk.X, pady=(0, 8))
         for ci, (txt, wd) in enumerate([
-            ("设备序列号", 32), ("状态", 14), ("HP", 8), ("MP", 8),
-            ("BB", 8), ("战斗", 6), ("操作", 22),
+            ("设备序列号", 22), ("设备名称", 14),
+            ("状态", 14), ("HP", 8), ("MP", 8),
+            ("BB", 8), ("战斗", 6), ("操作", 30),
         ]):
             ttk.Label(hdr, text=txt, font=("Microsoft YaHei", 9, "bold"),
                       width=wd, anchor="center").grid(row=0, column=ci, padx=2)
@@ -485,14 +491,23 @@ class AutoFightGUI:
         row_frame = ttk.Frame(self.dev_list_frame)
         row_frame.pack(fill=tk.X, pady=1)
 
-        ttk.Label(row_frame, text=serial, width=32, anchor="w",
+        ttk.Label(row_frame, text=serial, width=22, anchor="w",
                   font=("Consolas", 9)).grid(row=0, column=0, padx=2)
+
+        # device_name
+        dev_names = self.cfg.get("device_names", {})
+        dev_name = dev_names.get(serial, "")
+        name_lbl = ttk.Label(row_frame, text=dev_name or "点击设置", width=14, anchor="center",
+                             foreground="gray" if not dev_name else "",
+                             cursor="hand2")
+        name_lbl.grid(row=0, column=1, padx=2)
+        name_lbl.bind("<Button-1>", lambda e, s=serial, lbl=name_lbl: self._rename_device(s, lbl))
 
         status_text = "运行中" if running else "空闲"
         status_color = "green" if running else "gray"
         status_lbl = ttk.Label(row_frame, text=status_text, foreground=status_color,
                                width=14, anchor="center")
-        status_lbl.grid(row=0, column=1, padx=2)
+        status_lbl.grid(row=0, column=2, padx=2)
 
         hp_v, mp_v, bb_v = "--", "--", "--"
         if running:
@@ -501,26 +516,32 @@ class AutoFightGUI:
             bb_v = "--" if engine.has_no_bb else f"{engine.last_bb:.0f}%"
 
         hp_lbl = ttk.Label(row_frame, text=hp_v, width=8, anchor="center")
-        hp_lbl.grid(row=0, column=2, padx=2)
+        hp_lbl.grid(row=0, column=3, padx=2)
         mp_lbl = ttk.Label(row_frame, text=mp_v, width=8, anchor="center")
-        mp_lbl.grid(row=0, column=3, padx=2)
+        mp_lbl.grid(row=0, column=4, padx=2)
         bb_lbl = ttk.Label(row_frame, text=bb_v, width=8, anchor="center")
-        bb_lbl.grid(row=0, column=4, padx=2)
+        bb_lbl.grid(row=0, column=5, padx=2)
 
         bc_v = f"{engine.battle_count}" if running else "--"
         bc_lbl = ttk.Label(row_frame, text=bc_v, width=6, anchor="center")
-        bc_lbl.grid(row=0, column=5, padx=2)
+        bc_lbl.grid(row=0, column=6, padx=2)
 
         btn_frame = ttk.Frame(row_frame)
-        btn_frame.grid(row=0, column=6, padx=2)
+        btn_frame.grid(row=0, column=7, padx=2)
+        start_btn2 = ttk.Button(btn_frame, text="▶ 启动", width=8, bootstyle="success",
+                               command=lambda s=serial: self._start_device(s))
+        start_btn2.pack(side=tk.LEFT, padx=1)
+        stop_btn2 = ttk.Button(btn_frame, text="⏹ 停止", width=8, bootstyle="danger",
+                               command=lambda s=serial: self._stop_device(s))
+        stop_btn2.pack(side=tk.LEFT, padx=1)
+
         if running:
-            ttk.Button(btn_frame, text="⏹ 停止", width=8, bootstyle="danger",
-                       command=lambda s=serial: self._stop_device(s)).pack(
-                side=tk.LEFT, padx=1)
+            start_btn2.configure(state=tk.DISABLED)
+            stop_btn2.configure(state=tk.NORMAL)
         else:
-            ttk.Button(btn_frame, text="▶ 启动", width=8, bootstyle="success",
-                       command=lambda s=serial: self._start_device(s)).pack(
-                side=tk.LEFT, padx=1)
+            start_btn2.configure(state=tk.NORMAL)
+            stop_btn2.configure(state=tk.DISABLED)
+
         ttk.Button(btn_frame, text="📸 截图", width=8, bootstyle="outline",
                    command=lambda s=serial: self._device_screenshot(s)).pack(
             side=tk.LEFT, padx=1)
@@ -537,7 +558,9 @@ class AutoFightGUI:
             return
         self._draw_status("green")
         self.status_label.configure(text="运行中")
+        self._update_tab1_buttons()
         self._refresh_devices()
+        self._refresh_device_tab()
 
         cfg = dict(self.cfg)
         cfg["serial"] = serial
@@ -576,72 +599,110 @@ class AutoFightGUI:
         except Exception as e:
             self._log(f"[{serial}] ❌ 截图异常: {e}")
 
+    def _rename_device(self, serial, label_widget=None):
+        dev_names = self.cfg.get("device_names", {})
+        current = dev_names.get(serial, "")
+
+        dlg = tk.Toplevel(self.root)
+        dlg.title("设备重命名 - " + serial)
+        dlg.geometry("350x140")
+        dlg.resizable(False, False)
+        dlg.transient(self.root)
+        dlg.grab_set()
+
+        ttk.Label(dlg, text="设备: " + serial, font=("Microsoft YaHei", 9)).pack(pady=(12, 6))
+        ttk.Label(dlg, text="设备名称：").pack()
+        entry = ttk.Entry(dlg, width=30, font=("Microsoft YaHei", 11))
+        entry.insert(0, current)
+        entry.pack(pady=(4, 10))
+        entry.selection_range(0, tk.END)
+        entry.focus_set()
+
+        def on_ok():
+            name = entry.get().strip()
+            dev_names = self.cfg.get("device_names", {})
+            if name:
+                dev_names[serial] = name
+            else:
+                dev_names.pop(serial, None)
+            self.cfg["device_names"] = dev_names
+            save_config(self.cfg)
+            dlg.destroy()
+            self._refresh_device_tab()
+
+        entry.bind("<Return>", lambda e: on_ok())
+        btn_f = ttk.Frame(dlg)
+        btn_f.pack()
+        ttk.Button(btn_f, text="确定", command=on_ok, bootstyle="primary", width=10).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_f, text="取消", command=dlg.destroy, width=10).pack(side=tk.LEFT, padx=5)
+
     # ---------- 设备 ----------
     def _refresh_devices(self):
-        """刷新场景控制页面的设备列表"""
-        for w in self.devlist_frame.winfo_children():
-            w.destroy()
-
+        """刷新设备下拉列表"""
         devices = list_adb_devices()
-        if not devices:
-            ttk.Label(self.devlist_frame, text="未发现 ADB 设备",
-                      foreground="orange", font=("Microsoft YaHei", 9)).pack(pady=10)
-            if self.engines:
-                self._draw_status("green")
-                self.status_label.configure(text="运行中")
+        self.device_combo["values"] = devices
+        if devices:
+            if self.cfg.get("serial") in devices:
+                self.device_combo.set(self.cfg["serial"])
             else:
-                self._draw_status("gray")
-                self.status_label.configure(text="就绪")
-            return
+                self.device_combo.set(devices[0])
+                self.cfg["serial"] = devices[0]
+            self._update_tab1_buttons()
+        else:
+            self.device_combo.set("")
+            self.tab1_start_btn.configure(state=tk.DISABLED)
+            self.tab1_stop_btn.configure(state=tk.DISABLED)
 
-        for serial in devices:
-            self._add_tab1_device_row(serial)
+    def _on_device_selected(self, event=None):
+        """下拉选择设备时更新按钮状态"""
+        sel = self.device_combo.get()
+        if sel:
+            self.cfg["serial"] = sel
+            self._update_tab1_buttons()
 
-    def _add_tab1_device_row(self, serial):
-        """在场景控制 Tab 添加一行设备控制（启动/停止/截图）"""
+    def _update_tab1_buttons(self):
+        """根据当前选中设备的运行状态更新按钮"""
+        serial = self.cfg.get("serial", "")
         engine = self.engines.get(serial)
         running = engine is not None and engine.running
-
-        row = ttk.Frame(self.devlist_frame)
-        row.pack(fill=tk.X, pady=2)
-
-        ttk.Label(row, text=serial, width=30, anchor="w",
-                  font=("Consolas", 9)).pack(side=tk.LEFT, padx=2)
-
-        status_text = "运行中" if running else "空闲"
-        status_color = "green" if running else "gray"
-        ttk.Label(row, text=status_text, foreground=status_color,
-                  width=6, anchor="center").pack(side=tk.LEFT, padx=2)
-
         if running:
-            ttk.Button(row, text="⏹ 停止", width=8, bootstyle="danger",
-                       command=lambda s=serial: self._stop_device_from_tab1(s)).pack(
-                side=tk.LEFT, padx=1)
+            self.tab1_start_btn.configure(state=tk.DISABLED)
+            self.tab1_stop_btn.configure(state=tk.NORMAL)
         else:
-            ttk.Button(row, text="▶ 启动", width=8, bootstyle="success",
-                       command=lambda s=serial: self._start_device_from_tab1(s)).pack(
-                side=tk.LEFT, padx=1)
+            self.tab1_start_btn.configure(state=tk.NORMAL)
+            self.tab1_stop_btn.configure(state=tk.DISABLED)
 
-        ttk.Button(row, text="📸 截图", width=8, bootstyle="outline",
-                   command=lambda s=serial: self._device_screenshot(s)).pack(
-            side=tk.LEFT, padx=1)
-
-    # ---------- 引擎控制 ----------
-    def _start_device_from_tab1(self, serial):
-        """从场景控制 Tab 启动设备：先保存 UI 配置，再启动引擎"""
+    def _tab1_start(self):
+        """场景控制 Tab 启动按钮"""
+        serial = self.cfg.get("serial", "")
+        if not serial:
+            messagebox.showwarning("提示", "请先选择一个设备")
+            return
         self._sync_ui_to_cfg()
-        self.cfg["serial"] = serial
         save_config(self.cfg)
         self._start_device(serial)
 
-    def _stop_device_from_tab1(self, serial):
-        """从场景控制 Tab 停止设备"""
-        self._stop_device(serial)
+    def _tab1_stop(self):
+        """场景控制 Tab 停止按钮"""
+        serial = self.cfg.get("serial", "")
+        if serial:
+            self._stop_device(serial)
 
+    def _tab1_screenshot(self):
+        """场景控制 Tab 截图按钮"""
+        serial = self.cfg.get("serial", "")
+        if not serial:
+            messagebox.showwarning("提示", "请先选择一个设备")
+            return
+        self._device_screenshot(serial)
+
+    # ---------- 引擎控制 ----------
     def _on_engine_stopped(self):
         self._draw_status("gray")
         self.status_label.configure(text="已停止")
-        self.root.after(100, self._refresh_devices)
+        self.root.after(100, self._update_tab1_buttons)
+        self.root.after(150, self._refresh_devices)
+        self.root.after(200, self._refresh_device_tab)
         self.hp_display.configure(text="HP: --%")
         self.mp_display.configure(text="MP: --%")
         self.bb_display.configure(text="BB: --%")
