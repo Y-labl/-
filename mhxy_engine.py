@@ -551,10 +551,6 @@ class AutoFightEngine:
 
         if not found_rest:
             self._log("  ⚠️ 未找到酒肆-休息，可能已恢复")
-        else:
-            # 等待恢复动画
-            self._log("  ⏳ 等待酒肆恢复...")
-            time.sleep(3.0)
 
         self.jiusi_used_time = time.time()
         self._log("  🍶 酒肆恢复完成")
@@ -967,7 +963,7 @@ class AutoFightEngine:
             x, y = result["x"], result["y"]
             self._log(f"  ✅ 四小人识别成功: ({x}, {y})")
             self.tap(x, y)
-            time.sleep(random.uniform(1, 2))
+
         else:
             self._log("  ⚠️ 四小人识别失败: " + str(result.get("error", "未知")))
 
@@ -1256,7 +1252,7 @@ class AutoFightEngine:
                 if self._is_show_four_person():
                     self._log(f"[{loop}] 👥 检测到四小人界面")
                     self._handle_four_person()
-                    time.sleep(random.uniform(0.5, 1))
+                    time.sleep(random.uniform(0.2, 0.5))
                     continue
 
                 # === 非战斗：检测是否进入战斗 ===
