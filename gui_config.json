@@ -1,8 +1,8 @@
 {
   "serial": "WEENU18A15102480",
-  "map": "小西天",
+  "map": "子母河底",
   "hp_enabled": false,
-  "hp_threshold": 51,
+  "hp_threshold": 50,
   "hp_item": "红碗",
   "mp_enabled": false,
   "mp_threshold": 20,
@@ -23,7 +23,7 @@
   "hp_method": "酒肆",
   "mp_method": "酒肆",
   "jiusi_enabled": true,
-  "jiusi_hp_threshold": 51,
+  "jiusi_hp_threshold": 50,
   "jiusi_mp_threshold": 20,
   "jiusi_bb_threshold": 50,
   "capture_enabled": false,
@@ -52,7 +52,7 @@
       "after": "后换场景"
     },
     {
-      "enabled": false,
+      "enabled": true,
       "scene": "子母河底",
       "rings": "得3个环",
       "cards": "无要求",
@@ -60,7 +60,7 @@
       "after": "后换场景"
     },
     {
-      "enabled": true,
+      "enabled": false,
       "scene": "小西天",
       "rings": "得3个环",
       "cards": "得2张卡片",

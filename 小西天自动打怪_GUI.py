@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 梦幻西游 自动打怪 - 现代 UI 控制面板
 ===============================
@@ -58,12 +58,13 @@ DEFAULT_CONFIG = {
     # 妙手空空场景配置（参考图）
     "scene_config": [
         {"enabled": False, "scene": "龙窟五层", "rings": "得3个环", "cards": "得2张卡片", "time": "满180分钟", "after": "后换场景"},
+        {"enabled": False, "scene": "龙窟六层", "rings": "得3个环", "cards": "得2张卡片", "time": "满180分钟", "after": "后换场景"},
+        {"enabled": False, "scene": "凤巢三层", "rings": "得3个环", "cards": "得2张卡片", "time": "满180分钟", "after": "后换场景"},
         {"enabled": False, "scene": "凤巢四层", "rings": "得3个环", "cards": "无要求", "time": "满180分钟", "after": "后换场景"},
-        {"enabled": False, "scene": "子母河底", "rings": "得3个环", "cards": "无要求", "time": "满180分钟", "after": "后换场景"},
         {"enabled": True, "scene": "小西天", "rings": "得3个环", "cards": "得2张卡片", "time": "满180分钟", "after": "后换场景"},
-        {"enabled": True, "scene": "小雷音寺", "rings": "得3个环", "cards": "得2张卡片", "time": "满180分钟", "after": "后换场景"},
+        {"enabled": False, "scene": "子母河底", "rings": "得3个环", "cards": "无要求", "time": "满180分钟", "after": "后换场景"},
+        {"enabled": False, "scene": "麒麟山", "rings": "得3个环", "cards": "得2张卡片", "time": "满180分钟", "after": "后换场景"},
         {"enabled": True, "scene": "女娲神迹", "rings": "得3个环", "cards": "得2张卡片", "time": "满180分钟", "after": "后换场景"},
-        {"enabled": False, "scene": "须弥东界", "rings": "得3个环", "cards": "得2张卡片", "time": "满180分钟", "after": "后换场景"},
     ],
     # 检测参数
     "detect_params": {
@@ -161,11 +162,14 @@ class AutoFightGUI:
 
         self.capture_enabled = tk.BooleanVar(value=cfg.get("capture_enabled", False))
         self.miaoshou_enabled = tk.BooleanVar(value=cfg.get("miaoshou_enabled", True))
-        self.skill_then_auto = tk.BooleanVar(value=cfg.get("skill_then_auto", False))
-        self.normal_then_auto = tk.BooleanVar(value=cfg.get("normal_then_auto", False))
-        self.defend_then_auto = tk.BooleanVar(value=cfg.get("defend_then_auto", False))
-        self.direct_auto = tk.BooleanVar(value=cfg.get("direct_auto", False))
-        self.escape_enabled = tk.BooleanVar(value=cfg.get("escape_enabled", True))
+        # 战斗模式互斥：skill_then_auto / normal_then_auto / defend_then_auto / direct_auto / escape
+        _mode = "escape"
+        if cfg.get("skill_then_auto"): _mode = "skill_then_auto"
+        elif cfg.get("normal_then_auto"): _mode = "normal_then_auto"
+        elif cfg.get("defend_then_auto"): _mode = "defend_then_auto"
+        elif cfg.get("direct_auto"): _mode = "direct_auto"
+        elif cfg.get("escape_enabled", True): _mode = "escape"
+        self.combat_mode = tk.StringVar(value=_mode)
         self.auto_path_enabled = tk.BooleanVar(value=cfg.get("auto_path_enabled", True))
         self.coord_enabled = tk.BooleanVar(value=cfg.get("coord_enabled", True))
 
@@ -284,19 +288,23 @@ class AutoFightGUI:
         left = ttk.Frame(battle_card)
         left.grid(row=0, column=0, sticky="nsw")
 
-        ops = [
-            ("一、捕捉", self.capture_enabled),
-            ("二、妙手空空", self.miaoshou_enabled),
-            ("三、1.点选技能后自动战斗", self.skill_then_auto),
-            ("2.普通攻击后自动战斗", self.normal_then_auto),
-            ("3.防御后自动战斗", self.defend_then_auto),
-            ("4.直接自动战斗", self.direct_auto),
-            ("5.逃跑", self.escape_enabled),
+        # 一、二 为独立勾选
+        ttk.Checkbutton(left, text="一、捕捉", variable=self.capture_enabled,
+                        bootstyle="success-round-toggle").grid(row=0, column=0, sticky="w", pady=4)
+        ttk.Checkbutton(left, text="二、妙手空空", variable=self.miaoshou_enabled,
+                        bootstyle="success-round-toggle").grid(row=1, column=0, sticky="w", pady=4)
+        # 三、战斗模式 5选1 互斥
+        ttk.Label(left, text="三、人物战斗操作：").grid(row=2, column=0, sticky="w", pady=(8,2))
+        modes = [
+            ("1.点选技能后自动战斗", "skill_then_auto"),
+            ("2.普通攻击后自动战斗", "normal_then_auto"),
+            ("3.防御后自动战斗", "defend_then_auto"),
+            ("4.直接自动战斗", "direct_auto"),
+            ("5.逃跑", "escape"),
         ]
-        for i, (txt, var) in enumerate(ops):
-            ttk.Checkbutton(left, text=txt, variable=var,
-                            bootstyle="success-round-toggle").grid(
-                row=i, column=0, sticky="w", pady=4)
+        for j, (txt, val) in enumerate(modes):
+            ttk.Radiobutton(left, text=txt, variable=self.combat_mode, value=val).grid(
+                row=3+j, column=0, sticky="w", pady=2, padx=(16,0))
 
         right = ttk.Frame(battle_card)
         right.grid(row=0, column=1, sticky="ne")
@@ -336,7 +344,7 @@ class AutoFightGUI:
                                     font=("Microsoft YaHei", 11, "bold"), foreground="#198754")
         self.time_display.pack(side=tk.LEFT)
         self.log_text = ttk.ScrolledText(
-            log_card, height=10, font=("Consolas", 9),
+            log_card, height=10, font=("Microsoft YaHei", 9),
             bg="#ffffff", fg="#333333", insertbackground="#333333")
         self.log_text.grid(row=1, column=0, sticky="nsew")
         self.log_text.configure(state=tk.DISABLED)
@@ -599,6 +607,8 @@ class AutoFightGUI:
         t = threading.Thread(target=engine.run_loop, daemon=True)
         self.engine_threads[serial] = t
         t.start()
+        # 引擎启动后延迟更新按钮状态
+        self.root.after(500, self._update_tab1_buttons)
         self._log(f"[{serial}] ▶ 引擎启动")
 
     def _stop_device(self, serial):
@@ -609,20 +619,30 @@ class AutoFightGUI:
         self._log(f"[{serial}] ⏹ 正在停止...")
 
     def _device_screenshot(self, serial):
-        """为指定设备截图"""
+        """为指定设备截图（优先使用引擎画面800x448，回退ADB）"""
+        import cv2
         save_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "screenshots")
         os.makedirs(save_dir, exist_ok=True)
         filename = f"device_{serial}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
         filepath = os.path.join(save_dir, filename)
         try:
-            result = sp.run([ADB_EXE, "-s", serial, "exec-out", "screencap", "-p"],
-                           capture_output=True, timeout=10, creationflags=sp.CREATE_NO_WINDOW)
-            if result.returncode != 0:
-                self._log(f"[{serial}] ❌ 截图失败")
-                return
-            with open(filepath, "wb") as f:
-                f.write(result.stdout)
-            self._log(f"[{serial}] 📸 截图已保存: {filepath}")
+            engine = self.engines.get(serial)
+            frame = None
+            if engine and engine.client:
+                frame = engine.get_frame()
+            if frame is not None:
+                cv2.imwrite(filepath, frame)
+                h, w = frame.shape[:2]
+                self._log(f"[{serial}] 📸 截图已保存: {filepath} ({w}x{h})")
+            else:
+                result = sp.run([ADB_EXE, "-s", serial, "exec-out", "screencap", "-p"],
+                               capture_output=True, timeout=10, creationflags=sp.CREATE_NO_WINDOW)
+                if result.returncode != 0:
+                    self._log(f"[{serial}] ❌ 截图失败")
+                    return
+                with open(filepath, "wb") as f:
+                    f.write(result.stdout)
+                self._log(f"[{serial}] 📸 截图已保存: {filepath}")
         except Exception as e:
             self._log(f"[{serial}] ❌ 截图异常: {e}")
 
@@ -865,11 +885,12 @@ class AutoFightGUI:
         cfg["map"] = self.map_select.get()
         cfg["capture_enabled"] = self.capture_enabled.get()
         cfg["miaoshou_enabled"] = self.miaoshou_enabled.get()
-        cfg["skill_then_auto"] = self.skill_then_auto.get()
-        cfg["normal_then_auto"] = self.normal_then_auto.get()
-        cfg["defend_then_auto"] = self.defend_then_auto.get()
-        cfg["direct_auto"] = self.direct_auto.get()
-        cfg["escape_enabled"] = self.escape_enabled.get()
+        _mode = self.combat_mode.get()
+        cfg["skill_then_auto"] = (_mode == "skill_then_auto")
+        cfg["normal_then_auto"] = (_mode == "normal_then_auto")
+        cfg["defend_then_auto"] = (_mode == "defend_then_auto")
+        cfg["direct_auto"] = (_mode == "direct_auto")
+        cfg["escape_enabled"] = (_mode == "escape")
         cfg["auto_path_enabled"] = self.auto_path_enabled.get()
         cfg["coord_enabled"] = self.coord_enabled.get()
 

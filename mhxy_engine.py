@@ -34,29 +34,53 @@ OCR_CROP = {"x": 131, "y": 40, "w": 200, "h": 100}
 OCR_INTERVAL = 0.15
 OCR_CONF_THRESHOLD = 0.5
 COORD_STOP_TIMEOUT = 1.0  # 坐标停止超过1秒触发跑图
-VALID_MAP_PREFIXES = [
-    "小西天", "长安城", "大唐国境", "五庄观", "花果山",
-    "傲来国", "朱紫国", "宝象国", "乌鸡国", "车迟国",
-    "东海湾", "长寿村", "化生寺", "方寸山", "女儿村",
-    "大雷音寺", "龙窟一层", "龙窟二层", "龙窟三层",
-    "龙窟四层", "凤巢一层", "凤巢二层", "凤巢三层",
-    "凤巢四层", "狮驼岭", "盘丝洞", "魔王寨", "天宫",
-    "地府", "江南野外", "建邺城", "普陀山",
+COMBAT_ROI = {"x": 90, "y": 60, "w": 375, "h": 278}  # 战斗怪物检测区域
+# 场景配置（从 target_mapping 动态加载）
+from target_mapping import (
+    SCENE_MAPPING,
+    get_tou_targets,
+    get_jineng_targets,
+    get_all_monsters,
+    get_map_click_area,
+    is_supported_scene,
+    list_supported_scenes,
+    list_all_known_scenes,
+)
+
+VALID_MAP_PREFIXES = list_all_known_scenes() + [
+    "乌鸡国", "车迟国", "大雷音寺",
+    "龙窟二层", "龙窟三层", "龙窟四层",
+    "凤巢一层", "凤巢二层",
+    "狮驼岭", "盘丝洞", "天宫",
 ]
 
-# 地图配置
-MAP_CONFIG = {
-    "小西天": {
-        "map_click": {"x1": 212, "y1": 21, "x2": 475, "y2": 415},
-        "monsters": ["金饶僧", "炎魔神", "噬天虎"],
-        "steal_target": "炎魔神",
-    },
-    "女娲神迹": {
-        "map_click": {"x1": 180, "y1": 220, "x2": 500, "y2": 380},
-        "monsters": ["律法女娲", "灵符女娲", "净瓶女娲"],
-        "steal_target": "律法女娲",
-    },
-}
+# 兼容旧版 MAP_CONFIG 接口（GUI 使用）
+from target_mapping import (
+    SCENE_MAPPING,
+    get_tou_targets,
+    get_jineng_targets,
+    get_all_monsters,
+    get_map_click_area,
+    is_supported_scene,
+    list_supported_scenes,
+    list_all_known_scenes,
+    list_all_known_scenes,
+)
+
+# 兼容旧版 MAP_CONFIG 接口（GUI 使用）
+MAP_CONFIG = {}
+for scene_name in list_supported_scenes():
+    monsters = []
+    for mt in get_all_monsters(scene_name):
+        tag = mt.split("-")[-1]
+        monsters.append(tag)
+    tou_targets = get_tou_targets(scene_name)
+    steal_tag = tou_targets[0].split("-")[-1] if tou_targets else ""
+    MAP_CONFIG[scene_name] = {
+        "map_click": get_map_click_area(scene_name),
+        "monsters": monsters,
+        "steal_target": steal_tag,
+    }
 
 # ======================== ADB 工具 ========================
 try:
@@ -339,6 +363,7 @@ class AutoFightEngine:
         self.last_mp = 100.0
         self.last_bb = 100.0
         self.has_no_bb = False
+        self._last_map_click = None  # 上次地图点击坐标，用于距离检查
         # 冷却计时
         self.hp_item_used_time = 0
         self.mp_item_used_time = 0
@@ -392,15 +417,15 @@ class AutoFightEngine:
             "PK-妙手空空技能", "PK-自动按钮", "PK-取消自动战斗",
             "重置回合数", "PK-逃跑",
         ]
-        monsters = MAP_CONFIG.get(map_name, MAP_CONFIG["小西天"])["monsters"]
-        for m in monsters:
-            combat_templates.append(f"PK-召唤兽-{m}")
+        from target_mapping import get_all_monsters as _get_monsters
+        monster_names = _get_monsters(map_name)
+        for mn in monster_names:
+            combat_templates.append(mn)
 
         for name in ui_templates + combat_templates:
             tmpl = load_template(name)
             if tmpl is not None:
-                tag = name.split("-")[-1]
-                self.templates[tag if name.startswith("PK-召唤兽-") else name] = tmpl
+                self.templates[name] = tmpl
 
         # 加载酒肆相关模板（独立加载，不需要后缀）
         for label, fname in [("酒肆技能", "酒肆技能"),
@@ -741,56 +766,82 @@ class AutoFightEngine:
     def do_combat(self):
         self._log("⚔️ 开始战斗流程")
         map_name = self.cfg.get("map", "小西天")
-        steal_target = MAP_CONFIG.get(map_name, MAP_CONFIG["小西天"])["steal_target"]
 
-        tmpl = self.templates.get(steal_target)
-        if tmpl is None:
-            self._log(f"⚠️ 未加载目标模板: {steal_target}")
+        # 从 target_mapping 获取偷窃目标（OR 匹配多个模板）
+        from target_mapping import get_tou_targets as _get_tou
+        tou_targets = _get_tou(map_name)
+        if not tou_targets:
+            self._log(f"  ⚠️ 场景 {map_name} 无偷窃目标配置")
             self._try_escape()
             return
 
+        # 等待战斗界面完全渲染
+        time.sleep(0.3)
+
+        # 尝试匹配任一偷窃目标模板
         frame = self.get_frame()
         if frame is None:
             return
         if not self.is_in_pk(frame):
             return
-        # 战斗截图已关闭
-        targets = self._find_all(frame, steal_target, threshold=0.81)
-        # 距离去重：相距<15px的只保留置信度最高的
-        deduped = []
-        for t in sorted(targets, key=lambda x: x[2], reverse=True):
-            if not any(abs(t[0]-d[0])**2+abs(t[1]-d[1])**2 < 225 for d in deduped):
-                deduped.append(t)
-        targets = deduped
-        self._log(f"  🔍 检测到 {len(targets)} 个 {steal_target}")
-        for i, t in enumerate(targets):
-            self._log(f"    [{i+1}] ({t[0]},{t[1]}) conf={t[2]:.2f}")
-        # self._save_detection_debug(frame, steal_target, targets)  # 调试截图已关闭
 
-        plan = self._build_plan(targets)
+        matched_targets = []
+        matched_names = []
+        for candidate in tou_targets:
+            cur = self._find_all(frame, candidate, threshold=0.80, roi=COMBAT_ROI)
+            if cur:
+                matched_names.append(candidate)
+                matched_targets.extend(cur)
+
+        # 去重
+        deduped = []
+        for t in sorted(matched_targets, key=lambda x: x[2], reverse=True):
+            if not any(abs(t[0]-d[0])**2+abs(t[1]-d[1])**2 < 625 for d in deduped):
+                deduped.append(t)
+        matched_targets = deduped
+
+        display_name = ", ".join(matched_names) if matched_names else (tou_targets[0] if tou_targets else "?")
+        self._log(f"  🔍 检测到 {len(matched_targets)} 个目标 ({display_name})")
+        for i, t in enumerate(matched_targets):
+            self._log(f"    [{i+1}] ({t[0]},{t[1]}) conf={t[2]:.2f}")
+
+        # 调试：保存标注后的截图
+        self._save_debug_combat(frame, matched_targets, display_name)
+
+        plan = self._build_plan(matched_targets)
         if not plan:
-            self._log(f"  ⚠️ 未检测到 {steal_target}，跳过妙手空空")
+            self._log(f"  ⚠️ 未检测到目标 ({display_name})，跳过妙手空空")
 
         if self.cfg.get("miaoshou_enabled", True):
-            clicked = []  # 已点击过的坐标，避免重复
+            clicked = []
             max_attempts = min(len(plan), 3) if plan else 3
             self._log(f"  🎯 妙手空空 ×{max_attempts}")
             for i in range(max_attempts):
                 if not self._check_in_combat():
                     return
-                # 每次先重新检测目标
                 f2 = self.get_frame()
                 if f2 is None:
                     break
-                cur = self._find_all(f2, steal_target, threshold=0.78)
-                if not cur:
-                    self._log(f"  ⚠️ {steal_target}已全部消失")
+
+                # 重新检测所有可能的偷窃目标
+                cur_all = []
+                for candidate in tou_targets:
+                    cur = self._find_all(f2, candidate, threshold=0.80, roi=COMBAT_ROI)
+                    if cur:
+                        cur_all.extend(cur)
+                # 去重
+                deduped2 = []
+                for t in sorted(cur_all, key=lambda x: x[2], reverse=True):
+                    if not any(abs(t[0]-d[0])**2+abs(t[1]-d[1])**2 < 625 for d in deduped2):
+                        deduped2.append(t)
+                cur_all = deduped2
+                if not cur_all:
+                    self._log(f"  ⚠️ 目标已全部消失")
                     break
-                self._log(f"  \U0001f50d \u91cd\u65b0\u68c0\u6d4b\u5230 {len(cur)} \u4e2a {steal_target}")
-                # 过滤已点击过的位置（相距<30px视为同一个）
-                available = [c for c in cur if not any(abs(c[0]-px)**2+abs(c[1]-py)**2 < 900 for px, py in clicked)]
+                self._log(f"  🔍 重新检测到 {len(cur_all)} 个目标")
+                available = [c for c in cur_all if not any(abs(c[0]-px)**2+abs(c[1]-py)**2 < 2500 for px, py in clicked)]
                 if not available:
-                    self._log(f"  ⚠️ 所有{steal_target}均已偷过")
+                    self._log(f"  ⚠️ 所有目标均已偷过")
                     break
                 best = max(available, key=lambda c: c[2])
                 tx, ty, conf = best[0], best[1], best[2]
@@ -814,10 +865,63 @@ class AutoFightEngine:
         self._try_escape()
         self._wait_combat_end()
 
-    def _find_all(self, frame, name, threshold=0.81):
+    def _save_debug_combat(self, frame, targets, display_name):
+        """保存战斗检测调试截图（PIL 支持中文标注）"""
+        try:
+            import os, time
+            from PIL import Image, ImageDraw, ImageFont
+            debug_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug_combat")
+            os.makedirs(debug_dir, exist_ok=True)
+
+            # OpenCV BGR -> PIL RGB
+            vis = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            pil_img = Image.fromarray(vis)
+            draw = ImageDraw.Draw(pil_img)
+
+            # 尝试加载中文字体
+            try:
+                font = ImageFont.truetype("simhei.ttf", 16)
+                font_small = ImageFont.truetype("simhei.ttf", 12)
+            except Exception:
+                try:
+                    font = ImageFont.truetype("msyh.ttc", 16)
+                    font_small = ImageFont.truetype("msyh.ttc", 12)
+                except Exception:
+                    font = ImageFont.load_default()
+                    font_small = ImageFont.load_default()
+
+            rx, ry, rw, rh = COMBAT_ROI["x"], COMBAT_ROI["y"], COMBAT_ROI["w"], COMBAT_ROI["h"]
+
+            # 画 ROI 区域（绿色框）
+            draw.rectangle([rx, ry, rx + rw, ry + rh], outline=(0, 255, 0), width=2)
+            draw.text((rx + 5, ry - 20), "ROI", fill=(0, 255, 0), font=font)
+
+            # 画检测到的怪物
+            colors = [(255, 0, 0), (0, 0, 255), (0, 255, 255), (255, 0, 255), (255, 255, 0)]
+            for i, (cx, cy, conf) in enumerate(targets):
+                color = colors[i % len(colors)]
+                # 画圆
+                draw.ellipse([cx - 25, cy - 25, cx + 25, cy + 25], outline=color, width=2)
+                # 标签
+                label = display_name.split("-")[-1] if "-" in display_name else display_name
+                draw.text((cx + 30, cy - 18), f"{label} {conf:.2f}", fill=color, font=font_small)
+
+            # PIL RGB -> OpenCV BGR 保存
+            vis_bgr = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+            ts = time.strftime("%Y%m%d_%H%M%S")
+            path = os.path.join(debug_dir, f"combat_{ts}.png")
+            cv2.imwrite(path, vis_bgr)
+            self._log(f"  📸 调试截图已保存: debug_combat/combat_{ts}.png")
+        except Exception as e:
+            self._log(f"  ⚠️ 调试截图失败: {e}")
+
+    def _find_all(self, frame, name, threshold=0.81, roi=None):
         tmpl = self.templates.get(name)
         if tmpl is None or frame is None:
             return []
+        if roi:
+            rx, ry, rw, rh = roi["x"], roi["y"], roi["w"], roi["h"]
+            frame = frame[ry:ry+rh, rx:rx+rw]
         h, w = frame.shape[:2]
         tw, th = tmpl.shape[1], tmpl.shape[0]
         if h < th or w < tw:
@@ -845,7 +949,10 @@ class AutoFightEngine:
                 y1 = max(0, max_loc[1] - sth // 2)
                 cv2.rectangle(mask, (x1, y1), (x1 + stw, y1 + sth), 1, -1)
                 result[mask > 0] = 0
-        return list(best.values())
+        results = list(best.values())
+        if roi:
+            results = [(cx + roi["x"], cy + roi["y"], conf) for cx, cy, conf in results]
+        return results
 
     def _build_plan(self, targets):
         if not targets:
@@ -912,9 +1019,10 @@ class AutoFightEngine:
                 return
             time.sleep(0.3)
 
-    def _is_avatar_visible(self):
+    def _is_avatar_visible(self, frame=None):
         """Pixel-color scan of character avatar bar (from isShowRoleAvatar)."""
-        frame = self.get_frame()
+        if frame is None:
+            frame = self.get_frame()
         if frame is None:
             return True
         h, w = frame.shape[:2]
@@ -939,15 +1047,16 @@ class AutoFightEngine:
         return matched > total * 0.85
 
 
-    def _is_show_four_person(self):
+    def _is_show_four_person(self, frame=None):
         """四小人检测：HP/MP + 角色头像"""
-        frame = self.get_frame()
+        if frame is None:
+            frame = self.get_frame()
         if frame is None:
             return False
         hp, mp, bb, no_bb = self.detect_hp_mp_bb(frame)
         if not (hp < 1 and mp < 1):
             return False
-        if self._is_avatar_visible():
+        if self._is_avatar_visible(frame):
             return False
         return True
 
@@ -1027,7 +1136,12 @@ class AutoFightEngine:
             data["b64"] = roi_base64
             data_json = json.dumps(data, ensure_ascii=False)
 
-            resp = requests.post(TULING_API_URL, data=data_json, timeout=5)
+            session = getattr(self, "_tuling_session", None)
+            if session is None:
+                session = requests.Session()
+                session.trust_env = False
+                self._tuling_session = session
+            resp = session.post(TULING_API_URL, data=data_json, timeout=10)
             api_result = json.loads(resp.text)
 
             if api_result.get("data") and api_result["data"]:
@@ -1172,6 +1286,8 @@ class AutoFightEngine:
         enabled_scenes = [s for s in scene_config if s.get("enabled")]
         if not enabled_scenes:
             self._log("❌ 没有启用的场景，请在 UI 中至少勾选一个场景")
+            self.running = True
+            self.running = False
             self.log.put("__STOPPED__")
             return
 
@@ -1187,26 +1303,36 @@ class AutoFightEngine:
         if reserved:
             self._log(f"⚠️ 以下场景已配置但逻辑暂未完善：{', '.join(reserved)}")
         if not supported:
-            self._log("❌ 没有已完善的场景可运行。当前支持：小西天、女娲神迹")
+            from target_mapping import list_supported_scenes as _lss
+            self._log(f'没有已完善的场景可运行。当前支持：{", ".join(_lss())}')
             self.log.put("__STOPPED__")
             return
 
-        # 取第一个已支持的场景运行（后续可扩展为自动切换）
-        current_scene = supported[0]
+        from target_mapping import get_map_click_area as _get_mc
+        self.running = True
+        try:
+            self._run_loop_impl(supported, reserved)
+        finally:
+            self.running = False
+            self.log.put("__STOPPED__")
+
+    def _run_loop_impl(self, supported, reserved):
+        from target_mapping import get_map_click_area as _get_mc
+        current_idx = 0
+        current_scene = supported[current_idx]
         map_name = current_scene["scene"]
         self.cfg["map"] = map_name
-        map_cfg = MAP_CONFIG.get(map_name, MAP_CONFIG["小西天"])
-        mc = map_cfg["map_click"]
+        mc = _get_mc(map_name)
 
         self.load_templates(map_name)
         if not self.init_device():
             self._log("❌ 设备初始化失败")
-            self.log.put("__STOPPED__")
             return
 
-        self.running = True
         self.start_time = time.time()
         self.battle_count = 0
+        scene_start_time = time.time()
+        scene_switch_interval = 600
         hp_method = self.cfg.get("hp_method", "")
         mp_method = self.cfg.get("mp_method", "")
         if hp_method or mp_method:
@@ -1228,11 +1354,15 @@ class AutoFightEngine:
                   f"BB<{self.cfg.get('jiusi_bb_threshold',50)}%")
         self._log("=" * 40)
 
+        from scene_detector import detect_position
+
         loop = 0
         try:
             while self.running:
                 loop += 1
                 frame = self.get_frame()
+                if loop % 5 == 0:
+                    self._log(f"[{loop}] 循环中...")
                 if frame is None:
                     time.sleep(0.05)
                     continue
@@ -1248,8 +1378,21 @@ class AutoFightEngine:
                     time.sleep(0.15)
                     continue
 
+                # === 场景切换检测：时间到时自动轮询 ===
+                if not self.was_in_pk and len(supported) > 1 and (time.time() - scene_start_time) > scene_switch_interval:
+                    current_idx = (current_idx + 1) % len(supported)
+                    current_scene = supported[current_idx]
+                    map_name = current_scene["scene"]
+                    mc = _get_mc(map_name)
+                    self._log(f"场景切换: {map_name}")
+                    self.cfg["map"] = map_name
+                    self.load_templates(map_name)
+                    self.reset_coord_tracking()
+                    scene_start_time = time.time()
+                    continue
+
                 # === 非战斗：四小人检测 ===
-                if self._is_show_four_person():
+                if self._is_show_four_person(frame):
                     self._log(f"[{loop}] 👥 检测到四小人界面")
                     self._handle_four_person()
                     time.sleep(random.uniform(0.2, 0.5))
@@ -1265,80 +1408,121 @@ class AutoFightEngine:
                     time.sleep(0.15)
                     continue
 
-                # === 非战斗：跑图（坐标检测驱动） ===
+                # === 非战斗：场景验证（间隔检测） ===
+                if loop % 200 == 0 and self.coord_enabled:
+                    ocr_name, _, _ = self.detect_map_coord(frame)
+                    if ocr_name:
+                        from scene_detector import detect_position as _detect
+                        detected, method = _detect(self.serial, frame, self.scale_x, self.scale_y, ocr_name)
+                        if detected and detected != map_name:
+                            target_idx = next((i for i, s in enumerate(supported) if s["scene"] == detected), None)
+                            if target_idx is not None:
+                                self._log(f"检测到场景变化: {detected}")
+                                current_idx = target_idx
+                                current_scene = supported[current_idx]
+                                map_name = current_scene["scene"]
+                                mc = _get_mc(map_name)
+                                self.cfg["map"] = map_name
+                                self.load_templates(map_name)
+                                self.reset_coord_tracking()
+                                scene_start_time = time.time()
+                                continue
+
+                # === 非战斗：跑图 ===
                 if self.cfg.get("auto_path_enabled", True):
-                    if self.cfg.get("auto_path_enabled", True):
-                        def _pk_check():
-                            return self.running and self.is_in_pk(self.get_frame())
+                    def _pk_check():
+                        return self.running and self.is_in_pk(self.get_frame())
 
-                        # 确保 OCR 已初始化
-                        if self.coord_enabled and self.ocr_engine is None:
-                            self.init_ocr()
+                    # 确保 OCR 已初始化
+                    if self.coord_enabled and self.ocr_engine is None:
+                        self.init_ocr()
+                    t0 = time.time()
+                    coord_stopped, cur_map, cur_coord = self.check_coord_stopped(frame)
+                    if loop % 5 == 0:
+                        self._log(f"[{loop}] OCR done, stopped={coord_stopped}, map={cur_map}, coord={cur_coord}")
+                    if loop % 5 == 0:
+                        self._log(f"[{loop}] coord_check: {time.time()-t0:.2f}s")
 
-                        # 检测坐标是否停止
-                        coord_stopped, cur_map, cur_coord = self.check_coord_stopped(frame)
-
-                        # 坐标还在变化中，无需跑图
-                        if not coord_stopped:
-                            if self.last_coord is not None and cur_coord is not None:
-                                self._log(f"[{loop}] \U0001f3c3 跑动中 ({cur_coord[0]},{cur_coord[1]})")
-                            self.close_pop(is_one_time=True)
-                            time.sleep(0.3)
-                            continue
+                    # 坐标还在变化中，无需跑图
+                    if not coord_stopped:
+                        if self.last_coord is not None and cur_coord is not None:
+                            self._log(f"[{loop}] \U0001f3c3 跑动中 ({cur_coord[0]},{cur_coord[1]})")
+                        self.close_pop(is_one_time=True)
+                        time.sleep(0.3)
+                        continue
 
                         # 坐标停止超过1秒，触发跑图
-                        self._log(f"[{loop}] \u23f8 坐标停止 ({self.last_coord})，重新跑图")
+                    self._log(f"[{loop}] \u23f8 坐标停止 ({self.last_coord})，重新跑图")
 
-                        pk_detected = False
+                    pk_detected = False
 
-                        # 1. 打开地图
-                        map_btn = self.find(frame, "打开地图")
-                        if map_btn:
-                            self.tap(map_btn[0], map_btn[1])
-                            for _ in range(4):
-                                time.sleep(0.15)
-                                if _pk_check():
-                                    pk_detected = True
-                                    break
+                    # 1. 打开地图
+                    map_btn = self.find(frame, "打开地图")
+                    if map_btn:
+                        self.tap(map_btn[0], map_btn[1])
+                        for _ in range(4):
+                            time.sleep(0.15)
+                            if _pk_check():
+                                pk_detected = True
+                                break
 
-                        # 2. 随机点击地图
-                        if not pk_detected:
+                    # 2. 随机点击地图（距上次至少50px）
+                    if not pk_detected:
+                        for _ in range(20):  # 最多重试20次
                             cx = random.randint(mc["x1"], min(mc["x2"], self.stream_w - 1))
                             cy = random.randint(mc["y1"], min(mc["y2"], self.stream_h - 1))
-                            self.tap(cx, cy, offset=False)
-                            for _ in range(5):
-                                time.sleep(0.15)
-                                if _pk_check():
-                                    pk_detected = True
-                                    break
-
-                        # 3. 关闭地图
-                        if not pk_detected:
-                            self.close_map_if_open()
-                            for _ in range(4):
-                                time.sleep(0.15)
-                                if _pk_check():
-                                    pk_detected = True
-                                    break
-
-                        if pk_detected:
-                            continue
-
-                        # 重置坐标跟踪（刚移动完，等坐标变化）
-                        self.reset_coord_tracking()
-                        self.close_pop(is_one_time=True)
-                    else:
-                        self._log(f"[{loop}] \u23f8\ufe0f 自动寻路已关闭，等待遇怪")
-                        pk = False
-                        for _ in range(3):
-                            time.sleep(0.4)
-                            if self.is_in_pk(self.get_frame()):
-                                pk = True
+                            if self._last_map_click is None:
                                 break
-                        if pk:
-                            continue
+                            lx, ly = self._last_map_click
+                            if abs(cx - lx) >= 50 or abs(cy - ly) >= 50:
+                                break
+                        self._last_map_click = (cx, cy)
+                        self.tap(cx, cy, offset=False)
+                        for _ in range(5):
+                            time.sleep(0.15)
+                            if _pk_check():
+                                pk_detected = True
+                                break
+
+                    # 3. 关闭地图
+                    if not pk_detected:
+                        self.close_map_if_open()
+                        for _ in range(4):
+                            time.sleep(0.15)
+                            if _pk_check():
+                                pk_detected = True
+                                break
+
+                    if pk_detected:
+                        continue
+
+                    # 重置坐标跟踪（刚移动完，等坐标变化）
+                    self.reset_coord_tracking()
+                    self.close_pop(is_one_time=True)
 
 
+
+
+
+
+
+
+
+
+
+
+                else:
+                    self._log(f"[{loop}] 自动寻路已关闭，等待遇怪")
+                    pk = False
+                    for _ in range(3):
+                        time.sleep(0.4)
+                        if self._check_in_combat():
+                            pk = True
+                            break
+                    if pk:
+                        continue
+
+                    # 检测坐标是否停止
                 time.sleep(0.3)
 
         except Exception as e:
