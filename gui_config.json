@@ -1,6 +1,6 @@
 {
   "serial": "WEENU18A15102480",
-  "map": "子母河底",
+  "map": "小西天",
   "hp_enabled": false,
   "hp_threshold": 50,
   "hp_item": "红碗",
@@ -28,11 +28,11 @@
   "jiusi_bb_threshold": 50,
   "capture_enabled": false,
   "miaoshou_enabled": true,
-  "skill_then_auto": false,
+  "skill_then_auto": true,
   "normal_then_auto": false,
   "defend_then_auto": false,
   "direct_auto": false,
-  "escape_enabled": true,
+  "escape_enabled": false,
   "auto_path_enabled": true,
   "scene_config": [
     {
@@ -60,7 +60,7 @@
       "after": "后换场景"
     },
     {
-      "enabled": false,
+      "enabled": true,
       "scene": "小西天",
       "rings": "得3个环",
       "cards": "得2张卡片",

@@ -415,12 +415,16 @@ class AutoFightEngine:
         ]
         combat_templates = [
             "PK-妙手空空技能", "PK-自动按钮", "PK-取消自动战斗",
-            "重置回合数", "PK-逃跑",
+            "重置回合数", "PK-逃跑", "PK-防御",
         ]
-        from target_mapping import get_all_monsters as _get_monsters
-        monster_names = _get_monsters(map_name)
-        for mn in monster_names:
-            combat_templates.append(mn)
+        # 加载所有场景的怪物模板（支持跨场景切换）
+        from target_mapping import SCENE_MAPPING as _SM
+        _seen = set()
+        for _area, _cfg in _SM.items():
+            for _name in _cfg.get("tou_targets", []) + _cfg.get("jineng_targets", []):
+                if _name not in _seen:
+                    _seen.add(_name)
+                    combat_templates.append(_name)
 
         for name in ui_templates + combat_templates:
             tmpl = load_template(name)
@@ -604,7 +608,7 @@ class AutoFightEngine:
 
         jiusi_bb = self.cfg.get("jiusi_bb_threshold", 50)
 
-        # ????????????????
+        # 调试：在检测到的技能位置截图标注
         time.sleep(0.05)
         f = self.get_frame()
         if f is None:
@@ -765,20 +769,21 @@ class AutoFightEngine:
 
     def do_combat(self):
         self._log("⚔️ 开始战斗流程")
-        map_name = self.cfg.get("map", "小西天")
+        map_name = self.last_map_name or self.cfg.get("map", "小西天")
 
-        # 从 target_mapping 获取偷窃目标（OR 匹配多个模板）
-        from target_mapping import get_tou_targets as _get_tou
+        # 从 target_mapping 获取偷窃目标和全部怪物
+        from target_mapping import get_tou_targets as _get_tou, get_all_monsters as _get_all
         tou_targets = _get_tou(map_name)
-        if not tou_targets:
-            self._log(f"  ⚠️ 场景 {map_name} 无偷窃目标配置")
+        all_monsters = _get_all(map_name) or []
+        if not all_monsters:
+            self._log(f"  ⚠️ 场景 {map_name} 无怪物配置")
             self._try_escape()
             return
 
         # 等待战斗界面完全渲染
         time.sleep(0.3)
 
-        # 尝试匹配任一偷窃目标模板
+        # 匹配场景中所有怪物模板
         frame = self.get_frame()
         if frame is None:
             return
@@ -787,7 +792,7 @@ class AutoFightEngine:
 
         matched_targets = []
         matched_names = []
-        for candidate in tou_targets:
+        for candidate in all_monsters:
             cur = self._find_all(frame, candidate, threshold=0.80, roi=COMBAT_ROI)
             if cur:
                 matched_names.append(candidate)
@@ -806,7 +811,7 @@ class AutoFightEngine:
             self._log(f"    [{i+1}] ({t[0]},{t[1]}) conf={t[2]:.2f}")
 
         # 调试：保存标注后的截图
-        self._save_debug_combat(frame, matched_targets, display_name)
+        # self._save_debug_combat(frame, matched_targets, display_name)  # 调试截图已取消
 
         plan = self._build_plan(matched_targets)
         if not plan:
@@ -853,6 +858,11 @@ class AutoFightEngine:
                 self.tap(cx_ms, cy_ms)
                 time.sleep(random.uniform(0.3, 0.5))
                 self.tap(tx, ty)
+                time.sleep(0.2)
+                if not self.has_no_bb:
+                    self.tap(707, 409)
+                    self._log(f"  🎯 宝宝点(707,409)")
+                    time.sleep(0.2)
                 self._log(f"  🎯 第{i+1}次 妙手空空 -> ({tx},{ty}) conf={conf:.2f}")
                 clicked.append((tx, ty))
                 time.sleep(random.uniform(2.0, 3.0))
@@ -862,11 +872,181 @@ class AutoFightEngine:
             else:
                 self._log("  ⏭️ 妙手空空未触发")
 
-        self._try_escape()
-        self._wait_combat_end()
+        self._post_steal_action(skip_wait=not bool(plan), matched_targets=matched_targets)
 
+    def _post_steal_action(self, skip_wait=False, matched_targets=[]):
+        """妙手空空3次后的战斗模式分支"""
+        mode_skill = self.cfg.get("skill_then_auto", False)
+        mode_normal = self.cfg.get("normal_then_auto", False)
+        mode_defend = self.cfg.get("defend_then_auto", False)
+        mode_direct = self.cfg.get("direct_auto", False)
+        mode_escape = self.cfg.get("escape_enabled", True)
+
+        if mode_escape:
+            self._try_escape()
+            self._wait_combat_end()
+            return
+
+        # 所有非逃跑模式：需要找一个怪物坐标
+        monster_pos = None
+        for _ in range(5):
+            frame = self.get_frame()
+            if frame is None:
+                time.sleep(0.2)
+                continue
+            from target_mapping import get_all_monsters as _gt
+            map_name = self.last_map_name or self.cfg.get("map", "")
+            tou = _gt(map_name) or []
+            for cand in tou:
+                pts = self._find_all(frame, cand, threshold=0.80, roi=COMBAT_ROI)
+                if pts:
+                    monster_pos = (pts[0][0], pts[0][1])
+                    break
+            if monster_pos:
+                break
+            time.sleep(0.3)
+
+        if mode_skill:
+            # 点选技能后自动战斗: 点法术技能(713,145) -> 点怪物 -> 点自动
+            sx, sy = 713, 145  # 法术技能坐标
+            if skip_wait:
+                self._log("  \u26a1 \u65e0\u5077\u7a83\u76ee\u6807\uff0c\u76f4\u63a5\u6cd5\u672f\u653b\u51fb")
+            else:
+                self._log("  \U0001f3af \u7b49\u5f85\u4e0b\u56de\u5408\uff08\u7b2c4\u6b21\u5999\u624b\u7a7a\u7a7a\u51fa\u73b0\uff09\u540e\u70b9\u6cd5\u672f\u6280\u80fd")
+                nxt = self._wait_for_skill(timeout=15.0)
+                if nxt is None:
+                    self._log("  \u26a0\ufe0f 等待下回合超时，跳过法术技能")
+                    self._try_escape()
+                    self._wait_combat_end()
+                    return
+            # 第4回合重新检测怪物（怪物可能逃跑，位置可能变化）
+            monster_pos = None
+            self._log("  🔍 第4回合重新检测怪物")
+            for _ in range(5):
+                f_mon = self.get_frame()
+                if f_mon is None:
+                    time.sleep(0.2)
+                    continue
+                from target_mapping import get_all_monsters as _gt_mon
+                _all_mon = _gt_mon(self.last_map_name or self.cfg.get("map", "")) or []
+                for cand in _all_mon:
+                    pts = self._find_all(f_mon, cand, threshold=0.80, roi=COMBAT_ROI)
+                    if pts:
+                        monster_pos = (pts[0][0], pts[0][1])
+                        break
+                if monster_pos:
+                    self._log(f"  🦎 怪物位置: ({monster_pos[0]},{monster_pos[1]})")
+                    break
+                time.sleep(0.3)
+            # 重检测不到时用初始检测结果兜底
+            if monster_pos is None and matched_targets:
+                monster_pos = (matched_targets[0][0], matched_targets[0][1])
+                self._log(f"  🦎 重检测失败，用初始位置: ({monster_pos[0]},{monster_pos[1]})")
+            elif monster_pos is None:
+                self._log("  ⚠️ 未检测到怪物")
+#             # 调试：点击前截图标注法术技能位置
+#             debug_frame = self.get_frame()
+#             if debug_frame is not None:
+#                 try:
+#                     h_f, w_f = debug_frame.shape[:2]
+#                     if abs(w_f - self.stream_w) < 10 and abs(h_f - self.stream_h) < 10:
+#                         dx, dy = sx, sy
+#                     else:
+#                         dx = int(sx * self.scale_x)
+#                         dy = int(sy * self.scale_y)
+#                     ann = debug_frame.copy()
+#                     cv2.line(ann, (dx-50, dy), (dx+50, dy), (0, 0, 255), 3)
+#                     cv2.line(ann, (dx, dy-50), (dx, dy+50), (0, 0, 255), 3)
+#                     cv2.circle(ann, (dx, dy), 20, (0, 255, 255), 2)
+#                     cv2.circle(ann, (dx, dy), 5, (0, 0, 255), -1)
+#                     cv2.putText(ann, f"法术技能 ({dx},{dy})", (dx+30, dy-15),
+#                                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+#                     # 如果有怪物位置，也标注上
+#                     if monster_pos:
+#                         _mx = monster_pos[0] if abs(w_f - self.stream_w) < 10 else int(monster_pos[0] * self.scale_x)
+#                         _my = monster_pos[1] if abs(h_f - self.stream_h) < 10 else int(monster_pos[1] * self.scale_y)
+#                         cv2.circle(ann, (_mx, _my), 12, (0, 255, 0), 2)
+#                         cv2.putText(ann, f"怪物 ({_mx},{_my})", (_mx+15, _my-10),
+#                                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+#                     # 保存截图
+#                     import os as _os
+#                     from datetime import datetime as _dt
+#                     _dd = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "screenshots")
+#                     _os.makedirs(_dd, exist_ok=True)
+#                     _ts = _dt.now().strftime("%Y%m%d_%H%M%S")
+#                     _fp = _os.path.join(_dd, f"skill_click_{_ts}.png")
+#                     cv2.imwrite(_fp, ann)
+#                     self._log(f"  📸 法术技能位置截图: screenshots/skill_click_{_ts}.png")
+#                 except Exception as e:
+#                     self._log(f"  ⚠️ 截图失败: {e}")
+            self.tap(sx, sy)
+            time.sleep(0.8)
+            if monster_pos:
+                self.tap(monster_pos[0], monster_pos[1])
+                self._log(f"  🎯 人物点怪物 ({monster_pos[0]},{monster_pos[1]})")
+                time.sleep(0.3)
+                if not self.has_no_bb:
+                    self.tap(monster_pos[0], monster_pos[1])
+                    self._log(f"  🎯 宝宝点怪物 ({monster_pos[0]},{monster_pos[1]})")
+                time.sleep(0.5)
+            else:
+                self._log("  ⚠️ 无怪物位置，跳过点怪物")
+            self._tap_auto_and_wait()
+        elif mode_normal:
+            # 普通攻击后自动战斗: 点怪物 → 点自动
+            self._log("  ⚔ 普通攻击后自动战斗")
+            if monster_pos:
+                self.tap(monster_pos[0], monster_pos[1])
+                time.sleep(0.5)
+            self._tap_auto_and_wait()
+
+        elif mode_defend:
+            # 防御后自动战斗: 人物点防御 → 宝宝点怪物 → 点自动
+            self._log("  🛡 防御后自动战斗")
+            defend = self.find(frame, "PK-防御") if frame is not None else None
+            if defend:
+                self.tap(defend[0], defend[1])
+            else:
+                self.tap(700, 400)  # 防御按钮备选位置
+            time.sleep(0.8)
+            if monster_pos:
+                self.tap(monster_pos[0], monster_pos[1])
+                time.sleep(0.5)
+            self._tap_auto_and_wait()
+
+        elif mode_direct:
+            # 直接自动战斗: 人物点怪物 → 宝宝点怪物 → 点自动
+            self._log("  ⚡ 直接自动战斗")
+            if monster_pos:
+                self.tap(monster_pos[0], monster_pos[1])
+                time.sleep(0.3)
+                self.tap(monster_pos[0], monster_pos[1])
+            self._tap_auto_and_wait()
+
+        else:
+            self._try_escape()
+            self._wait_combat_end()
+
+
+    def _tap_auto_and_wait(self):
+        """直接点固定坐标(765,409)的自动按钮，然后等待战斗结束"""
+        time.sleep(0.5)
+        self._log("  🤖 点自动(765,409)")
+        self.tap(765, 409)
+        self._wait_combat_end()
+        # 战斗结束后取消自动战斗
+        for _ in range(5):
+            frame = self.get_frame()
+            if frame is None:
+                time.sleep(0.2)
+                continue
+            cancel = self.find(frame, "PK-取消自动战斗")
+            if cancel:
+                self.tap(cancel[0], cancel[1])
+                self._log("  🚫 已取消自动战斗")
+                break
+            time.sleep(0.3)
     def _save_debug_combat(self, frame, targets, display_name):
-        """保存战斗检测调试截图（PIL 支持中文标注）"""
         try:
             import os, time
             from PIL import Image, ImageDraw, ImageFont

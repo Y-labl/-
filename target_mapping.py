@@ -10,13 +10,13 @@ SCENE_MAPPING = {
         "jineng_targets": ["PK-召唤兽-地狱战神", "PK-召唤兽-地狱战神2",
                            "PK-召唤兽-蛟龙", "PK-召唤兽-蛟龙2",
                            "PK-召唤兽-蛟龙3", "PK-召唤兽-蛟龙4"],
-        "map_click": {"x1": 212, "y1": 21, "x2": 475, "y2": 415},
+        "map_click": {"x1": 120, "y1": 20, "x2": 380, "y2": 450},
         "support_type": "support",
     },
     "龙窟六层": {
         "tou_targets": ["PK-召唤兽-巡游天神", "PK-召唤兽-雨师"],
         "jineng_targets": ["PK-召唤兽-巡游天神", "PK-召唤兽-雨师"],
-        "map_click": {"x1": 212, "y1": 21, "x2": 475, "y2": 415},
+        "map_click": {"x1": 120, "y1": 20, "x2": 380, "y2": 450},
         "support_type": "support",
     },
     "凤巢三层": {

@@ -619,30 +619,30 @@ class AutoFightGUI:
         self._log(f"[{serial}] ⏹ 正在停止...")
 
     def _device_screenshot(self, serial):
-        """为指定设备截图（优先使用引擎画面800x448，回退ADB）"""
+        """为指定设备截图（始终使用ADB实时截图）"""
         import cv2
         save_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "screenshots")
         os.makedirs(save_dir, exist_ok=True)
         filename = f"device_{serial}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
         filepath = os.path.join(save_dir, filename)
         try:
-            engine = self.engines.get(serial)
-            frame = None
-            if engine and engine.client:
-                frame = engine.get_frame()
-            if frame is not None:
-                cv2.imwrite(filepath, frame)
-                h, w = frame.shape[:2]
-                self._log(f"[{serial}] 📸 截图已保存: {filepath} ({w}x{h})")
+            # ADB截全分辨率图，resize到800x448保存（与流坐标一致）
+            result = sp.run([ADB_EXE, "-s", serial, "exec-out", "screencap", "-p"],
+                           capture_output=True, timeout=10, creationflags=sp.CREATE_NO_WINDOW)
+            if result.returncode != 0 or len(result.stdout) < 100:
+                self._log(f"[{serial}] ❌ ADB截图失败")
+                return
+            import cv2 as _cv2
+            import numpy as _np
+            _raw = _cv2.imdecode(_np.frombuffer(result.stdout, dtype=_np.uint8), _cv2.IMREAD_COLOR)
+            if _raw is not None:
+                _small = _cv2.resize(_raw, (800, 480))
+                _cv2.imwrite(filepath, _small)
+                self._log(f"[{serial}] 📸 ADB截图已保存: {filepath} (800x480)")
             else:
-                result = sp.run([ADB_EXE, "-s", serial, "exec-out", "screencap", "-p"],
-                               capture_output=True, timeout=10, creationflags=sp.CREATE_NO_WINDOW)
-                if result.returncode != 0:
-                    self._log(f"[{serial}] ❌ 截图失败")
-                    return
                 with open(filepath, "wb") as f:
                     f.write(result.stdout)
-                self._log(f"[{serial}] 📸 截图已保存: {filepath}")
+                self._log(f"[{serial}] 📸 截图已保存: {filepath} (原始分辨率)")
         except Exception as e:
             self._log(f"[{serial}] ❌ 截图异常: {e}")
 
@@ -834,11 +834,13 @@ class AutoFightGUI:
 
         self.capture_enabled.set(cfg.get("capture_enabled", False))
         self.miaoshou_enabled.set(cfg.get("miaoshou_enabled", True))
-        self.skill_then_auto.set(cfg.get("skill_then_auto", False))
-        self.normal_then_auto.set(cfg.get("normal_then_auto", False))
-        self.defend_then_auto.set(cfg.get("defend_then_auto", False))
-        self.direct_auto.set(cfg.get("direct_auto", False))
-        self.escape_enabled.set(cfg.get("escape_enabled", True))
+        _mode = "escape"
+        if cfg.get("skill_then_auto"): _mode = "skill_then_auto"
+        elif cfg.get("normal_then_auto"): _mode = "normal_then_auto"
+        elif cfg.get("defend_then_auto"): _mode = "defend_then_auto"
+        elif cfg.get("direct_auto"): _mode = "direct_auto"
+        elif cfg.get("escape_enabled", True): _mode = "escape"
+        self.combat_mode.set(_mode)
         self.auto_path_enabled.set(cfg.get("auto_path_enabled", True))
         self.coord_enabled.set(cfg.get("coord_enabled", True))
 
