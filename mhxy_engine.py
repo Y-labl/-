@@ -916,14 +916,44 @@ class AutoFightEngine:
                 return
             time.sleep(0.3)
 
+    def _is_avatar_visible(self):
+        """Pixel-color scan of character avatar bar (from isShowRoleAvatar)."""
+        frame = self.get_frame()
+        if frame is None:
+            return True
+        h, w = frame.shape[:2]
+        scale_x = w / 800.0
+        scale_y = h / 448.0
+        y = max(0, min(int(1 * scale_y), h - 1))
+        x_start = max(0, int(700 * scale_x))
+        x_end = min(int(740 * scale_x), w)
+        if x_end - x_start < 15:
+            return True
+        total = 0
+        matched = 0
+        for x in range(x_start, x_end):
+            bgr = frame[y, x]
+            b, g, r = int(bgr[0]), int(bgr[1]), int(bgr[2])
+            total += 1
+            cwf1 = (55 < r < 85)  and (70 < g < 115) and (70 < b < 115)
+            cwf2 = (115 < r < 150) and (145 < g < 185) and (145 < b < 185)
+            dkf  = (45 < r < 115) and (75 < g < 140) and (85 < b < 180)
+            if cwf1 or cwf2 or dkf:
+                matched += 1
+        return matched > total * 0.85
+
+
     def _is_show_four_person(self):
-        """????????HP?MP??????????"""
+        """四小人检测：HP/MP + 角色头像"""
         frame = self.get_frame()
         if frame is None:
             return False
         hp, mp, bb, no_bb = self.detect_hp_mp_bb(frame)
-        # HP?MP???0 ? ????????????
-        return hp < 1 and mp < 1
+        if not (hp < 1 and mp < 1):
+            return False
+        if self._is_avatar_visible():
+            return False
+        return True
 
     def _handle_four_person(self):
         """四小人检测：截取区域 -> 图灵云API识别 -> 点击坐标"""
