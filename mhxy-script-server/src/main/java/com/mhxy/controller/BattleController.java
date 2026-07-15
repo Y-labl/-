@@ -248,7 +248,7 @@ public class BattleController {
             return ApiResponse.fail("设备不存在或未连接");
         }
 
-        if (device.getStatus() == null || device.getStatus() != 1) {
+        if (device.getStatus() == null || device.getStatus() == 0) {
             return ApiResponse.fail("设备离线，请先连接设备");
         }
 

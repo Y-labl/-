@@ -37,6 +37,9 @@ public class OcrUtil {
     @Value("${script.tesseract.language:eng}")
     private String language;
 
+    @Value("${script.tesseract.chinese-whitelist:}")
+    private String chineseWhitelist;
+
     private final ReentrantLock lock = new ReentrantLock();
 
     private String effectiveDataPath;
@@ -166,104 +169,88 @@ public class OcrUtil {
 
 
     /**
-     * Resolve the tessdata directory path from the configured datapath.
-     * Handles cases where datapath IS the tessdata dir, or is its parent.
+     * Resolve the tessdata directory path (the directory that DIRECTLY contains .traineddata files).
+     *
+     * Tesseract native behavior: if the datapath string ends with "tessdata",
+     * it uses the path as-is; otherwise it appends "tessdata/".
+     * So returning the directory itself (named "tessdata") is correct and simplest.
      */
     private String resolveTessdataPath(String configuredPath) {
         if (configuredPath != null && !configuredPath.isEmpty()) {
-            java.io.File f = new java.io.File(configuredPath);
-            if (f.exists() && f.isDirectory()) {
-                java.io.File testFile = new java.io.File(f, "chi_sim.traineddata");
-                if (testFile.exists()) {
-                    log.info("Using configured datapath directly: {}", f.getAbsolutePath());
-                    return f.getAbsolutePath().replace("\\", "/");
-                }
-                java.io.File subDir = new java.io.File(f, "tessdata");
-                testFile = new java.io.File(subDir, "chi_sim.traineddata");
-                if (testFile.exists()) {
-                    log.info("Using configured datapath + tessdata/: {}", subDir.getAbsolutePath());
-                    return subDir.getAbsolutePath().replace("\\", "/");
-                }
+            File f = new File(configuredPath);
+            // Case 1: .traineddata files directly in the configured path
+            if (new File(f, "chi_sim.traineddata").exists()) {
+                String path = f.getAbsolutePath().replace("\\", "/");
+                log.info("Tessdata dir (direct): {}", path);
+                return path;
+            }
+            // Case 2: .traineddata files in {configuredPath}/tessdata/
+            File sub = new File(f, "tessdata");
+            if (new File(sub, "chi_sim.traineddata").exists()) {
+                String path = sub.getAbsolutePath().replace("\\", "/");
+                log.info("Tessdata dir (subdir): {}", path);
+                return path;
             }
         }
-        String auto = autoResolveTessdataDir();
-        java.io.File autoTess = new java.io.File(auto, "tessdata");
-        if (new java.io.File(autoTess, "chi_sim.traineddata").exists()) {
-            log.info("Auto-resolved tessdata/: {}", autoTess.getAbsolutePath());
-            return autoTess.getAbsolutePath().replace("\\", "/");
-        }
-        java.io.File autoDir = new java.io.File(auto);
-        if (new java.io.File(autoDir, "chi_sim.traineddata").exists()) {
-            log.info("Auto-resolved direct: {}", autoDir.getAbsolutePath());
-            return autoDir.getAbsolutePath().replace("\\", "/");
-        }
-        log.warn("Cannot find tessdata, using fallback");
-        return new java.io.File(auto, "tessdata").getAbsolutePath().replace("\\", "/");
+        return autoResolveTessdataDir();
     }
 
-    /** 多策略自动解析包含 tessdata/ 子目录的路径 */
+    /** Multi-strategy auto-detection of the tessdata directory */
     private String autoResolveTessdataDir() {
-        // 策略1: classpath 向上查找
+        // Strategy 1: D:/tessdata/ (standard deployment)
+        if (new File("D:/tessdata/chi_sim.traineddata").exists()) {
+            log.info("Auto-resolved tessdata: D:/tessdata");
+            return "D:/tessdata";
+        }
+        // Strategy 2: {user.dir}/tessdata/
+        String userDir = System.getProperty("user.dir");
+        if (userDir != null) {
+            File f = new File(userDir, "tessdata");
+            if (new File(f, "chi_sim.traineddata").exists()) {
+                String path = f.getAbsolutePath().replace("\\", "/");
+                log.info("Auto-resolved tessdata via user.dir: {}", path);
+                return path;
+            }
+        }
+        // Strategy 3: classpath walk — find any ancestor containing tessdata/
         try {
             java.net.URL classUrl = OcrUtil.class.getProtectionDomain().getCodeSource().getLocation();
-            File classDir = new File(classUrl.toURI());
-            File root = classDir;
-            while (root != null && !"mhxy-script-server".equals(root.getName())) {
-                if (new File(new File(root, "tessdata"), "chi_sim.traineddata").exists()) {
-                    log.info("OCR resolved tessdata via classpath walk: {}", root.getAbsolutePath());
-                    return root.getAbsolutePath();
+            File search = new File(classUrl.toURI());
+            while (search != null) {
+                File sub = new File(search, "tessdata");
+                if (new File(sub, "chi_sim.traineddata").exists()) {
+                    String path = sub.getAbsolutePath().replace("\\", "/");
+                    log.info("Auto-resolved tessdata via classpath: {}", path);
+                    return path;
                 }
-                root = root.getParentFile();
-            }
-            if (root != null) {
-                File f = new File(new File(root, "tessdata"), "chi_sim.traineddata");
-                if (f.exists()) {
-                    log.info("OCR resolved tessdata via project root: {}", root.getAbsolutePath());
-                    return root.getAbsolutePath();
-                }
+                search = search.getParentFile();
             }
         } catch (Exception e) {
             log.debug("Classpath resolution failed: {}", e.getMessage());
         }
-        // 策略2: user.dir
-        String userDir = System.getProperty("user.dir");
-        if (userDir != null) {
-            File f = new File(new File(userDir, "tessdata"), "chi_sim.traineddata");
-            if (f.exists()) {
-                log.info("OCR resolved tessdata via user.dir: {}", userDir);
-                return userDir;
-            }
-            // 也检查父目录
-            File parent = new File(userDir).getParentFile();
-            if (parent != null) {
-                f = new File(new File(parent, "tessdata"), "chi_sim.traineddata");
-                if (f.exists()) {
-                    log.info("OCR resolved tessdata via user.dir parent: {}", parent.getAbsolutePath());
-                    return parent.getAbsolutePath();
-                }
-            }
-        }
-        // 策略3: 硬编码路径
-        String[] hard = {"D:/Program Files/mhxy-project/mhxy-script-server", "D:/mhxy-script-server"};
+        // Strategy 4: hardcoded fallback
+        String[] hard = {"D:/tessdata",
+                "D:/Program Files/mhxy-project/mhxy-script-server/tessdata",
+                "D:/mhxy-script-server/tessdata"};
         for (String h : hard) {
-            if (new File(new File(h, "tessdata"), "chi_sim.traineddata").exists()) {
-                log.info("OCR resolved tessdata via hardcoded path: {}", h);
+            if (new File(h, "chi_sim.traineddata").exists()) {
+                log.info("Auto-resolved tessdata via hardcoded: {}", h);
                 return h;
             }
         }
-        log.warn("Cannot find tessdata directory, using user.dir as fallback");
-        return System.getProperty("user.dir");
+        log.warn("Cannot find tessdata directory, using D:/tessdata as fallback");
+        return "D:/tessdata";
     }
 
     /** 检查训练数据文件是否存在，返回缺失的语言列表 */
     private List<String> getMissingLanguages(String datapath, String lang) {
         List<String> missing = new ArrayList<>();
         if (lang == null || lang.isEmpty()) return missing;
-        // Try: 1) datapath directly, 2) datapath/tessdata/, 3) parent dir
+        // datapath is the directory that directly contains .traineddata files;
+        // fall back to datapath/tessdata/ for safety
         File[] candidates = {
             new File(datapath),
-            new File(datapath, "tessdata"),
-            new File(new File(datapath).getParentFile(), "tessdata")
+            new File(datapath, "tessdata")
         };
         File dir = null;
         for (File c : candidates) {
@@ -300,23 +287,48 @@ public class OcrUtil {
 
     @SuppressWarnings("deprecation")
     public String recognizeDigits(BufferedImage image) {
+        if (image == null) return "";
+        lock.lock();
         try {
+            // 数字识别用 eng 更快，避免加载 chi_sim 模型
+            tesseract.setLanguage("eng");
+            tesseract.setPageSegMode(7);
             tesseract.setTessVariable("tessedit_char_whitelist", DIGIT_WHITELIST);
             return tesseract.doOCR(image).trim();
         } catch (TesseractException e) {
             log.error("Digit recognition failed: {}", e.getMessage());
             return "";
+        } catch (Error e) {
+            log.error("Tesseract native crash in recognizeDigits, reinitializing: {}", e.getMessage());
+            reinit();
+            return "";
+        } finally {
+            // 恢复默认语言和白名单
+            tesseract.setLanguage(language);
+            tesseract.setTessVariable("tessedit_char_whitelist", "");
+            lock.unlock();
         }
     }
 
     @SuppressWarnings("deprecation")
     public String recognizeAlphanum(BufferedImage image) {
+        if (image == null) return "";
+        lock.lock();
         try {
+            tesseract.setLanguage(language);
+            tesseract.setPageSegMode(7);
             tesseract.setTessVariable("tessedit_char_whitelist", ALPHANUM_WHITELIST);
             return tesseract.doOCR(image).trim();
         } catch (TesseractException e) {
             log.error("Alphanum recognition failed: {}", e.getMessage());
             return "";
+        } catch (Error e) {
+            log.error("Tesseract native crash in recognizeAlphanum, reinitializing: {}", e.getMessage());
+            reinit();
+            return "";
+        } finally {
+            tesseract.setTessVariable("tessedit_char_whitelist", "");
+            lock.unlock();
         }
     }
 
@@ -364,8 +376,8 @@ public class OcrUtil {
             log.warn(msg);
             return msg;
         }
-        // 放大 2 倍并做灰度/对比度增强，提升小字体识别率
-        BufferedImage scaled = scaleForOcr(image, 2.0);
+        // 放大 4 倍并做灰度/对比度/锐化增强，提升小字体识别率
+        BufferedImage scaled = scaleForOcr(image, 4.0);
         BufferedImage enhanced = enhanceForOcr(scaled);
         BufferedImage safe = preprocess(enhanced);
         if (safe == null) return "";
@@ -376,9 +388,12 @@ public class OcrUtil {
         try {
             // 仅使用 chi_sim，避免 eng 对中文的干扰
             tesseract.setLanguage("chi_sim");
-            // 对整块文字区域进行识别，比单行模式更适合地名+坐标的多行结构
-            tesseract.setPageSegMode(6);
-            tesseract.setTessVariable("tessedit_char_whitelist", "");
+            // PSM 7: 单行模式。比 PSM 6(文本块)更能利用"小_天"上下文区分形近字(西↔6)，且不逐字切出空格
+            tesseract.setPageSegMode(7);
+            // 场景名+数字白名单：限制识别字符集，消除形近字误判（如 西→本）
+            String wl = (chineseWhitelist != null && !chineseWhitelist.isEmpty())
+                    ? chineseWhitelist : "";
+            tesseract.setTessVariable("tessedit_char_whitelist", wl);
             String text = tesseract.doOCR(safe).trim();
             // 恢复默认语言和页面模式
             tesseract.setLanguage(language);
@@ -403,7 +418,7 @@ public class OcrUtil {
         }
     }
 
-    /** 灰度化并增强对比度，让文字更清晰 */
+    /** 灰度化并增强对比度/锐化，让文字更清晰 */
     private BufferedImage enhanceForOcr(BufferedImage image) {
         if (image == null) return null;
         BufferedImage gray = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_BYTE_GRAY);
@@ -411,11 +426,22 @@ public class OcrUtil {
         g.drawImage(image, 0, 0, null);
         g.dispose();
 
-        // 简单对比度增强：1.5 倍对比度，10 亮度偏移
-        RescaleOp rescale = new RescaleOp(1.5f, 10f, null);
+        // 对比度增强：1.6 倍对比度，5 亮度偏移
+        RescaleOp rescale = new RescaleOp(1.6f, 5f, null);
         BufferedImage enhanced = rescale.filter(gray, null);
-        return enhanced;
+
+        // 锐化卷积核：突出文字笔画边缘，帮助区分形近字（西↔6）
+        float[] kernel = {
+            0, -1,  0,
+           -1,  5, -1,
+            0, -1,  0
+        };
+        java.awt.image.Kernel sharpenKernel = new java.awt.image.Kernel(3, 3, kernel);
+        java.awt.image.ConvolveOp convolve = new java.awt.image.ConvolveOp(
+                sharpenKernel, java.awt.image.ConvolveOp.EDGE_NO_OP, null);
+        return convolve.filter(enhanced, null);
     }
+
 
     /** 保存调试图片，便于排查识别问题 */
     private void saveDebugImage(BufferedImage image, String fileName) {

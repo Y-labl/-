@@ -23,7 +23,6 @@ mybatis-plus:
   type-aliases-package: com.mhxy.entity
   configuration:
     map-underscore-to-camel-case: true
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
 
 script:
   screenshot-path: ${user.dir}/screenshots
@@ -32,14 +31,24 @@ script:
   screenshot-timeout: 5000
   click-interval: 300
   tesseract:
-    datapath: C:/tessdata
+    datapath: D:/tessdata
     language: chi_sim+eng
+    # 中文场景名白名单：只识别这些字符，大幅提升准确率和速度
+    chinese-whitelist: "0123456789小西天长按城大唐国境五庄观花果山傲来朱紫宝象乌鸡车迟东海湾寿村化生寺方寸女儿雷音龙窟一二三四层外江南野建邺北俱芦洲麒麟子母河解阳凉碗凤巢底神迹须弥界银华镜丝绸之路无名鬼域打开图关闭战斗法术御噬炎魔金身僧妙手空技能好友道具点坐标模板官府普陀禁钓岛日快乐"
   ocr:
     preprocess-scale: 0.7
     timeout-ms: 500
 
 logging:
   level:
-    com.mhxy: DEBUG
+    com.mhxy: INFO
+    com.mhxy.mapper: WARN
+    com.baomidou: WARN
+    org.apache.ibatis: WARN
+    org.mybatis: WARN
+    org.springframework.jdbc: WARN
+    com.zaxxer.hikari: WARN
+    com.mysql.cj: WARN
+    com.mhxy.script: INFO
   pattern:
     console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"

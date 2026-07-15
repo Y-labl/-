@@ -54,6 +54,11 @@ public class ImageMatchUtil {
         if (screenMat.empty() || templateMat.empty()) {
             return Optional.empty();
         }
+        if (screenMat.cols() < templateMat.cols() || screenMat.rows() < templateMat.rows()) {
+            log.warn("模板尺寸({}x{})大于目标图({}x{})，无法进行模板匹配",
+                    templateMat.cols(), templateMat.rows(), screenMat.cols(), screenMat.rows());
+            return Optional.empty();
+        }
 
         // 执行模板匹配
         Mat result = new Mat();
@@ -95,6 +100,11 @@ public class ImageMatchUtil {
     public List<Point> findAllTemplates(Mat screenMat, Mat templateMat, double threshold) {
         List<Point> matches = new ArrayList<>();
         if (screenMat.empty() || templateMat.empty()) {
+            return matches;
+        }
+        if (screenMat.cols() < templateMat.cols() || screenMat.rows() < templateMat.rows()) {
+            log.warn("模板尺寸({}x{})大于目标图({}x{})，无法进行模板匹配",
+                    templateMat.cols(), templateMat.rows(), screenMat.cols(), screenMat.rows());
             return matches;
         }
 
@@ -145,6 +155,11 @@ public class ImageMatchUtil {
         if (screenMat.empty() || templateMat.empty()) {
             return 0;
         }
+        if (screenMat.cols() < templateMat.cols() || screenMat.rows() < templateMat.rows()) {
+            log.warn("模板尺寸({}x{})大于目标图({}x{})，无法进行模板匹配",
+                    templateMat.cols(), templateMat.rows(), screenMat.cols(), screenMat.rows());
+            return 0;
+        }
 
         Mat result = new Mat();
         Imgproc.matchTemplate(screenMat, templateMat, result, Imgproc.TM_CCOEFF_NORMED);
@@ -193,7 +208,7 @@ public class ImageMatchUtil {
     /**
      * BufferedImage 转换为 OpenCV Mat
      */
-    private Mat bufferedImageToMat(BufferedImage image) {
+    public Mat bufferedImageToMat(BufferedImage image) {
         if (image == null) {
             return new Mat();
         }

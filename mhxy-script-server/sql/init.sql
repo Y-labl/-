@@ -209,7 +209,7 @@ CREATE TABLE IF NOT EXISTS steal_card_config (
     id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '配置ID',
     device_id BIGINT NOT NULL UNIQUE COMMENT '设备ID(每个设备独立配置)',
     config_name VARCHAR(100) DEFAULT '偷卡配置' COMMENT '配置名称',
-    target_monsters VARCHAR(500) DEFAULT '噬天虎,炎魔神,金身僧' COMMENT '目标怪物(逗号分隔)',
+    target_monsters VARCHAR(500) DEFAULT '噬天虎,炎魔神,金饶僧' COMMENT '目标怪物(逗号分隔)',
     auto_battle TINYINT DEFAULT 1 COMMENT '自动战斗: 0否 1是',
     auto_recovery TINYINT DEFAULT 1 COMMENT '自动恢复: 0否 1是',
     auto_revival TINYINT DEFAULT 1 COMMENT '自动复活: 0否 1是',

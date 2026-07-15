@@ -2,15 +2,21 @@ package com.mhxy.service;
 
 import com.mhxy.entity.Device;
 import com.mhxy.entity.StealCardConfig;
-import com.mhxy.entity.TemplateImage;
-import com.mhxy.mapper.TemplateImageMapper;
 import com.mhxy.util.ImageMatchUtil;
 import lombok.extern.slf4j.Slf4j;
+import org.opencv.core.Mat;
+import org.opencv.core.MatOfByte;
 import org.opencv.core.Point;
+import org.opencv.imgcodecs.Imgcodecs;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import jakarta.annotation.PostConstruct;
+import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.nio.file.Files;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -35,17 +41,59 @@ public class StealCardService {
     private StealCardConfigService configService;
 
     @Autowired
-    private TemplateImageMapper templateMapper;
-
-    @Autowired
     private ImageMatchUtil imageMatch;
 
     /** 每个设备一个运行状态标记 */
     private final Map<Long, Boolean> runningMap = new ConcurrentHashMap<>();
 
     private static final List<String> DEFAULT_TARGET_MONSTERS = Arrays.asList(
-        "噬天虎", "炎魔神", "金身僧"
+        "噬天虎", "炎魔神", "金饶僧"
     );
+
+    // ======== 模板缓存（内存） ========
+    private static class CachedTemplate {
+        final Mat mat;
+        final int width;
+        final int height;
+        CachedTemplate(Mat mat, int w, int h) { this.mat = mat; this.width = w; this.height = h; }
+    }
+    private final Map<String, CachedTemplate> templateCache = new ConcurrentHashMap<>();
+
+    @PostConstruct
+    public void initTemplateCache() {
+        try {
+            File templateDir = new File("templates");
+            if (!templateDir.exists() || !templateDir.isDirectory()) {
+                log.warn("Template directory not found: {}", templateDir.getAbsolutePath());
+                return;
+            }
+            File[] files = templateDir.listFiles((dir, name) ->
+                name.endsWith(".bmp") || name.endsWith(".png") || name.endsWith(".jpg"));
+            if (files == null) return;
+            for (File f : files) {
+                String name = f.getName();
+                int dot = name.lastIndexOf('.');
+                String key = dot > 0 ? name.substring(0, dot) : name;
+                try {
+                    byte[] bytes = Files.readAllBytes(f.toPath());
+                    Mat mat = Imgcodecs.imdecode(new MatOfByte(bytes), Imgcodecs.IMREAD_GRAYSCALE);
+                    if (!mat.empty()) {
+                        templateCache.put(key, new CachedTemplate(mat, mat.cols(), mat.rows()));
+                        log.info("Cached template: {} ({}x{})", key, mat.cols(), mat.rows());
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to cache template {}: {}", key, e.getMessage());
+                }
+            }
+            log.info("Template cache loaded: {} templates", templateCache.size());
+        } catch (Exception e) {
+            log.error("Template cache init failed: {}", e.getMessage());
+        }
+    }
+
+    private CachedTemplate getCachedTemplate(String name) {
+        return templateCache.get(name);
+    }
 
     /** 按 deviceId 启动偷卡任务（独立运行） */
     public synchronized boolean start(Long deviceId) {
@@ -143,24 +191,19 @@ public class StealCardService {
                 }
                 sleep(200);
             } catch (Exception e) {
-                log.warn("Loop iteration error on device {}: {}", deviceId, e.getMessage());
-                sleep(1000);
+                log.error("Loop error on device {}: {}", deviceId, e.getMessage(), e);
+                sleep(5000);
             }
         }
     }
 
     private List<String> parseMonsters(StealCardConfig cfg) {
         if (cfg != null && cfg.getTargetMonsters() != null && !cfg.getTargetMonsters().isEmpty()) {
-            String[] arr = cfg.getTargetMonsters().split(",");
-            List<String> list = new ArrayList<>();
-            for (String s : arr) {
-                String t = s.trim();
-                if (!t.isEmpty()) list.add(t);
+            String raw = cfg.getTargetMonsters();
+            if (raw.contains(",")) {
+                return Arrays.asList(raw.split(","));
             }
-            if (!list.isEmpty()) {
-                log.info("StealCard using monsters: {}", list);
-                return list;
-            }
+            return Collections.singletonList(raw);
         }
         return new ArrayList<>(DEFAULT_TARGET_MONSTERS);
     }
@@ -184,11 +227,17 @@ public class StealCardService {
         return def;
     }
 
+    /** 打开地图 → 随机点击地图区域(模拟走路遇怪) → 关闭地图 */
     private void navigateToXixitian(String serial) {
         clickTemplate(serial, "打开地图");
         sleep(800);
-        clickTemplate(serial, "小西天地图");
-        sleep(1500);
+        // 在地图上随机点击 3~5 次，让角色自动寻路走动
+        int clickCount = 3 + (int)(Math.random() * 3);
+        for (int i = 0; i < clickCount; i++) {
+            randomWalk(serial, new int[][]{{80, 180}, {980, 2200}});
+            sleep(300);
+        }
+        sleep(500);
         clickTemplate(serial, "关闭地图");
         sleep(500);
     }
@@ -204,12 +253,12 @@ public class StealCardService {
         if (screenshot == null) return false;
         BufferedImage screen = bytesToImage(screenshot);
         if (screen == null) return false;
-        TemplateImage battleTemplate = findTemplate("战斗场景");
-        if (battleTemplate != null) {
-            Optional<Point> found = imageMatch.findTemplate(screen, battleTemplate.getTemplatePath());
-            if (found.isPresent()) return true;
-        }
-        return false;
+        CachedTemplate tpl = getCachedTemplate("战斗场景");
+        if (tpl == null) return false;
+        Mat screenMat = imageMatch.bufferedImageToMat(screen);
+        Optional<Point> found = imageMatch.findTemplate(screenMat, tpl.mat, 0.75);
+        screenMat.release();
+        return found.isPresent();
     }
 
     private void executeBattleSteal(String serial, Long deviceId, List<String> monsters, int attempts) {
@@ -237,47 +286,37 @@ public class StealCardService {
         }
     }
 
+    /** 截图 + 模板匹配 + 点击（使用内存缓存） */
     private boolean clickTemplate(String serial, String templateName) {
         byte[] screenshot = scannerService.captureAdbScreenshot(serial);
         if (screenshot == null) return false;
         BufferedImage screen = bytesToImage(screenshot);
         if (screen == null) return false;
-        TemplateImage tpl = findTemplate(templateName);
+        Mat screenMat = imageMatch.bufferedImageToMat(screen);
+        boolean result = clickTemplateOnScreen(serial, templateName, screenMat);
+        screenMat.release();
+        return result;
+    }
+
+    /** 在已有 Mat 上匹配模板并点击（不重复截图，不查 DB，不读磁盘） */
+    private boolean clickTemplateOnScreen(String serial, String templateName, Mat screenMat) {
+        CachedTemplate tpl = getCachedTemplate(templateName);
         if (tpl == null) {
-            log.debug("Template not found: {}", templateName);
+            log.debug("Template not cached: {}", templateName);
             return false;
         }
-        Optional<Point> found = imageMatch.findTemplate(screen, tpl.getTemplatePath());
+        Optional<Point> found = imageMatch.findTemplate(screenMat, tpl.mat, 0.75);
         if (found.isEmpty()) return false;
-        BufferedImage tplImg = loadTemplateImage(tpl);
-        int tw = tplImg != null ? tplImg.getWidth() : 0;
-        int th = tplImg != null ? tplImg.getHeight() : 0;
-        int cx = (int) found.get().x + tw / 2;
-        int cy = (int) found.get().y + th / 2;
+        int cx = (int) found.get().x;
+        int cy = (int) found.get().y;
         scannerService.adbTap(serial, cx, cy);
         log.debug("Clicked template '{}' at ({}, {})", templateName, cx, cy);
         return true;
     }
 
-    private TemplateImage findTemplate(String name) {
-        List<TemplateImage> list = templateMapper.selectList(
-            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<TemplateImage>()
-                .eq(TemplateImage::getTemplateName, name));
-        return list.isEmpty() ? null : list.get(0);
-    }
-
-    private BufferedImage loadTemplateImage(TemplateImage tpl) {
-        try {
-            byte[] bytes = java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(tpl.getTemplatePath()));
-            return bytesToImage(bytes);
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
     private BufferedImage bytesToImage(byte[] bytes) {
         try {
-            return javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(bytes));
+            return ImageIO.read(new ByteArrayInputStream(bytes));
         } catch (Exception e) {
             return null;
         }

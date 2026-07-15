@@ -1,0 +1,178 @@
+﻿*** Begin Patch
+*** Update File: src/main/java/com/mhxy/service/StealCardService.java
+@@ package com.mhxy.service;
+ import com.mhxy.entity.Device;
+ import com.mhxy.entity.StealCardConfig;
+-import com.mhxy.entity.TemplateImage;
+-import com.mhxy.mapper.TemplateImageMapper;
+ import com.mhxy.util.ImageMatchUtil;
+ import lombok.extern.slf4j.Slf4j;
++import org.opencv.core.Mat;
+ import org.opencv.core.Point;
++import org.opencv.imgcodecs.Imgcodecs;
++import org.opencv.core.MatOfByte;
+ import org.springframework.beans.factory.annotation.Autowired;
+ import org.springframework.stereotype.Service;
+ 
+ import java.awt.image.BufferedImage;
++import java.io.File;
++import java.nio.file.Files;
++import java.nio.file.Paths;
+ import java.util.*;
+ import java.util.concurrent.ConcurrentHashMap;
++import javax.annotation.PostConstruct;
+@@ public class StealCardService {
+     @Autowired
+     private StealCardConfigService configService;
+ 
+-    @Autowired
+-    private TemplateImageMapper templateMapper;
+-
+     @Autowired
+     private ImageMatchUtil imageMatch;
+@@     private final Map<Long, Boolean> runningMap = new ConcurrentHashMap<>();
+     private static final List<String> DEFAULT_TARGET_MONSTERS = Arrays.asList(
+         "噬天虎", "炎魔神", "金身僧"
+     );
+ 
++    // ======== 模板缓存 ========
++    /** 模板名 -> (Mat, width, height) */
++    private static class CachedTemplate {
++        final Mat mat;
++        final int width;
++        final int height;
++        CachedTemplate(Mat mat, int w, int h) { this.mat = mat; this.width = w; this.height = h; }
++    }
++    private final Map<String, CachedTemplate> templateCache = new ConcurrentHashMap<>();
++
++    @PostConstruct
++    public void initTemplateCache() {
++        try {
++            // 扫描 templates 目录，按文件名（不含扩展名）缓存
++            File templateDir = new File("templates");
++            if (!templateDir.exists() || !templateDir.isDirectory()) {
++                log.warn("Template directory not found: {}", templateDir.getAbsolutePath());
++                return;
++            }
++            File[] files = templateDir.listFiles((dir, name) ->
++                name.endsWith(".bmp") || name.endsWith(".png") || name.endsWith(".jpg"));
++            if (files == null) return;
++            for (File f : files) {
++                String name = f.getName();
++                int dot = name.lastIndexOf('.');
++                String key = dot > 0 ? name.substring(0, dot) : name;
++                try {
++                    byte[] bytes = Files.readAllBytes(f.toPath());
++                    Mat mat = Imgcodecs.imdecode(new MatOfByte(bytes), Imgcodecs.IMREAD_GRAYSCALE);
++                    if (!mat.empty()) {
++                        templateCache.put(key, new CachedTemplate(mat, mat.cols(), mat.rows()));
++                        log.info("Cached template: {} ({}x{})", key, mat.cols(), mat.rows());
++                    }
++                } catch (Exception e) {
++                    log.warn("Failed to cache template {}: {}", key, e.getMessage());
++                }
++            }
++            log.info("Template cache loaded: {} templates", templateCache.size());
++        } catch (Exception e) {
++            log.error("Template cache init failed: {}", e.getMessage());
++        }
++    }
++
++    private CachedTemplate getCachedTemplate(String name) {
++        return templateCache.get(name);
++    }
++
+@@     private void navigateToXixitian(String serial) {
+-        clickTemplate(serial, "打开地图");
++        byte[] screenshot = scannerService.captureAdbScreenshot(serial);
++        if (screenshot == null) return;
++        BufferedImage screen = bytesToImage(screenshot);
++        if (screen == null) return;
++
++        // 一次截图匹配三个模板
++        clickTemplateOnScreen(serial, "打开地图", screen);
+         sleep(800);
+-        clickTemplate(serial, "小西天地图");
++        clickTemplateOnScreen(serial, "小西天地图", screen);
+         sleep(1500);
+-        clickTemplate(serial, "关闭地图");
++        clickTemplateOnScreen(serial, "关闭地图", screen);
+         sleep(500);
+     }
+@@     private boolean detectBattle(String serial) {
+-        byte[] screenshot = scannerService.captureAdbScreenshot(serial);
+-        if (screenshot == null) return false;
+-        BufferedImage screen = bytesToImage(screenshot);
+-        if (screen == null) return false;
+-        TemplateImage battleTemplate = findTemplate("战斗场景");
+-        if (battleTemplate != null) {
+-            Optional<Point> found = imageMatch.findTemplate(screen, battleTemplate.getTemplatePath());
+-            if (found.isPresent()) return true;
+-        }
+-        return false;
++        byte[] screenshot = scannerService.captureAdbScreenshot(serial);
++        if (screenshot == null) return false;
++        BufferedImage screen = bytesToImage(screenshot);
++        if (screen == null) return false;
++        CachedTemplate tpl = getCachedTemplate("战斗场景");
++        if (tpl == null) return false;
++        Optional<Point> found = imageMatch.findTemplate(
++            imageMatch.bufferedImageToMatPublic(screen), tpl.mat, 0.75);
++        return found.isPresent();
+     }
+@@     private boolean clickTemplate(String serial, String templateName) {
+         byte[] screenshot = scannerService.captureAdbScreenshot(serial);
+         if (screenshot == null) return false;
+         BufferedImage screen = bytesToImage(screenshot);
+         if (screen == null) return false;
+-        TemplateImage tpl = findTemplate(templateName);
+-        if (tpl == null) {
+-            log.debug("Template not found: {}", templateName);
+-            return false;
+-        }
+-        Optional<Point> found = imageMatch.findTemplate(screen, tpl.getTemplatePath());
+-        if (found.isEmpty()) return false;
+-        BufferedImage tplImg = loadTemplateImage(tpl);
+-        int tw = tplImg != null ? tplImg.getWidth() : 0;
+-        int th = tplImg != null ? tplImg.getHeight() : 0;
+-        int cx = (int) found.get().x + tw / 2;
+-        int cy = (int) found.get().y + th / 2;
+-        scannerService.adbTap(serial, cx, cy);
+-        log.debug("Clicked template '{}' at ({}, {})", templateName, cx, cy);
+-        return true;
++        return clickTemplateOnScreen(serial, templateName, screen);
+     }
+ 
+-    private TemplateImage findTemplate(String name) {
+-        List<TemplateImage> list = templateMapper.selectList(
+-            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<TemplateImage>()
+-                .eq(TemplateImage::getTemplateName, name));
+-        return list.isEmpty() ? null : list.get(0);
++    /** 在已有截图上匹配并点击模板（复用截图，避免重复ADB通信） */
++    private boolean clickTemplateOnScreen(String serial, String templateName, BufferedImage screen) {
++        CachedTemplate tpl = getCachedTemplate(templateName);
++        if (tpl == null) {
++            log.debug("Template not cached: {}", templateName);
++            return false;
++        }
++        Optional<Point> found = imageMatch.findTemplate(
++            imageMatch.bufferedImageToMatPublic(screen), tpl.mat, 0.75);
++        if (found.isEmpty()) return false;
++        int cx = (int) found.get().x;
++        int cy = (int) found.get().y;
++        scannerService.adbTap(serial, cx, cy);
++        log.debug("Clicked template '{}' at ({}, {})", templateName, cx, cy);
++        return true;
+     }
+ 
+-    private BufferedImage loadTemplateImage(TemplateImage tpl) {
+-        try {
+-            byte[] bytes = java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(tpl.getTemplatePath()));
+-            return bytesToImage(bytes);
+-        } catch (Exception e) {
+-            return null;
+-        }
+-    }
+-
+     private BufferedImage bytesToImage(byte[] bytes) {
+*** End Patch

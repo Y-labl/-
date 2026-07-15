@@ -50,7 +50,7 @@ public class StealCardController {
             Map<String, Object> empty = new LinkedHashMap<>();
             empty.put("deviceId", deviceId);
             empty.put("configName", "偷卡配置");
-            empty.put("targetMonsters", "噬天虎,炎魔神,金身僧");
+            empty.put("targetMonsters", "噬天虎,炎魔神,金饶僧");
             empty.put("battleStrategy", defaultStrategy());
             empty.put("autoBattle", 1);
             empty.put("autoRecovery", 1);
@@ -107,7 +107,7 @@ public class StealCardController {
         if (device == null || device.getDeviceId() == null) {
             return ApiResponse.fail("设备不存在或未连接");
         }
-        if (device.getStatus() == null || device.getStatus() != 1) {
+        if (device.getStatus() == null || device.getStatus() == 0) {
             return ApiResponse.fail("设备离线，请先连接设备");
         }
         if (stealCardService.isRunning(deviceId)) {
