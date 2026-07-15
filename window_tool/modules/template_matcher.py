@@ -34,6 +34,7 @@ class TemplateMatcher:
         self.max_results = max_results
         self._last_image = None
         self._last_template = None
+        self._max_score = 0.0  # 最后一次匹配的最高分（用于诊断）
 
     def match(self, image: Image.Image, template: Image.Image):
         """在 image 中查找 template，返回置信度降序的匹配列表"""
@@ -46,7 +47,7 @@ class TemplateMatcher:
         th, tw = tpl.shape
 
         if th > ih or tw > iw or th < 4 or tw < 4:
-            return []
+            return [], 0.0
 
         results = self._ncc_match(src, tpl)
         elapsed = time.time() - t0
@@ -75,6 +76,7 @@ class TemplateMatcher:
         # 步长自适应 (小模板细步长, 大模板粗步长)
         step = max(1, min(tw, th) // 4)
         candidates = []
+        self._max_score = 0.0
 
         for y in range(0, ih - th + 1, step):
             for x in range(0, iw - tw + 1, step):
@@ -92,6 +94,9 @@ class TemplateMatcher:
                         score = 0.0
                     else:
                         score = dot / (tpl_norm_len * patch_norm_len)
+
+                if score > self._max_score:
+                    self._max_score = score
 
                 if score >= self.threshold:
                     candidates.append((x, y, score))

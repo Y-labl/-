@@ -2552,11 +2552,13 @@ class MainWindow(QMainWindow):
                 img = d.screenshot()
             except Exception as e:
                 self._log(f"ADB 截图失败: {e}")
+        # 优先使用缓存的图片（当前屏幕上显示的），确保从同一张图截的模板能匹配到
+        if img is None and self.capture.cached_image is not None:
+            img = self.capture.cached_image
+            self._log("使用缓存图片进行匹配")
         if img is None and self.binder.is_bound:
             img = self.capture.capture_window(
                 self.binder.target_window.hwnd, client_area=True)
-        if img is None:
-            img = self.capture.cached_image
         if img is None:
             self._log("没有可用的截图")
             QMessageBox.warning(self, "提示", "请先执行完整截图")
@@ -2576,10 +2578,16 @@ class MainWindow(QMainWindow):
             return
         self._page_match._btn_match.setEnabled(True)
         if not results:
+            w, h = self._template_image.width, self._template_image.height
             self._page_match._lbl_match_status.setText(
                 f"未找到匹配 (阈值={self.matcher.threshold:.0%})")
             self._page_match._table_matches.setRowCount(0)
             self._screenshot_label.set_annotations([])
+            self._log(
+                f"模板匹配: 未找到 (模板{w}x{h}) "
+                f"最高分={self.matcher._max_score:.2%} "
+                f"阈值={self.matcher.threshold:.0%} "
+                f"步长={max(1, min(w, h) // 4)}")
             return
 
         # 保存原始图片用于后续恢复

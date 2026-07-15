@@ -1,6 +1,10 @@
 Traceback (most recent call last):
-  File "D:\Program Files\mhxy-project\window_tool\ui\main_window.py", line 1777, in _on_adb_devices_found
-    self._bind_adb_device(dialog.selected_device)
-  File "D:\Program Files\mhxy-project\window_tool\ui\main_window.py", line 1851, in _bind_adb_device
-    self._spin_crop_x.setValue(max(0, offset_x))
-AttributeError: 'MainWindow' object has no attribute '_spin_crop_x'
+  File "main.py", line 91, in <module>
+    main()
+  File "main.py", line 80, in main
+    from ui.main_window import MainWindow, STYLE_DARK
+  File "D:\Program Files\mhxy\window_tool\ui\__init__.py", line 2, in <module>
+    from .main_window import MainWindow
+  File "D:\Program Files\mhxy\window_tool\ui\main_window.py", line 2268, in <module>
+    class _ScreenshotLoader(QThread):
+NameError: name 'QThread' is not defined

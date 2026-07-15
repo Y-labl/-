@@ -169,3 +169,12 @@
 [18:54:45]   rect: (251,55) 1098x899
 [18:54:45]   frombuffer OK: 1098x899
 [18:54:45]   SUCCESS: (1098, 899)
+[07:38:54] capture_window: hwnd=1247406, client_area=True
+[07:38:54]   rect=(2560, 0, 4480, 1032)
+[07:38:54] capture_region: region=(2560, 0, 4480, 1032), dpr=1.0
+[07:38:54]   GetDesktopWindow=65548
+[07:38:54]   GetWindowDC=96774
+[07:38:54]   CreateCompatibleDC=-838764438
+[07:38:54]   rect: (2560,0) 1920x1032
+[07:38:54]   frombuffer OK: 1920x1032
+[07:38:54]   SUCCESS: (1920, 1032)
