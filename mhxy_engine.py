@@ -1241,17 +1241,27 @@ class AutoFightEngine:
                     time.sleep(0.05)
                     continue
 
-                # 四小人快速检测（没带宝宝模板不可见即四小人界面）
+                # === 战斗中：仅检测战斗是否结束，跳过其他检测 ===
+                if self.was_in_pk:
+                    in_pk = self.is_in_pk(frame)
+                    if in_pk:
+                        time.sleep(0.1)
+                        continue
+                    # 战斗结束
+                    self.post_combat(frame)
+                    time.sleep(0.15)
+                    continue
+
+                # === 非战斗：四小人检测 ===
                 if self._is_show_four_person():
                     self._log(f"[{loop}] 👥 检测到四小人界面")
                     self._handle_four_person()
                     time.sleep(random.uniform(0.5, 1))
                     continue
 
+                # === 非战斗：检测是否进入战斗 ===
                 in_pk = self.is_in_pk(frame)
-
-                # === 刚进入战斗 ===
-                if in_pk and not self.was_in_pk:
+                if in_pk:
                     self.was_in_pk = True
                     self._log(f"[{loop}] ⚔️ 进入战斗！")
                     self.check_hp_mp_battle(frame)
@@ -1259,14 +1269,8 @@ class AutoFightEngine:
                     time.sleep(0.15)
                     continue
 
-                # === 刚结束战斗 → post_combat 里会触发酒肆恢复 ===
-                if not in_pk and self.was_in_pk:
-                    self.post_combat(frame)
-                    time.sleep(0.15)
-                    continue
-
                 # === 非战斗：跑图（坐标检测驱动） ===
-                if not in_pk:
+                if self.cfg.get("auto_path_enabled", True):
                     if self.cfg.get("auto_path_enabled", True):
                         def _pk_check():
                             return self.running and self.is_in_pk(self.get_frame())
