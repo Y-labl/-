@@ -46,7 +46,7 @@ DEFAULT_CONFIG = {
     "mp_item": "蓝碗",
     "mizhi_enabled": False,
     # 战斗操作
-    "capture_enabled": False,
+    "capture_bb_enabled": False,
     "miaoshou_enabled": True,
     "skill_then_auto": False,
     "normal_then_auto": False,
@@ -160,7 +160,7 @@ class AutoFightGUI:
         self.jiusi_mp_threshold = tk.IntVar(value=cfg.get("jiusi_mp_threshold", 30))
         self.jiusi_bb_threshold = tk.IntVar(value=cfg.get("jiusi_bb_threshold", 50))
 
-        self.capture_enabled = tk.BooleanVar(value=cfg.get("capture_enabled", False))
+        self.capture_bb_enabled = tk.BooleanVar(value=cfg.get("capture_bb_enabled", False))
         self.miaoshou_enabled = tk.BooleanVar(value=cfg.get("miaoshou_enabled", True))
         # 战斗模式互斥：skill_then_auto / normal_then_auto / defend_then_auto / direct_auto / escape
         _mode = "escape"
@@ -289,7 +289,7 @@ class AutoFightGUI:
         left.grid(row=0, column=0, sticky="nsw")
 
         # 一、二 为独立勾选
-        ttk.Checkbutton(left, text="一、捕捉", variable=self.capture_enabled,
+        ttk.Checkbutton(left, text="一、捕捉", variable=self.capture_bb_enabled,
                         bootstyle="success-round-toggle").grid(row=0, column=0, sticky="w", pady=4)
         ttk.Checkbutton(left, text="二、妙手空空", variable=self.miaoshou_enabled,
                         bootstyle="success-round-toggle").grid(row=1, column=0, sticky="w", pady=4)
@@ -832,7 +832,7 @@ class AutoFightGUI:
         self.jiusi_mp_threshold.set(cfg.get("jiusi_mp_threshold", 30))
         self.jiusi_bb_threshold.set(cfg.get("jiusi_bb_threshold", 50))
 
-        self.capture_enabled.set(cfg.get("capture_enabled", False))
+        self.capture_bb_enabled.set(cfg.get("capture_bb_enabled", False))
         self.miaoshou_enabled.set(cfg.get("miaoshou_enabled", True))
         _mode = "escape"
         if cfg.get("skill_then_auto"): _mode = "skill_then_auto"
@@ -885,7 +885,7 @@ class AutoFightGUI:
         cfg["jiusi_bb_threshold"] = self.jiusi_bb_threshold.get()
 
         cfg["map"] = self.map_select.get()
-        cfg["capture_enabled"] = self.capture_enabled.get()
+        cfg["capture_bb_enabled"] = self.capture_bb_enabled.get()
         cfg["miaoshou_enabled"] = self.miaoshou_enabled.get()
         _mode = self.combat_mode.get()
         cfg["skill_then_auto"] = (_mode == "skill_then_auto")
@@ -1130,3 +1130,4 @@ class SceneSettingsDialog:
 if __name__ == "__main__":
     app = AutoFightGUI()
     app.run()
+

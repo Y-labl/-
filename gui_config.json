@@ -1,5 +1,5 @@
 {
-  "serial": "WEENU18A15102480",
+  "serial": "WEENU18A18102828",
   "map": "小西天",
   "hp_enabled": false,
   "hp_threshold": 50,
@@ -122,5 +122,6 @@
   "device_names": {
     "WEENU18A15102480": "129化生寺",
     "WEENU18A18102828": "145龙宫"
-  }
+  },
+  "capture_bb_enabled": false
 }
