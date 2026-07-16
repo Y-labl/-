@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 梦幻西游 自动打怪 - 现代 UI 控制面板
 ===============================
@@ -801,6 +801,19 @@ class AutoFightGUI:
                         elapsed = int(time.time() - self.engine.start_time)
                         m, s = divmod(elapsed, 60)
                         self.time_display.configure(text=f"⏱ {m:02d}:{s:02d}")
+                # 同步更新设备管理页的每台设备数据
+                if self._device_widgets:
+                    for ser, eng in self.engines.items():
+                        w = self._device_widgets.get(ser)
+                        if w and eng and eng.running:
+                            w["hp"].configure(text=f"{eng.last_hp:.0f}%")
+                            w["mp"].configure(text=f"{eng.last_mp:.0f}%")
+                            w["bb"].configure(text="--" if eng.has_no_bb else f"{eng.last_bb:.0f}%")
+                            w["bc"].configure(text=str(eng.battle_count))
+                            if getattr(eng, "start_time", 0):
+                                elapsed = int(time.time() - eng.start_time)
+                                w["dur"].configure(text=f"{elapsed // 60:02d}:{elapsed % 60:02d}")
+                            w["status"].configure(text="运行中", foreground="green")
         except queue.Empty:
             pass
         self.root.after(300, self._poll_log)

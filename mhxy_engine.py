@@ -2016,38 +2016,50 @@ class AutoFightEngine:
 
 
 
-        # 所有非逃跑模式：需要找一个怪物坐标
-
+        # ?????????????????????????????
         monster_pos = None
 
         for _ in range(5):
-
             frame = self.get_frame()
-
             if frame is None:
-
                 time.sleep(0.2)
-
                 continue
 
             from target_mapping import get_all_monsters as _gt
-
             map_name = self.last_map_name or self.cfg.get("map", "")
-
             tou = _gt(map_name) or []
 
+            # ?????????
+            all_mon_pts = []
             for cand in tou:
-
                 pts = self._find_all(frame, cand, threshold=0.80, roi=COMBAT_ROI)
-
-                if pts:
-
+                all_mon_pts.extend(pts)
+                if pts and monster_pos is None:
                     monster_pos = (pts[0][0], pts[0][1])
 
-                    break
+            # ????/???????????????????
+            huyou_pts = self._find_all(frame, "PK-????", threshold=0.70, roi=COMBAT_ROI)
+            baoji_pts = self._find_all(frame, "PK-????", threshold=0.70, roi=COMBAT_ROI)
+            special_text = huyou_pts if huyou_pts else (baoji_pts if baoji_pts else [])
+            tag = "??" if huyou_pts else ("??" if baoji_pts else "")
+            if special_text and all_mon_pts:
+                mx, my = special_text[0][0], special_text[0][1]
+                best_m, best_d = None, 999999
+                for m in all_mon_pts:
+                    dx = abs(m[0] - mx)
+                    dy = my - m[1]  # text below monster
+                    if 10 < dy < 150 and dx < 80:
+                        d = dx + abs(dy - 60)
+                        if d < best_d:
+                            best_d = d
+                            best_m = (m[0], m[1])
+                if best_m:
+                    monster_pos = best_m
+                    self._log(f"  \U0001f3af ???{tag}?? -> ???? ({best_m[0]},{best_m[1]})")
+                else:
+                    self._log(f"  \u26a0 {tag}????????")
 
             if monster_pos:
-
                 break
 
             time.sleep(0.3)
@@ -2130,27 +2142,6 @@ class AutoFightEngine:
                     else:
                         self._log(f"  {tag}文字未匹配到怪物")
 
-                    from target_mapping import get_all_monsters as _gt_mon_spec
-                    _all_spec = _gt_mon_spec(self.last_map_name or self.cfg.get("map", "")) or []
-                    all_mon_pts = []
-                    for cand_spec in _all_spec:
-                        pts_spec = self._find_all(f_mon, cand_spec, threshold=0.80, roi=COMBAT_ROI)
-                        all_mon_pts.extend(pts_spec)
-                    mx, my = special_text[0][0], special_text[0][1]
-                    best_m, best_d = None, 999999
-                    for m in all_mon_pts:
-                        dx = abs(m[0] - mx)
-                        dy = my - m[1]  # text below monster, so monster_y < text_y
-                        if 10 < dy < 150 and dx < 80:  # monster above text, within range
-                            d = dx + abs(dy - 60)  # prefer monster ~60px above text
-                        if d < 120 and d < best_d:
-                            best_d = d
-                            best_m = (m[0], m[1])
-                    if best_m:
-                        monster_pos = best_m
-                        self._log(f"  检测到{tag}文字 -> 优先攻击 ({best_m[0]},{best_m[1]})")
-                    else:
-                        self._log(f"  {tag}文字未匹配到怪物")
 
                 from target_mapping import get_all_monsters as _gt_mon
 
