@@ -1885,48 +1885,33 @@ class AutoFightEngine:
             for i in range(max_attempts):
 
                 if not self._check_in_combat():
-
                     return
 
-                f2 = self.get_frame()
+                if i == 0:
+                    # ?1???????????????????
+                    cur_all = matched_targets
+                else:
+                    f2 = self.get_frame()
+                    if f2 is None:
+                        break
 
-                if f2 is None:
-
-                    break
-
-
-
-                # 重新检测所有可能的偷窃目标
-
-                cur_all = []
-
-                for candidate in tou_targets:
-
-                    cur = self._find_all(f2, candidate, threshold=0.80, roi=COMBAT_ROI)
-
-                    if cur:
-
-                        cur_all.extend(cur)
-
-                # 去重
-
-                deduped2 = []
-
-                for t in sorted(cur_all, key=lambda x: x[2], reverse=True):
-
-                    if not any(abs(t[0]-d[0])**2+abs(t[1]-d[1])**2 < 625 for d in deduped2):
-
-                        deduped2.append(t)
-
-                cur_all = deduped2
+                    # ?????????????
+                    cur_all = []
+                    for candidate in tou_targets:
+                        cur = self._find_all(f2, candidate, threshold=0.80, roi=COMBAT_ROI)
+                        if cur:
+                            cur_all.extend(cur)
+                    # ??
+                    deduped2 = []
+                    for t in sorted(cur_all, key=lambda x: x[2], reverse=True):
+                        if not any(abs(t[0]-d[0])**2+abs(t[1]-d[1])**2 < 625 for d in deduped2):
+                            deduped2.append(t)
+                    cur_all = deduped2
+                    self._log(f"  \U0001f50d ????? {len(cur_all)} ???")
 
                 if not cur_all:
-
-                    self._log(f"  ⚠️ 目标已全部消失")
-
+                    self._log(f"  \u26a0\ufe0f ???????")
                     break
-
-                self._log(f"  🔍 重新检测到 {len(cur_all)} 个目标")
 
                 available = [c for c in cur_all if not any(abs(c[0]-px)**2+abs(c[1]-py)**2 < 2500 for px, py in clicked)]
 
