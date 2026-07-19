@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 
 """
 
@@ -68,7 +68,7 @@ OCR_INTERVAL = 0.15
 
 OCR_CONF_THRESHOLD = 0.5
 
-COORD_STOP_TIMEOUT = 1.0  # 坐标停止超过1秒触发跑图
+COORD_STOP_TIMEOUT = 3.0  # 坐标停止超过1秒触发跑图
 
 COMBAT_ROI = {"x": 90, "y": 60, "w": 375, "h": 278}  # 战斗怪物检测区域
 
