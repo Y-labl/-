@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 
 """
 
@@ -1866,112 +1866,92 @@ class AutoFightEngine:
 
 
 
-        plan = self._build_plan(matched_targets)
+                # 单独检测偷卡目标，如果场上没有偷卡目标则跳过偷窃直接击杀
+        steal_targets = []
+        if tou_targets:
+            f_steal = self.get_frame()
+            if f_steal is not None:
+                for candidate in tou_targets:
+                    cur = self._find_all(f_steal, candidate, threshold=0.80, roi=COMBAT_ROI)
+                    if cur:
+                        steal_targets.extend(cur)
+                # 去重
+                dedup_s = []
+                for t in sorted(steal_targets, key=lambda x: x[2], reverse=True):
+                    if not any(abs(t[0]-d[0])**2+abs(t[1]-d[1])**2 < 625 for d in dedup_s):
+                        dedup_s.append(t)
+                steal_targets = dedup_s
 
-        if not plan:
-
-            self._log(f"  ⚠️ 未检测到目标 ({display_name})，跳过妙手空空")
-
-
-
-        if self.cfg.get("miaoshou_enabled", True):
-
-            clicked = []
-
-            max_attempts = min(len(plan), 3) if plan else 3
-
-            self._log(f"  🎯 妙手空空 ×{max_attempts}")
-
-            for i in range(max_attempts):
-
-                if not self._check_in_combat():
-                    return
-
-                if i == 0:
-                    # ?1???????????????????
-                    cur_all = matched_targets
-                else:
-                    f2 = self.get_frame()
-                    if f2 is None:
-                        break
-
-                    # ?????????????
-                    cur_all = []
-                    for candidate in tou_targets:
-                        cur = self._find_all(f2, candidate, threshold=0.80, roi=COMBAT_ROI)
-                        if cur:
-                            cur_all.extend(cur)
-                    # ??
-                    deduped2 = []
-                    for t in sorted(cur_all, key=lambda x: x[2], reverse=True):
-                        if not any(abs(t[0]-d[0])**2+abs(t[1]-d[1])**2 < 625 for d in deduped2):
-                            deduped2.append(t)
-                    cur_all = deduped2
-                    self._log(f"  \U0001f50d ????? {len(cur_all)} ???")
-
-                if not cur_all:
-                    self._log(f"  \u26a0\ufe0f ???????")
-                    break
-
-                available = [c for c in cur_all if not any(abs(c[0]-px)**2+abs(c[1]-py)**2 < 2500 for px, py in clicked)]
-
-                if not available:
-
-                    # 没有未偷过的位置，可能是单怪多次偷，选最优
-
-                    available = cur_all
-
-                    self._log(f"  ⚠️ 所有目标均已偷过，选最优重复偷")
-
-                best = max(available, key=lambda c: c[2])
-
-                tx, ty, conf = best[0], best[1], best[2]
-
-                ms = self._wait_for_skill(timeout=10.0)
-
-                if ms is None:
-
-                    self._log(f"  第{i+1}次: 超时，跳过")
-
-                    continue
-
-                cx_ms, cy_ms, _ = ms
-
-                self.tap(cx_ms, cy_ms)
-
-                time.sleep(random.uniform(0.3, 0.5))
-
-                self.tap(tx, ty)
-
-                time.sleep(0.2)
-
-                if not self.has_no_bb:
-
-                    self.tap(707, 409)
-
-                    self._log(f"  🎯 宝宝点(707,409)")
-
-                    time.sleep(0.2)
-
-                self._log(f"  🎯 第{i+1}次 妙手空空 -> ({tx},{ty}) conf={conf:.2f}")
-
-                clicked.append((tx, ty))
-
-                time.sleep(random.uniform(2.0, 3.0))
-
+        if not steal_targets:
+            self._log(f"  ℹ️ 当前战斗无偷卡目标，直接击杀")
+            self._post_steal_action(skip_wait=True, matched_targets=matched_targets)
         else:
+            plan = self._build_plan(steal_targets)
+
+            if not plan:
+                self._log(f"  ⚠️ 未检测到目标 ({display_name})，跳过妙手空空")
 
             if self.cfg.get("miaoshou_enabled", True):
+                clicked = []
+                max_attempts = min(len(plan), 3) if plan else 3
+                self._log(f"  🎯 妙手空空 ×{max_attempts}")
+                for i in range(max_attempts):
+                    if not self._check_in_combat():
+                        return
 
-                self._log("  ⏭️ 妙手空空已关闭")
+                    if i == 0:
+                        cur_all = steal_targets
+                    else:
+                        f2 = self.get_frame()
+                        if f2 is None:
+                            break
+                        cur_all = []
+                        for candidate in tou_targets:
+                            cur = self._find_all(f2, candidate, threshold=0.80, roi=COMBAT_ROI)
+                            if cur:
+                                cur_all.extend(cur)
+                        deduped2 = []
+                        for t in sorted(cur_all, key=lambda x: x[2], reverse=True):
+                            if not any(abs(t[0]-d[0])**2+abs(t[1]-d[1])**2 < 625 for d in deduped2):
+                                deduped2.append(t)
+                        cur_all = deduped2
+                        self._log(f"  🔍 重新检测 {len(cur_all)} 个目标")
 
+                    if not cur_all:
+                        self._log(f"  ⚠️ 无可偷目标，跳过")
+                        break
+
+                    available = [c for c in cur_all if not any(abs(c[0]-px)**2+abs(c[1]-py)**2 < 2500 for px, py in clicked)]
+
+                    if not available:
+                        available = cur_all
+                        self._log(f"  ⚠️ 所有目标均已偷过，选最优重复偷")
+
+                    best = max(available, key=lambda c: c[2])
+                    tx, ty, conf = best[0], best[1], best[2]
+                    ms = self._wait_for_skill(timeout=10.0)
+                    if ms is None:
+                        self._log(f"  第{i+1}次: 超时，跳过")
+                        continue
+                    cx_ms, cy_ms, _ = ms
+                    self.tap(cx_ms, cy_ms)
+                    time.sleep(random.uniform(0.3, 0.5))
+                    self.tap(tx, ty)
+                    time.sleep(0.2)
+                    if not self.has_no_bb:
+                        self.tap(707, 409)
+                        self._log(f"  🎯 宝宝点(707,409)")
+                        time.sleep(0.2)
+                    self._log(f"  🎯 第{i+1}次 妙手空空 -> ({tx},{ty}) conf={conf:.2f}")
+                    clicked.append((tx, ty))
+                    time.sleep(random.uniform(2.0, 3.0))
             else:
+                if self.cfg.get("miaoshou_enabled", True):
+                    self._log("  ⏭️ 妙手空空已关闭")
+                else:
+                    self._log("  ⏭️ 妙手空空未触发")
 
-                self._log("  ⏭️ 妙手空空未触发")
-
-
-
-        self._post_steal_action(skip_wait=not bool(plan), matched_targets=matched_targets)
+            self._post_steal_action(skip_wait=not bool(plan), matched_targets=matched_targets)
 
 
 
@@ -2049,7 +2029,15 @@ class AutoFightEngine:
 
             time.sleep(0.3)
 
-
+        # 等待第4回合（除了skip_wait=True即无偷窃目标的情况）
+        if not skip_wait:
+            self._log("  🎯 等待下回合（第4回合）后执行战斗操作")
+            nxt = self._wait_for_skill(timeout=15.0)
+            if nxt is None:
+                self._log("  ⚠️ 等待下回合超时，跳过")
+                self._try_escape()
+                self._wait_combat_end()
+                return
 
         if mode_skill:
 
@@ -3625,7 +3613,7 @@ class AutoFightEngine:
 
                             self.tap(cx, cy, offset=False)
 
-                        for _ in range(5):
+                        for _ in range(2):
 
                             time.sleep(0.15)
 
@@ -3641,17 +3629,23 @@ class AutoFightEngine:
 
                     if not pk_detected:
 
-                        self.close_map_if_open()
+                        f_pop = self.get_frame()
 
-                        for _ in range(4):
+                        if f_pop is not None:
 
-                            time.sleep(0.15)
+                            close_btn = self.find(f_pop, "关闭地图", threshold=0.5)
 
-                            if _pk_check():
+                            if close_btn:
 
-                                pk_detected = True
+                                self.tap(close_btn[0], close_btn[1])
 
-                                break
+                                time.sleep(0.1)
+
+                            else:
+
+                                self.tap(60, 25)
+
+                        self.close_pop(is_one_time=True)
 
 
 
