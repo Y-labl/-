@@ -141,7 +141,7 @@ class ToolEngine:
             "打开地图", "地图-筛选", "关闭地图", "好友入口",
             "PK-妙手空空技能", "PK-自动按钮", "PK-取消自动战斗",
             "道具", "道具-道具栏", "关闭弹窗", "关闭聊天", "关闭活动弹窗", "左下角返回",
-            "菜单-指引", "摄妖香", "使用摄妖香", "wuyi",
+            "菜单-指引", "摄妖香", "使用摄妖香", "wuyi", "wuyi1", "wuyi2", "wuyi3",
         ]
         for name in names:
             tmpl = load_template(name)
@@ -301,6 +301,51 @@ class ToolEngine:
                     return result
         return None
 
+    def match_template_multi(self, frame, names, threshold=0.7):
+        """多模板匹配 + NMS（参考模板匹配.py do_match）"""
+        templates = []
+        for n in names:
+            t = self.templates.get(n)
+            if t is not None:
+                templates.append(t)
+        if not templates:
+            return None
+        h, w = frame.shape[:2]
+        all_rects = []
+        scales = [round(x, 2) for x in np.arange(0.7, 1.35, 0.05)]
+        for ti, templ in enumerate(templates):
+            tw, th = templ.shape[1], templ.shape[0]
+            for method in [cv2.TM_CCOEFF_NORMED, cv2.TM_CCORR_NORMED]:
+                for s in scales:
+                    stw = max(2, int(tw * s))
+                    sth = max(2, int(th * s))
+                    if stw > w or sth > h:
+                        continue
+                    if abs(s - 1.0) < 0.01:
+                        scaled = templ
+                    else:
+                        scaled = cv2.resize(templ, (stw, sth), interpolation=cv2.INTER_AREA)
+                    result = cv2.matchTemplate(frame, scaled, method)
+                    locs = np.where(result >= threshold)
+                    pts = list(zip(*locs[::-1]))
+                    for px, py in pts:
+                        all_rects.append((px, py, px + stw, py + sth, result[py, px]))
+        if not all_rects:
+            return None
+        boxes = [[x1, y1, x2 - x1, y2 - y1] for (x1, y1, x2, y2, score) in all_rects]
+        scores = [score for (_, _, _, _, score) in all_rects]
+        try:
+            pick = cv2.dnn.NMSBoxes(boxes, scores, 0.0, 0.3)
+            if pick is not None and len(pick) > 0:
+                pick = pick.flatten()
+                best_idx = max(pick, key=lambda i: scores[i])
+                x1, y1, x2, y2, score = all_rects[best_idx]
+                return ((x1 + x2) // 2, (y1 + y2) // 2, score)
+        except:
+            pass
+        best = max(all_rects, key=lambda r: r[4])
+        return ((best[0] + best[2]) // 2, (best[1] + best[3]) // 2, best[4])
+
     def close_pop(self, is_one_time=False, try_count=0):
         if try_count > 3:
             return
@@ -451,7 +496,9 @@ class ToolEngine:
 
             elif action == "detect_wuyi":
                 timeout = step.get("timeout", 120)
-                self._log(f"into wuyi detect mode, timeout {timeout}s")
+                threshold = step.get("threshold", 0.65)
+                wuyi_names = step.get("templates", ["wuyi1", "wuyi2", "wuyi3"])
+                self._log("into wuyi detect mode, timeout {}s, templates={}".format(timeout, wuyi_names))
                 start_t = time.time()
                 found = False
                 while time.time() - start_t < timeout:
@@ -459,19 +506,10 @@ class ToolEngine:
                     if frame is None:
                         time.sleep(0.2)
                         continue
-                    result = self.find(frame, "wuyi", threshold=0.69)
-                    if not result:
-                        # debug: check best match even below threshold
-                        import cv2, numpy as np
-                        tmpl = self.templates.get("wuyi")
-                        if tmpl is not None and frame is not None:
-                            r2 = cv2.matchTemplate(frame, tmpl, cv2.TM_CCOEFF_NORMED)
-                            _, best, _, _ = cv2.minMaxLoc(r2)
-                            if best < 0.35:
-                                self._log(f"[wuyi] best match on screen: {best:.3f}")
+                    result = self.match_template_multi(frame, wuyi_names, threshold=threshold)
                     if result:
                         cx, cy, conf = result
-                        self._log(f"wuyi found ({cx},{cy}) conf={conf:.0%}")
+                        self._log("wuyi found ({},{}) conf={:.0%}".format(cx, cy, conf))
                         self.tap(cx, cy)
                         time.sleep(0.3)
                         # click popup
@@ -484,12 +522,12 @@ class ToolEngine:
                             sx = sy = 1.0
                         yb_x = int(665 * sx)
                         yb_y = int(225 * sy)
-                        self._log(f"click popup ({yb_x},{yb_y})")
+                        self._log("click popup ({},{})".format(yb_x, yb_y))
                         self.tap(yb_x, yb_y, offset=False)
                         time.sleep(0.2)
                         yb2_x = int(780 * sx)
                         yb2_y = int(353 * sy)
-                        self._log(f"click confirm ({yb2_x},{yb2_y})")
+                        self._log("click confirm ({},{})".format(yb2_x, yb2_y))
                         self.tap(yb2_x, yb2_y, offset=False)
                         found = True
                         break
