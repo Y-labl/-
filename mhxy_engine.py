@@ -1500,6 +1500,16 @@ class AutoFightEngine:
 
         start = time.time()
 
+        # use cached skill position from detection phase
+        if self.last_skill is not None:
+            frame = self.get_frame()
+            if frame is not None:
+                ms = self.find(frame, "PK-妙手空空技能", threshold=0.60)
+                if ms:
+                    self.last_skill = ms
+                    return ms
+            # cache miss, fall through to polling
+
         while time.time() - start < timeout:
 
             if not self.running:
@@ -1593,6 +1603,7 @@ class AutoFightEngine:
     def do_combat(self):
 
         self._log("⚔️ 开始战斗流程")
+        self.last_skill = None  # clear old cache
 
         map_name = self.last_map_name or self.cfg.get("map", "小西天")
 
@@ -1664,6 +1675,13 @@ class AutoFightEngine:
 
         matched_targets = deduped
 
+        # detect skill icon on same frame
+        if self.cfg.get("miaoshou_enabled", True):
+            ms_skill = self.find(frame, "PK-妙手空空技能", threshold=0.60)
+            if ms_skill:
+                self.last_skill = ms_skill
+                self._log(f"  \u26a1 skill at ({ms_skill[0]},{ms_skill[1]})")
+
 
 
         display_name = ", ".join(matched_names) if matched_names else (tou_targets[0] if tou_targets else "?")
@@ -1698,9 +1716,9 @@ class AutoFightEngine:
 
             self._log(f"  👆 检测到前排怪物，划过后排显露名字")
 
-            self._swipe_to_reveal_monsters()
+            # self._swipe_to_reveal_monsters()
 
-            time.sleep(0.3)
+            # time.sleep(0.3)
 
             frame2 = self.get_frame()
 
@@ -1918,8 +1936,12 @@ class AutoFightEngine:
                         self._log(f"  🔍 重新检测 {len(cur_all)} 个目标")
 
                     if not cur_all:
-                        self._log(f"  ⚠️ 无可偷目标，跳过")
-                        break
+                        if clicked:
+                            cur_all = steal_targets
+                            self._log(f"  re-detect failed, fallback to initial ({len(cur_all)} targets)")
+                        else:
+                            self._log(f"  ⚠️ 无可偷目标，跳过")
+                            break
 
                     available = [c for c in cur_all if not any(abs(c[0]-px)**2+abs(c[1]-py)**2 < 2500 for px, py in clicked)]
 
