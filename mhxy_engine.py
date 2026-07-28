@@ -3617,7 +3617,7 @@ class AutoFightEngine:
 
                         # 随机每隔几回合多点几下（1/3概率），其余点1次
 
-                        if random.randint(1, 3) == 1:
+                        if random.randint(1, 8) == 1:
 
                             tap_count = random.randint(2, 3)
 
