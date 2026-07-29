@@ -1961,8 +1961,13 @@ class AutoFightEngine:
                     self.tap(tx, ty)
                     time.sleep(0.2)
                     if not self.has_no_bb:
-                        self.tap(707, 409)
-                        self._log(f"  🎯 宝宝点(707,409)")
+                        defend_tmpl = self.find(frame, "PK-防御")
+                        if defend_tmpl:
+                            self.tap(defend_tmpl[0], defend_tmpl[1])
+                            self._log(f"  🎯 宝宝点防御 ({defend_tmpl[0]},{defend_tmpl[1]})")
+                        else:
+                            self.tap(707, 409)
+                            self._log(f"  🎯 宝宝点(707,409) [fallback]")
                         time.sleep(0.2)
                     self._log(f"  🎯 第{i+1}次 妙手空空 -> ({tx},{ty}) conf={conf:.2f}")
                     clicked.append((tx, ty))

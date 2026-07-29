@@ -623,7 +623,16 @@ class AutoFightGUI:
         import cv2
         save_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "screenshots")
         os.makedirs(save_dir, exist_ok=True)
-        filename = f"device_{serial}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+        # 按日期自增编号: 2026_07_29_001.png
+        today = datetime.now().strftime("%Y_%m_%d")
+        if not hasattr(self, "_screenshot_counter_date"):
+            self._screenshot_counter_date = today
+            self._screenshot_counter = 0
+        if self._screenshot_counter_date != today:
+            self._screenshot_counter_date = today
+            self._screenshot_counter = 0
+        self._screenshot_counter += 1
+        filename = f"{today}_{self._screenshot_counter:03d}.png"
         filepath = os.path.join(save_dir, filename)
         try:
             # ADB截全分辨率图，resize到800x448保存（与流坐标一致）
@@ -636,9 +645,9 @@ class AutoFightGUI:
             import numpy as _np
             _raw = _cv2.imdecode(_np.frombuffer(result.stdout, dtype=_np.uint8), _cv2.IMREAD_COLOR)
             if _raw is not None:
-                _small = _cv2.resize(_raw, (800, 480))
+                _small = _cv2.resize(_raw, (800, 448))
                 _cv2.imwrite(filepath, _small)
-                self._log(f"[{serial}] 📸 ADB截图已保存: {filepath} (800x480)")
+                self._log(f"[{serial}] 📸 ADB截图已保存: {filepath} (800x448)")
             else:
                 with open(filepath, "wb") as f:
                     f.write(result.stdout)
