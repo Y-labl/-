@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 from datetime import datetime
 import re
+from rapidocr_onnxruntime import RapidOCR
 
 # ── 路径 ──
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -107,15 +108,16 @@ SCENE_RECOVERY = {
     },
     "小西天": {
         "steps": [
-            {"action": "click_template", "name": "道具", "threshold": 0.6, "wait": 0.3},
-            {"action": "click_template", "name": "摄妖香", "threshold": 0.5, "wait": 0.3},
-            {"action": "click_position", "x": 268, "y": 260, "wait": 0.5},
-            {"action": "click_template", "name": "关闭弹窗", "wait": 0.3},
+            # {"action": "click_template", "name": "道具", "threshold": 0.6, "wait": 0.3},
+            # {"action": "click_template", "name": "摄妖香", "threshold": 0.5, "wait": 0.3},
+            # {"action": "click_position", "x": 268, "y": 260, "wait": 0.5},
+            # {"action": "click_template", "name": "关闭弹窗", "wait": 0.3},
             {"action": "click_template", "name": "打开地图", "wait": 0.5},
             {"action": "click_position", "x": 535, "y": 59, "wait": 0.3},
-            {"action": "click_sequence", "positions": [[657,220],[530,155],[723,279],[535,158],[592,158],[653,220],[718,279],[539,138]], "interval": 0.1, "wait": 0.3},
-            {"action": "close_map", "wait": 0.3},
-            {"action": "detect_wuyi", "timeout": 120, "wait": 0.5},
+            {"action": "click_sequence", "positions": [[657,220],[530,155],[723,279],[535,158],[592,158],[653,220],[718,279]], "interval": 0.1, "wait": 0.3},
+            {"action": "click_template", "name": "关闭弹窗", "wait": 0.5},
+            {"action": "wait_coord", "target_map": "小西天", "target_x": 61, "target_y": 126, "tolerance": 3, "timeout": 120, "clicks": [[522,184],[662,214],[565,401]], "wait": 0.5},
+            # {"action": "detect_wuyi", "timeout": 120, "wait": 0.5},
         ],
     },
 }
@@ -133,6 +135,7 @@ class ToolEngine:
         self.scale_y = 1.0
         self.templates = {}
         self.cfg = {"map": ""}
+        self.ocr = None  # 延迟初始化
         self.last_map_name = ""
         self.log_lines = []
 
@@ -197,6 +200,45 @@ class ToolEngine:
         self._log(f"模板加载完成，共 {len(self.templates)} 个")
 
     # ---------- 设备连接 ----------
+
+    def _init_ocr(self):
+        if self.ocr is None:
+            self._log("初始化 OCR...")
+            self.ocr = RapidOCR()
+
+    # OCR 裁剪区域（设备分辨率下的坐标，对齐 mhxy_engine.py 的 OCR_CROP）
+    OCR_CROP = {"x": 131, "y": 40, "w": 200, "h": 100}
+
+    def _ocr_coord(self, frame):
+        """OCR 检测当前地图名和坐标（仅识别顶部地图名+坐标区域），返回 (map_name, (x, y)) 或 (None, None)"""
+        fh, fw = frame.shape[:2]
+        # 根据流分辨率缩放 OCR 区域
+        cx = max(0, int(self.OCR_CROP["x"] / self.scale_x))
+        cy = max(0, int(self.OCR_CROP["y"] / self.scale_y))
+        cw = min(int(self.OCR_CROP["w"] / self.scale_x), fw - cx)
+        ch = min(int(self.OCR_CROP["h"] / self.scale_y), fh - cy)
+        if cw <= 0 or ch <= 0:
+            return None, None
+        roi = frame[cy:cy+ch, cx:cx+cw]
+        if roi.size == 0:
+            return None, None
+        result, _ = self.ocr(roi)
+        texts = []
+        for r in (result or []):
+            text = str(r[1]).strip()
+            if text:
+                texts.append(text)
+        if texts:
+            self._log("OCR 识别(顶部区域): {}".format(texts))
+        map_name = None
+        coord = None
+        for text in texts:
+            m = re.search(r"[(（]\s*(\d{1,4})\s*[,，]\s*(\d{1,4})\s*[)）]", text)
+            if m:
+                coord = (int(m.group(1)), int(m.group(2)))
+            elif re.search(r"[一-鿿]{2,}", text) and not text.startswith("("):
+                map_name = text
+        return map_name, coord
 
     def connect(self):
 
@@ -534,6 +576,58 @@ class ToolEngine:
                 for px, py in positions:
                     self.tap(px, py)
                     time.sleep(interval)
+                time.sleep(wait)
+
+            elif action == "wait_coord":
+                self._init_ocr()
+                target_map = step["target_map"]
+                target_x = step["target_x"]
+                target_y = step["target_y"]
+                tolerance = step.get("tolerance", 3)
+                timeout = step.get("timeout", 120)
+                stable_time = step.get("stable_time", 1.5)
+                clicks = step.get("clicks", [])
+                self._log("[{}] 等待坐标: {} ({},{})".format(i, target_map, target_x, target_y))
+                start_t = time.time()
+                last_coord = None
+                last_stable_t = 0
+                reached = False
+                while time.time() - start_t < timeout:
+                    frame = self.get_frame()
+                    if frame is None:
+                        time.sleep(0.3)
+                        continue
+                    map_name, coord = self._ocr_coord(frame)
+                    now = time.time()
+                    if map_name and target_map in map_name and coord:
+                        dx = abs(coord[0] - target_x)
+                        dy = abs(coord[1] - target_y)
+                        on_target = dx <= tolerance and dy <= tolerance
+                        if on_target:
+                            if last_coord is None:
+                                last_coord = coord
+                                last_stable_t = now
+                                self._log("[{}] 首次进入目标区域: {} ({},{})".format(i, map_name, coord[0], coord[1]))
+                            elif coord == last_coord:
+                                if now - last_stable_t >= stable_time:
+                                    self._log("[{}] 坐标已稳定: {} ({},{})".format(i, map_name, coord[0], coord[1]))
+                                    reached = True
+                                    break
+                            else:
+                                last_coord = coord
+                                last_stable_t = now
+                        else:
+                            last_coord = None
+                    time.sleep(0.3)
+                if reached:
+                    self._log("[{}] 已到达目标坐标: {} ({},{})".format(i, target_map, target_x, target_y))
+                    self._log("[{}] 依次点击 {} 个位置: {}".format(i, len(clicks), clicks))
+                    for idx_c, (px, py) in enumerate(clicks):
+                        self._log("[{}]   点击 [{}/{}] ({},{})".format(i, idx_c+1, len(clicks), px, py))
+                        self.tap(px, py)
+                        time.sleep(0.2)
+                else:
+                    self._log("[{}] 等待坐标超时，跳过".format(i))
                 time.sleep(wait)
 
             elif action == "detect_wuyi":
