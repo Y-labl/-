@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 
 """实时怪物检测- 屏幕流可视化检测怪物+宝宝文字
 
@@ -594,49 +594,49 @@ class Detector:
 
                     # 滑动（仅一次）
 
-                    if not self.swipe_done:
+                    # if not self.swipe_done:
 
-                        if len(mons) >= 2:
+                        # if len(mons) >= 2:
 
-                            sorted_mons = sorted(mons.values(), key=lambda m: m[1])
+                            # sorted_mons = sorted(mons.values(), key=lambda m: m[1])
 
-                            back_row = sorted_mons[:min(5, len(sorted_mons))]
+                            # back_row = sorted_mons[:min(5, len(sorted_mons))]
 
-                            xs = sorted([m[0] for m in back_row])
+                            # xs = sorted([m[0] for m in back_row])
 
-                            avg_y = int(sum(m[1] for m in back_row) / len(back_row))
+                            # avg_y = int(sum(m[1] for m in back_row) / len(back_row))
 
-                            pts = []
+                            # pts = []
 
-                            n_pts = min(5, len(back_row))
+                            # n_pts = min(5, len(back_row))
 
-                            for k in range(n_pts):
+                            # for k in range(n_pts):
 
-                                x = int(xs[0] + (xs[-1] - xs[0]) * k / max(n_pts-1, 1))
+                                # x = int(xs[0] + (xs[-1] - xs[0]) * k / max(n_pts-1, 1))
 
-                                pts.append((x, avg_y))
+                                # pts.append((x, avg_y))
 
-                            log(f"滑动 {len(mons)}个怪物 -> {n_pts}点y={avg_y}")
+                            # log(f"滑动 {len(mons)}个怪物 -> {n_pts}点y={avg_y}")
 
 
                             # Single swipe from first to last point to reveal back row
-                            p1 = (349, 568)
-                            p2 = (950, 235)  # 原始终点+50右-50上，避免松开时点怪
-                            log(f"滑动 ({p1[0]},{p1[1]}) -> ({p2[0]},{p2[1]})")
-                            adb_swipe(self.serial, p1[0], p1[1], p2[0], p2[1], 2000)
-                        else:
-                            log(f"怪物太少({len(mons)})，跳过滑动")
+                            # p1 = (349, 568)
+                            # p2 = (950, 235)  # 原始终点+50右-50上，避免松开时点怪
+                            # log(f"滑动 ({p1[0]},{p1[1]}) -> ({p2[0]},{p2[1]})")
+                            # adb_swipe(self.serial, p1[0], p1[1], p2[0], p2[1], 2000)
+                        # else:
+                            # log(f"怪物太少({len(mons)})，跳过滑动")
 
-                        time.sleep(0.3)
+                        # time.sleep(0.3)
 
-                        f2 = self.get_frame()
+                        # f2 = self.get_frame()
 
-                        if f2 is not None:
+                        # if f2 is not None:
 
-                            f = f2
-                            mons = self.smooth_mons(self.detect_monsters(f))
+                            # f = f2
+                            # mons = self.smooth_mons(self.detect_monsters(f))
 
-                            bbs2 = self.detect_babies(f)
+                            # bbs2 = self.detect_babies(f)
 
                             bbs.extend(bbs2)
 
