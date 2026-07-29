@@ -105,6 +105,19 @@ SCENE_RECOVERY = {
             {"action": "detect_wuyi", "timeout": 120, "wait": 0.5},
         ],
     },
+    "小西天": {
+        "steps": [
+            {"action": "click_template", "name": "道具", "threshold": 0.6, "wait": 0.3},
+            {"action": "click_template", "name": "摄妖香", "threshold": 0.5, "wait": 0.3},
+            {"action": "click_position", "x": 268, "y": 260, "wait": 0.5},
+            {"action": "click_template", "name": "关闭弹窗", "wait": 0.3},
+            {"action": "click_template", "name": "打开地图", "wait": 0.5},
+            {"action": "click_position", "x": 535, "y": 59, "wait": 0.3},
+            {"action": "click_sequence", "positions": [[657,220],[530,155],[723,279],[535,158],[592,158],[653,220],[718,279],[539,138]], "interval": 0.1, "wait": 0.3},
+            {"action": "close_map", "wait": 0.3},
+            {"action": "detect_wuyi", "timeout": 120, "wait": 0.5},
+        ],
+    },
 }
 
 
@@ -494,6 +507,35 @@ class ToolEngine:
                 time.sleep(wait)
                 frame = self.get_frame()
 
+            elif action == "input_coord":
+                name = step["name"]
+                offset_x = step.get("offset_x", 0)
+                offset_y = step.get("offset_y", 0)
+                text = step["text"]
+                thr = step.get("threshold", 0.75)
+                btn = self.find(frame, name, threshold=thr)
+                if btn is None:
+                    self._log("[{}] 未找到 {}, abort".format(i, name))
+                    return
+                tx = btn[0] + offset_x
+                ty = btn[1] + offset_y
+                self._log("[{}] input_coord {} at ({},{}) text={}".format(i, name, tx, ty, text))
+                self.tap(tx, ty)
+                time.sleep(0.3)
+                sp.run([_ADB_EXE, "-s", self.serial, "shell", "input", "text", str(text)],
+                       capture_output=True, timeout=3)
+                time.sleep(wait)
+                frame = self.get_frame()
+
+            elif action == "click_sequence":
+                positions = step["positions"]
+                interval = step.get("interval", 0.1)
+                self._log("[{}] click_sequence {} points".format(i, len(positions)))
+                for px, py in positions:
+                    self.tap(px, py)
+                    time.sleep(interval)
+                time.sleep(wait)
+
             elif action == "detect_wuyi":
                 timeout = step.get("timeout", 120)
                 threshold = step.get("threshold", 0.65)
@@ -540,7 +582,7 @@ class ToolEngine:
 
 if __name__ == "__main__":
     import sys
-    serial = sys.argv[1] if len(sys.argv) > 1 else "WEENU18A15102480"
+    serial = sys.argv[1] if len(sys.argv) > 1 else "WEENU18810135788"
     map_name = sys.argv[2] if len(sys.argv) > 2 else ""
     print(f"device: {serial}")
     if map_name:
