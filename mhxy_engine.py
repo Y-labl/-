@@ -1966,8 +1966,7 @@ class AutoFightEngine:
                             self.tap(defend_tmpl[0], defend_tmpl[1])
                             self._log(f"  🎯 宝宝点防御 ({defend_tmpl[0]},{defend_tmpl[1]})")
                         else:
-                            self.tap(707, 409)
-                            self._log(f"  🎯 宝宝点(707,409) [fallback]")
+                            self._log(f"  ⚠️ 未识别到防御按钮，宝宝跳过")
                         time.sleep(0.2)
                     self._log(f"  🎯 第{i+1}次 妙手空空 -> ({tx},{ty}) conf={conf:.2f}")
                     clicked.append((tx, ty))
