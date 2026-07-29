@@ -93,34 +93,76 @@ def adb_tap(serial, x, y):
 
 # ======================== 场景恢复配置 ========================
 
+# ======================== 通用基础步骤模板 ========================
+_BASE_PART1 = [  # 步骤 1-6: 使用摄妖香 → 打开地图
+    {"action": "click_template", "name": "道具", "threshold": 0.6, "wait": 0.3},
+    {"action": "click_template", "name": "摄妖香", "threshold": 0.5, "wait": 0.3},
+    {"action": "click_position", "x": 268, "y": 260, "wait": 0.5},
+    {"action": "click_template", "name": "关闭弹窗", "wait": 0.3},
+    {"action": "click_template", "name": "打开地图", "wait": 0.5},
+]
+
+_BASE_PART2 = [  # 步骤 8: 关闭地图弹窗
+    {"action": "click_template", "name": "关闭弹窗", "wait": 0.5},
+]
+
+_BASE_PART3 = [  # 步骤 10-13: 使用洞冥草 → 关闭弹窗
+    {"action": "click_template", "name": "道具", "threshold": 0.6, "wait": 0.3},
+    {"action": "click_template", "name": "洞冥草", "threshold": 0.5, "wait": 0.3},
+    {"action": "click_position", "x": 281, "y": 296, "wait": 0.5},
+    {"action": "click_template", "name": "关闭弹窗", "wait": 0.3},
+]
+
+# ======================== 场景配置 ========================
+# 方式一: 直接定义 steps（兼容旧配置）
+# 方式二: 定义 coord_input + wait_target，自动拼接通用模板
 SCENE_RECOVERY = {
     "小雷音寺": {
-        "steps": [
-            {"action": "click_template", "name": "道具", "threshold": 0.6, "wait": 0.3},
-            {"action": "click_template", "name": "摄妖香", "threshold": 0.5, "wait": 0.3},
-            {"action": "click_position", "x": 268, "y": 260, "wait": 0.5},
-            {"action": "click_template", "name": "关闭弹窗", "wait": 0.3},
-            {"action": "click_template", "name": "打开地图", "wait": 0.5},
-            {"action": "click_map", "x": 293, "y": 94, "wait": 0.3},
-            {"action": "close_map", "wait": 0.3},
-            {"action": "detect_wuyi", "timeout": 120, "wait": 0.5},
+        "coord_input": [  # 步骤 6-7: 输入地图坐标
+            {"action": "click_position", "x": 535, "y": 59, "wait": 0.3},
+            {"action": "click_sequence", "positions": [[530,275],[595,278],[723,275],[530,157],[592,153],[595,222],[718,275]], "interval": 0.1, "wait": 0.3},
         ],
+        "wait_target": {  # 步骤 9: 等待到达目标坐标 → 点击
+            "action": "wait_coord",
+            "target_map": "小雷音寺", "target_x": 78, "target_y": 125, "tolerance": 3, "timeout": 120,
+            "clicks": [[504,186],[662,214],[565,401]], "wait": 0.5,
+        },
+    },
+    "子母河底": {
+        "coord_input": [  # 步骤 6-7: 输入地图坐标
+            {"action": "click_position", "x": 599, "y": 111, "wait": 0.3},
+            {"action": "click_sequence", "positions": [[468,267],[538,269],[661,325],[595,204],[661,267],[661,328]], "interval": 0.1, "wait": 0.3},
+        ],
+        "wait_target": {  # 步骤 9: 等待到达目标坐标 → 点击
+            "action": "wait_coord",
+            "target_map": "子母河底", "target_x": 45, "target_y": 30, "tolerance": 3, "timeout": 120,
+            "clicks": [[324,167],[662,214],[565,401]], "wait": 0.5,
+        },
     },
     "小西天": {
-        "steps": [
-            # {"action": "click_template", "name": "道具", "threshold": 0.6, "wait": 0.3},
-            # {"action": "click_template", "name": "摄妖香", "threshold": 0.5, "wait": 0.3},
-            # {"action": "click_position", "x": 268, "y": 260, "wait": 0.5},
-            # {"action": "click_template", "name": "关闭弹窗", "wait": 0.3},
-            {"action": "click_template", "name": "打开地图", "wait": 0.5},
+        "coord_input": [  # 步骤 7: 输入地图坐标
             {"action": "click_position", "x": 535, "y": 59, "wait": 0.3},
             {"action": "click_sequence", "positions": [[657,220],[530,155],[723,279],[535,158],[592,158],[653,220],[718,279]], "interval": 0.1, "wait": 0.3},
-            {"action": "click_template", "name": "关闭弹窗", "wait": 0.5},
-            {"action": "wait_coord", "target_map": "小西天", "target_x": 61, "target_y": 126, "tolerance": 3, "timeout": 120, "clicks": [[522,184],[662,214],[565,401]], "wait": 0.5},
-            # {"action": "detect_wuyi", "timeout": 120, "wait": 0.5},
         ],
+        "wait_target": {  # 步骤 9: 等待到达目标坐标 → 点击
+            "action": "wait_coord",
+            "target_map": "小西天", "target_x": 61, "target_y": 126, "tolerance": 3, "timeout": 120,
+            "clicks": [[522,184],[662,214],[565,401]], "wait": 0.5,
+        },
     },
 }
+
+def build_steps(config):
+    """根据场景配置构建完整步骤列表"""
+    if "steps" in config:
+        return config["steps"]
+    steps = list(_BASE_PART1)  # 步骤 1-6
+    steps.extend(config.get("coord_input", []))  # 步骤 7
+    steps.extend(_BASE_PART2)  # 步骤 8
+    if config.get("wait_target"):
+        steps.append(config["wait_target"])  # 步骤 9
+    steps.extend(_BASE_PART3)  # 步骤 10-13
+    return steps
 
 
 # ======================== 工具类 ========================
@@ -156,7 +198,7 @@ class ToolEngine:
         names = [
             "打开地图", "地图-筛选", "关闭地图", "好友入口",
             "PK-妙手空空技能", "PK-自动按钮", "PK-取消自动战斗",
-            "道具", "道具-道具栏", "关闭弹窗", "关闭聊天", "关闭活动弹窗", "左下角返回",
+            "道具", "道具-道具栏", "洞冥草", "关闭弹窗", "关闭聊天", "关闭活动弹窗", "左下角返回",
             "菜单-指引", "摄妖香", "使用摄妖香", "wuyi", "wuyi1", "wuyi2", "wuyi3",
         ]
         for name in names:
@@ -205,6 +247,8 @@ class ToolEngine:
         if self.ocr is None:
             self._log("初始化 OCR...")
             self.ocr = RapidOCR()
+            self.ocr(np.zeros((64, 64, 3), dtype=np.uint8))
+            self.ocr_engine = self.ocr
 
     # OCR 裁剪区域（设备分辨率下的坐标，对齐 mhxy_engine.py 的 OCR_CROP）
     OCR_CROP = {"x": 131, "y": 40, "w": 200, "h": 100}
@@ -462,12 +506,13 @@ class ToolEngine:
                 text = str(text).strip()
                 if conf < 0.5 or len(text) < 2:
                     continue
-                if any(k in text for k in ['西天', '寺', '塔', '洞', '殿', '谷', '山', '林', '湖']):
-                    map_name = text
-                import re
-                m = re.search(r'(\d+)[.,](\d+)', text)
+                # 坐标: (x, y) 或 (x.y)
+                m = re.search(r'[(（]\s*(\d{1,4})\s*[,，.]\s*(\d{1,4})\s*[)）]', text)
                 if m:
                     coord = (int(m.group(1)), int(m.group(2)))
+                # 地图名: 包含中文且不是纯数字坐标
+                elif re.search(r'[一-鿿]{2,}', text) and not text.startswith('('):
+                    map_name = text
             return map_name, coord
         except:
             return None, None
@@ -485,22 +530,33 @@ class ToolEngine:
             self._log("无法获取画面帧")
             return
 
-        map_name = self._get_current_map()
-        if not map_name:
+        # 自动 OCR 识别当前地图
+        map_name = None
+        self._init_ocr()
+        for _ in range(5):
             detected_map, _ = self.detect_map(frame)
             if detected_map:
                 map_name = detected_map
                 self.last_map_name = map_name
-                self._log(f"OCR 检测到地图: {map_name}")
+                self._log(f"OCR 识别到地图: {map_name}")
+                break
+            time.sleep(0.5)
+            frame = self.get_frame()
+
+        if not map_name:
+            self._log("未识别到地图，跳过")
+            return
+
         config = SCENE_RECOVERY.get(map_name)
 
         if config is None:
             self._log(f"当前场景 [{map_name}] 未配置忠诚度恢复流程，跳过")
             return
 
-        self._log(f"执行 [{map_name}] 忠诚度恢复流程...")
+        self._log(f"执行 [{map_name}] 完整流程...")
 
-        for i, step in enumerate(config["steps"], 1):
+        steps = build_steps(config)
+        for i, step in enumerate(steps, 1):
             action = step["action"]
             wait = step.get("wait", 0.3)
 
