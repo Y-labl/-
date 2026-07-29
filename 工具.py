@@ -119,13 +119,46 @@ _BASE_PART3 = [  # 步骤 10-13: 使用洞冥草 → 关闭弹窗
 SCENE_RECOVERY = {
     "小雷音寺": {
         "coord_input": [  # 步骤 6-7: 输入地图坐标
-            {"action": "click_position", "x": 535, "y": 59, "wait": 0.3},
+            {"action": "click_position", "x": 657, "y": 72, "wait": 0.3},
             {"action": "click_sequence", "positions": [[530,275],[595,278],[723,275],[530,157],[592,153],[595,222],[718,275]], "interval": 0.1, "wait": 0.3},
         ],
         "wait_target": {  # 步骤 9: 等待到达目标坐标 → 点击
             "action": "wait_coord",
             "target_map": "小雷音寺", "target_x": 78, "target_y": 125, "tolerance": 3, "timeout": 120,
             "clicks": [[504,186],[662,214],[565,401]], "wait": 0.5,
+        },
+    },
+    "龙窟三层": {
+        "coord_input": [  # 步骤 6-7: 输入地图坐标
+            {"action": "click_position", "x": 683, "y": 101, "wait": 0.3},
+            {"action": "click_sequence", "positions": [[451,258],[451,258],[578,325],[395,200],[451,262],[578,318]], "interval": 0.1, "wait": 0.3},
+        ],
+        "wait_target": {  # 步骤 9: 等待到达目标坐标 → 点击
+            "action": "wait_coord",
+            "target_map": "龙窟三层", "target_x": 55, "target_y": 15, "tolerance": 3, "timeout": 120,
+            "clicks": [[290,197],[661,220],[565,401]], "wait": 0.5,
+        },
+    },
+    "凤巢三层": {
+        "coord_input": [  # 步骤 6-7: 输入地图坐标
+            {"action": "click_position", "x": 618, "y": 137, "wait": 0.3},
+            {"action": "click_sequence", "positions": [[573,233],[573,233],[640,354],[517,233],[573,354],[635,354]], "interval": 0.1, "wait": 0.3},
+        ],
+        "wait_target": {  # 步骤 9: 等待到达目标坐标 → 点击
+            "action": "wait_coord",
+            "target_map": "凤巢三层", "target_x": 33, "target_y": 29, "tolerance": 3, "timeout": 120,
+            "clicks": [[290,167],[661,220],[565,401]], "wait": 0.5,
+        },
+    },
+    "女娲神迹": {
+        "coord_input": [  # 步骤 6-7: 输入地图坐标
+            {"action": "click_position", "x": 595, "y": 108, "wait": 0.3},
+            {"action": "click_sequence", "positions": [[535,334],[473,209],[661,328],[538,269],[478,325],[661,331]], "interval": 0.1, "wait": 0.3},
+        ],
+        "wait_target": {  # 步骤 9: 等待到达目标坐标 → 点击
+            "action": "wait_coord",
+            "target_map": "女娲神迹", "target_x": 81, "target_y": 57, "tolerance": 3, "timeout": 120,
+            "clicks": [[513,190],[661,220],[565,401]], "wait": 0.5,
         },
     },
     "子母河底": {
