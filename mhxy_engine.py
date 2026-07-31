@@ -1308,6 +1308,55 @@ class AutoFightEngine:
 
 
 
+    def _do_loyalty_recovery(self):
+        """
+        诚度恢复流程：调用工具.py中的ToolEngine执行对应场景的诚度恢复
+        当战斗场次达到55-60场之间时自动调用
+        """
+        try:
+            from 工具 import ToolEngine as LoyaltyToolEngine
+
+            self._log("  🛠️ 初始化诚度恢复工具...")
+
+            # 创建诚度恢复引擎实例
+            tool_engine = LoyaltyToolEngine(self.serial)
+
+            # 使用当前引擎的连接状态（避免重复连接）
+            if hasattr(self, 'client') and self.client is not None:
+                tool_engine.client = self.client
+                tool_engine.stream_w = self.stream_w
+                tool_engine.stream_h = self.stream_h
+                tool_engine.scale_x = self.scale_x
+                tool_engine.scale_y = self.scale_y
+                tool_engine.templates = {**self.templates}  # 复制已加载的模板
+
+                # 如果有OCR引擎，也复用
+                if hasattr(self, 'ocr_engine') and self.ocr_engine is not None:
+                    tool_engine.ocr_engine = self.ocr_engine
+                else:
+                    tool_engine.init_ocr()
+
+                self._log("  ✅ 复用现有设备连接")
+            else:
+                # 需要重新连接设备
+                self._log("  📡 连接设备...")
+                if not tool_engine.connect():
+                    self._log("  ❌ 设备连接失败，跳过诚度恢复")
+                    return
+
+            # 执行诚度恢复流程（会自动OCR识别当前场景）
+            self._log("  🔄 开始执行诚度恢复流程...")
+            tool_engine.loyalty_recovery()
+
+            self._log("  ✅ 诚度恢复流程完成")
+
+        except ImportError as e:
+            self._log(f"  ❌ 导入工具模块失败: {e}")
+        except Exception as e:
+            self._log(f"  ❌ 诚度恢复执行异常: {e}")
+
+
+
 
 
     # ========== 设备初始化 ==========
@@ -3173,7 +3222,7 @@ class AutoFightEngine:
 
     def post_combat(self, frame):
 
-        """战斗结束后清理 + 血量检测 + 酒肆恢复"""
+        """战斗结束后清理 + 血量检测 + 酒肆恢复 + 诚度恢复（55-60场）"""
 
         self.was_in_pk = False
 
@@ -3197,6 +3246,18 @@ class AutoFightEngine:
 
             time.sleep(0.5)
 
+
+        # ===== 战斗计数 + 诚度恢复检测 =====
+        self.battle_count += 1
+        self._log(f"  📊 战斗场次: {self.battle_count}")
+
+        # 检查是否需要执行诚度恢复（每55-60场执行一次）
+        # 使用取模运算：累计场次每达到55的倍数时，在0-5的范围内触发
+        remainder = self.battle_count % 55
+        if 0 <= remainder <= 5 and self.battle_count >= 55:
+            self._log(f"  🔔 战斗场次达到 {self.battle_count}，开始执行诚度恢复...")
+            self._do_loyalty_recovery()
+            self._log("  ✅ 诚度恢复完成")
 
 
         # ===== 战斗后血量检测 + 酒肆恢复 =====
