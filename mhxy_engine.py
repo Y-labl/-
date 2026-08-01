@@ -738,6 +738,19 @@ class AutoFightEngine:
 
         self.serial = config.get("serial", "")
 
+        # 设备名称（从配置获取，用于日志标识）
+        device_names = config.get("device_names", {})
+        self.device_name = device_names.get(self.serial, "") if device_names else ""
+
+        # 设备短标识（用于日志前缀，优先用设备名，否则用序列号前4位）
+        self.device_id = self.device_name if self.device_name else (self.serial[:4] if self.serial else "????")
+
+        # 日志文件路径
+        import os
+        self.log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+        os.makedirs(self.log_dir, exist_ok=True)
+        self.log_file = os.path.join(self.log_dir, f"{self.device_id}_{datetime.now().strftime('%Y%m%d')}.log")
+
         self.client = None
 
         self.templates = {}
@@ -794,11 +807,91 @@ class AutoFightEngine:
 
 
 
-    def _log(self, msg):
+        # 初始化日志文件并写入启动记录
+
+        try:
+
+            init_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            with open(self.log_file, "a", encoding="utf-8") as f:
+
+                f.write(f"\n{'='*60}\n")
+
+                f.write(f"[{init_ts}] 引擎初始化 - 设备: {self.device_id} ({self.serial})\n")
+
+                f.write(f"[{init_ts}] 日志文件: {self.log_file}\n")
+
+                f.write(f"{'='*60}\n")
+
+                f.flush()
+
+        except Exception:
+
+            pass
+
+
+
+    def _log(self, msg, also_console=True):
+
+        """输出日志到队列和文件，格式: [设备名] 时间 消息"""
 
         ts = datetime.now().strftime("%H:%M:%S")
 
-        self.log.put(f"[{ts}] {msg}")
+        log_msg = f"[{self.device_id}] {msg}"
+
+        # 发送到UI队列
+
+        if also_console:
+
+            self.log.put(f"[{ts}] {log_msg}")
+
+        # 保存到设备专属日志文件
+
+        self._write_to_log_file(ts, msg)
+
+    def _write_to_log_file(self, timestamp, msg):
+
+        """写入日志到文件，支持文件大小自动轮转"""
+
+        try:
+
+            # 检查日志文件大小，超过10MB自动轮转
+
+            max_size = 10 * 1024 * 1024  # 10MB
+
+            if os.path.exists(self.log_file):
+
+                file_size = os.path.getsize(self.log_file)
+
+                if file_size > max_size:
+
+                    # 重命名旧文件
+
+                    base, ext = os.path.splitext(self.log_file)
+
+                    old_file = f"{base}_{datetime.now().strftime('%H%M%S')}{ext}"
+
+                    os.rename(self.log_file, old_file)
+
+            # 写入新日志
+
+            with open(self.log_file, "a", encoding="utf-8") as f:
+
+                f.write(f"[{timestamp}] {msg}\n")
+
+                f.flush()  # 立即刷新到磁盘
+
+        except Exception as e:
+
+            # 日志写入失败不影响主流程，但打印到控制台
+
+            try:
+
+                print(f"日志写入失败: {e}")
+
+            except:
+
+                pass
 
 
 

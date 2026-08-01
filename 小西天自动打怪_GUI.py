@@ -141,11 +141,24 @@ class AutoFightGUI:
         self._device_widgets = {}     # serial -> {status, hp, mp, bb, bc}
         self._threshold_labels = {}
 
+        # GUI系统日志文件
+        self.gui_log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+        os.makedirs(self.gui_log_dir, exist_ok=True)
+        self.gui_log_file = os.path.join(self.gui_log_dir, f"GUI_{datetime.now().strftime('%Y%m%d')}.log")
+
         self._init_vars()
         self._build_ui()
         self._refresh_devices()
         self._load_cfg_to_ui()
+        # 初始化日志筛选选项
+        self.root.after(100, self._update_log_filter_options)
         self._poll_log()
+
+        # 记录程序启动日志
+        self._log("=" * 60)
+        self._log(f"程序启动 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        self._log(f"日志目录: {self.gui_log_dir}")
+        self._log("=" * 60)
 
     # ---------- 变量 ----------
     def _init_vars(self):
@@ -172,6 +185,9 @@ class AutoFightGUI:
         self.combat_mode = tk.StringVar(value=_mode)
         self.auto_path_enabled = tk.BooleanVar(value=cfg.get("auto_path_enabled", True))
         self.coord_enabled = tk.BooleanVar(value=cfg.get("coord_enabled", True))
+
+        # 日志相关
+        self.all_logs = []  # 存储所有日志
 
     # ---------- UI 构建 ----------
     def _build_ui(self):
@@ -317,8 +333,9 @@ class AutoFightGUI:
         log_card = ttk.Labelframe(main, text=" 运行日志 & 实时数据 ", padding=10)
         log_card.grid(row=5, column=0, sticky="nsew", pady=(0, 12))
         log_card.columnconfigure(0, weight=1)
-        log_card.rowconfigure(1, weight=1)
+        log_card.rowconfigure(2, weight=1)
 
+        # 实时数据显示行
         data_frame = ttk.Frame(log_card)
         data_frame.grid(row=0, column=0, sticky="w", pady=(0, 6))
 
@@ -343,10 +360,32 @@ class AutoFightGUI:
         self.time_display = ttk.Label(data_frame, text="⏱ 00:00",
                                     font=("Microsoft YaHei", 11, "bold"), foreground="#198754")
         self.time_display.pack(side=tk.LEFT)
+
+        # 日志筛选栏
+        filter_frame = ttk.Frame(log_card)
+        filter_frame.grid(row=1, column=0, sticky="ew", pady=(6, 0))
+
+        ttk.Label(filter_frame, text="日志筛选：").pack(side=tk.LEFT, padx=(0, 6))
+
+        self.log_filter_var = tk.StringVar(value="全部设备")
+        self.log_filter_combo = ttk.Combobox(filter_frame, textvariable=self.log_filter_var,
+                                             state="readonly", width=15, bootstyle="info")
+        self.log_filter_combo.pack(side=tk.LEFT, padx=(0, 10))
+        self.log_filter_combo.bind("<<ComboboxSelected>>", self._on_log_filter_change)
+
+        ttk.Label(filter_frame, text="|", foreground="gray").pack(side=tk.LEFT, padx=5)
+
+        self.log_count_label = ttk.Label(filter_frame, text="共 0 条", foreground="gray", font=("Microsoft YaHei", 9))
+        self.log_count_label.pack(side=tk.LEFT, padx=(5, 0))
+
+        # 存储所有日志（用于筛选）
+        self.all_logs = []  # 格式: [(device_id, timestamp, message), ...]
+
+        # 日志文本框
         self.log_text = ttk.ScrolledText(
             log_card, height=10, font=("Microsoft YaHei", 9),
             bg="#ffffff", fg="#333333", insertbackground="#333333")
-        self.log_text.grid(row=1, column=0, sticky="nsew")
+        self.log_text.grid(row=2, column=0, sticky="nsew")
         self.log_text.configure(state=tk.DISABLED)
 
         # ---- 底部 ----
@@ -599,6 +638,8 @@ class AutoFightGUI:
 
         cfg = dict(self.cfg)
         cfg["serial"] = serial
+        # 传递设备名称配置给引擎
+        cfg["device_names"] = self.cfg.get("device_names", {})
         engine = AutoFightEngine(cfg, self.log_queue)
         engine.coord_enabled = self.coord_enabled.get()
         self.engines[serial] = engine
@@ -782,6 +823,14 @@ class AutoFightGUI:
     # ---------- 日志 ----------
     def _poll_log(self):
         try:
+            # 每隔一定时间更新日志筛选选项
+            if hasattr(self, '_last_filter_update'):
+                if time.time() - self._last_filter_update > 5:  # 每5秒更新一次
+                    self._update_log_filter_options()
+                    self._last_filter_update = time.time()
+            else:
+                self._last_filter_update = time.time()
+
             while True:
                 msg = self.log_queue.get_nowait()
                 if msg == "__STOPPED__":
@@ -828,18 +877,193 @@ class AutoFightGUI:
         self.root.after(300, self._poll_log)
 
     def _log(self, msg):
-        self._log_to_ui(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
+        """GUI系统日志：输出到UI和文件"""
+        ts = datetime.now().strftime('%H:%M:%S')
+        log_msg = f"[{ts}] {msg}"
+        self._log_to_ui(log_msg)
+        # 写入GUI日志文件
+        self._write_gui_log(ts, msg)
+
+    def _write_gui_log(self, timestamp, msg):
+        """写入GUI系统日志到文件"""
+        try:
+            # 检查日志文件大小，超过10MB自动轮转
+            max_size = 10 * 1024 * 1024  # 10MB
+            if os.path.exists(self.gui_log_file):
+                file_size = os.path.getsize(self.gui_log_file)
+                if file_size > max_size:
+                    # 重命名旧文件
+                    base, ext = os.path.splitext(self.gui_log_file)
+                    old_file = f"{base}_{datetime.now().strftime('%H%M%S')}{ext}"
+                    os.rename(self.gui_log_file, old_file)
+            # 写入新日志
+            with open(self.gui_log_file, "a", encoding="utf-8") as f:
+                f.write(f"[{timestamp}] {msg}\n")
+                f.flush()  # 立即刷新到磁盘
+        except Exception as e:
+            try:
+                print(f"GUI日志写入失败: {e}")
+            except:
+                pass
 
     def _log_to_ui(self, msg):
+        """将日志添加到列表并根据筛选条件显示"""
+
+        # 解析日志中的设备ID
+
+        device_id = None
+
+        # 格式: [时间] [设备ID] 消息 或 [时间] 消息
+
+        import re
+
+        match = re.search(r'\[([^\]]+)\]\s*\[([^\]]+)\]', msg)
+
+        if match:
+
+            # 第一个是时间，第二个是设备ID
+
+            device_id = match.group(2)
+
+        else:
+
+            # 尝试匹配 [设备ID] 格式
+
+            match = re.search(r'\[([^\]]+)\]', msg)
+
+            if match and ":" not in match.group(1):  # 不是时间格式
+
+                device_id = match.group(1)
+
+        # 如果没有设备ID，默认为系统消息
+
+        if not device_id:
+
+            device_id = "系统"
+
+        # 存储日志
+
+        timestamp = datetime.now()
+
+        self.all_logs.append((device_id, timestamp, msg))
+
+        # 根据筛选条件决定是否显示
+
+        filter_val = self.log_filter_var.get()
+
+        should_show = (filter_val == "全部设备") or (filter_val == device_id)
+
+        if should_show:
+
+            self.log_text.configure(state=tk.NORMAL)
+
+            self.log_text.insert(tk.END, msg + "\n")
+
+            self.log_text.see(tk.END)
+
+            self.log_text.configure(state=tk.DISABLED)
+
+        # 更新日志计数
+
+        self._update_log_count()
+
+    def _update_log_count(self):
+
+        """更新日志计数显示"""
+
+        filter_val = self.log_filter_var.get()
+
+        if filter_val == "全部设备":
+
+            count = len(self.all_logs)
+
+        else:
+
+            count = sum(1 for d, _, _ in self.all_logs if d == filter_val)
+
+        self.log_count_label.configure(text=f"共 {count} 条")
+
+    def _refresh_log_display(self):
+
+        """根据当前筛选条件刷新日志显示"""
+
         self.log_text.configure(state=tk.NORMAL)
-        self.log_text.insert(tk.END, msg + "\n")
+
+        self.log_text.delete("1.0", tk.END)
+
+        filter_val = self.log_filter_var.get()
+
+        for device_id, timestamp, msg in self.all_logs:
+
+            if filter_val == "全部设备" or filter_val == device_id:
+
+                self.log_text.insert(tk.END, msg + "\n")
+
         self.log_text.see(tk.END)
+
         self.log_text.configure(state=tk.DISABLED)
 
+        self._update_log_count()
+
+    def _on_log_filter_change(self, event=None):
+
+        """筛选条件变化时刷新显示"""
+
+        self._refresh_log_display()
+
+    def _update_log_filter_options(self):
+
+        """更新日志筛选下拉框选项"""
+
+        # 收集所有有日志的设备
+
+        devices_with_logs = set()
+
+        for device_id, _, _ in self.all_logs:
+
+            devices_with_logs.add(device_id)
+
+        # 添加当前运行的设备
+
+        for serial, engine in self.engines.items():
+
+            if engine.running:
+
+                device_name = engine.device_name if hasattr(engine, 'device_name') else serial[:4]
+
+                devices_with_logs.add(device_name)
+
+        # 构建选项列表
+
+        options = ["全部设备"] + sorted(devices_with_logs)
+
+        current_val = self.log_filter_var.get()
+
+        self.log_filter_combo["values"] = options
+
+        # 如果当前值不在新选项中，重置为"全部设备"
+
+        if current_val not in options:
+
+            self.log_filter_var.set("全部设备")
+
+        else:
+
+            self.log_filter_combo.set(current_val)
+
     def _clear_log(self):
+
+        """清空日志"""
+
+        self.all_logs.clear()
+
         self.log_text.configure(state=tk.NORMAL)
+
         self.log_text.delete("1.0", tk.END)
+
         self.log_text.configure(state=tk.DISABLED)
+
+        self._update_log_count()
 
     # ---------- 配置 ----------
     def _load_cfg_to_ui(self):
