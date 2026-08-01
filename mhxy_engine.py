@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 
 """
 
@@ -735,6 +735,8 @@ class AutoFightEngine:
         self.log = log_queue
 
         self.running = False
+        self._loyalty_stop_event = threading.Event()  # 诚度恢复停止信号
+        self._paused = False  # 暂停标志（忠诚度恢复等工具运行时暂停主循环）
 
         self.serial = config.get("serial", "")
 
@@ -1402,57 +1404,21 @@ class AutoFightEngine:
 
 
     def _do_loyalty_recovery(self):
-        """
-        诚度恢复流程：调用工具.py中的ToolEngine执行对应场景的诚度恢复
-        当战斗场次达到55-60场之间时自动调用
-        """
+        """诚度恢复流程：暂停主循环，独立连接执行，支持停止信号"""
         try:
-            from 工具 import ToolEngine as LoyaltyToolEngine
-
-            self._log("  🛠️ 初始化诚度恢复工具...")
-
-            # 创建诚度恢复引擎实例
-            tool_engine = LoyaltyToolEngine(self.serial)
-
-            # 使用当前引擎的连接状态（避免重复连接）
-            if hasattr(self, 'client') and self.client is not None:
-                tool_engine.client = self.client
-                tool_engine.stream_w = self.stream_w
-                tool_engine.stream_h = self.stream_h
-                tool_engine.scale_x = self.scale_x
-                tool_engine.scale_y = self.scale_y
-                tool_engine.templates = {**self.templates}  # 复制已加载的模板
-
-                # 如果有OCR引擎，也复用
-                if hasattr(self, 'ocr_engine') and self.ocr_engine is not None:
-                    tool_engine.ocr_engine = self.ocr_engine
-                else:
-                    tool_engine.init_ocr()
-
-                self._log("  ✅ 复用现有设备连接")
-            else:
-                # 需要重新连接设备
-                self._log("  📡 连接设备...")
-                if not tool_engine.connect():
-                    self._log("  ❌ 设备连接失败，跳过诚度恢复")
-                    return
-
-            # 执行诚度恢复流程（会自动OCR识别当前场景）
-            self._log("  🔄 开始执行诚度恢复流程...")
-            tool_engine.loyalty_recovery()
-
+            from 工具 import run_loyalty_recovery
+            self._loyalty_stop_event.clear()
+            self._paused = True
+            self._log("  🛠️ 启动诚度恢复工具(暂停主循环)...")
+            try:
+                run_loyalty_recovery(self.serial, stop_event=self._loyalty_stop_event)
+            finally:
+                self._paused = False
             self._log("  ✅ 诚度恢复流程完成")
-
         except ImportError as e:
             self._log(f"  ❌ 导入工具模块失败: {e}")
         except Exception as e:
             self._log(f"  ❌ 诚度恢复执行异常: {e}")
-
-
-
-
-
-    # ========== 设备初始化 ==========
 
     def init_device_scale(self):
 
@@ -3534,6 +3500,9 @@ class AutoFightEngine:
             while self.running:
 
                 loop += 1
+                if self._paused:
+                    time.sleep(0.2)
+                    continue
 
                 frame = self.get_frame()
 

@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """忠诚度恢复工具类 - 独立运行，传入设备号自动连接并执行恢复流程"""
 
 import os
@@ -213,6 +213,7 @@ class ToolEngine:
         self.ocr = None  # 延迟初始化
         self.last_map_name = ""
         self.log_lines = []
+        self._stop_event = None  # 外部停止信号
 
         self._load_all_templates()
 
@@ -590,6 +591,9 @@ class ToolEngine:
 
         steps = build_steps(config)
         for i, step in enumerate(steps, 1):
+            if self._stop_event and self._stop_event.is_set():
+                self._log("[{}] 收到停止信号，退出".format(i))
+                return
             action = step["action"]
             wait = step.get("wait", 0.3)
 
@@ -762,6 +766,67 @@ class ToolEngine:
                 time.sleep(wait)
 
         self._log("loyalty recovery done")
+
+
+
+def run_loyalty_recovery(serial, map_name="", stop_event=None, client=None):
+    """独立运行忠诚度恢复流程。client可选复用已有scrcpy连接。stop_event可选用于外部停止。"""
+    print(f"device: {serial}")
+    if map_name:
+        print(f"map: {map_name}")
+    print("=" * 50)
+    engine = ToolEngine(serial)
+    if stop_event:
+        engine._stop_event = stop_event
+    if client is not None:
+        engine.client = client
+        f = client.last_frame
+        if f is not None:
+            h, w = f.shape[:2]
+            device_w, device_h = 0, 0
+            try:
+                import re
+                r = sp.run([_ADB_EXE, "-s", serial, "shell", "wm", "size"],
+                           capture_output=True, text=True, timeout=5)
+                m = re.search(r"(\d+)x(\d+)", r.stdout)
+                if m:
+                    device_w, device_h = int(m.group(1)), int(m.group(2))
+            except Exception:
+                pass
+            if h > w:
+                engine.stream_w = h
+                engine.stream_h = w
+                if device_h > device_w:
+                    device_w, device_h = device_h, device_w
+            else:
+                engine.stream_w = w
+                engine.stream_h = h
+                if device_h > device_w:
+                    device_w, device_h = device_h, device_w
+            if device_w and device_h:
+                engine.scale_x = device_w / engine.stream_w
+                engine.scale_y = device_h / engine.stream_h
+            else:
+                engine.scale_x = engine.scale_y = 1.0
+            engine._log("复用连接: stream={}x{} scale={:.3f}x{:.3f}".format(
+                engine.stream_w, engine.stream_h,
+                engine.scale_x, engine.scale_y))
+            engine.init_ocr()
+        else:
+            engine._log("共享client无帧，fallback独立连接")
+            if not engine.connect():
+                print("connect failed")
+                return
+    else:
+        if not engine.connect():
+            print("connect failed")
+            return
+    if map_name:
+        engine.cfg["map"] = map_name
+    engine._log("connected, start loyalty recovery...")
+    engine.loyalty_recovery()
+    if client is None:
+        engine.disconnect()
 
 if __name__ == "__main__":
     import sys

@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 梦幻西游 自动打怪 - 现代 UI 控制面板
 ===============================
@@ -265,7 +265,9 @@ class AutoFightGUI:
         self.map_select.bind("<<ComboboxSelected>>", lambda e: self._on_setting_change())
 
         ttk.Button(scene_card, text="妙手空空场景设置", command=self._open_scene_settings,
-                   width=18, bootstyle="warning").grid(row=0, column=4, sticky="e")
+                   width=18, bootstyle="warning").grid(row=0, column=4, sticky="e", padx=(0, 6))
+        ttk.Button(scene_card, text="🧪 测试诚度恢复", command=self._test_loyalty_recovery,
+                   width=18, bootstyle="info").grid(row=0, column=5, sticky="e")
 
         # ---- 人物补给设置 ----
         supply_card = ttk.Labelframe(main, text=" 人物补给设置 ", padding=12)
@@ -657,6 +659,8 @@ class AutoFightGUI:
         engine = self.engines.get(serial)
         if engine:
             engine.running = False
+            if hasattr(engine, '_loyalty_stop_event'):
+                engine._loyalty_stop_event.set()
         self._log(f"[{serial}] ⏹ 正在停止...")
 
     def _device_screenshot(self, serial):
@@ -1149,6 +1153,46 @@ class AutoFightGUI:
         self._sync_ui_to_cfg()
         save_config(self.cfg)
         self._log("✅ 配置已保存")
+
+
+    def _test_loyalty_recovery(self):
+        """测试诚度恢复功能 - 手动触发当前设备的诚度恢复流程"""
+        serial = self.cfg.get("serial", "").strip()
+        if not serial:
+            messagebox.showwarning("提示", "请先选择并绑定一个设备")
+            return
+
+        engine = self.engines.get(serial)
+        if not engine:
+            messagebox.showwarning("提示", "当前设备未启动，请先启动设备")
+            return
+
+        if not engine.running:
+            messagebox.showwarning("提示", "当前设备未运行，请先启动设备")
+            return
+
+        confirm = messagebox.askyesno("确认测试",
+            f"确定要对设备 [{serial}] 执行诚度恢复测试吗？\n\n"
+            "此操作将手动触发诚度恢复流程，可以用来验证功能是否正常工作。")
+        if not confirm:
+            return
+
+        self._log(f"\U0001f9ea 手动触发诚度恢复测试 - 设备: {serial}")
+        self._log("=" * 50)
+
+        def _run():
+            try:
+                engine._do_loyalty_recovery()
+                self.root.after(0, lambda: self._log("=" * 50))
+                self.root.after(0, lambda: self._log("\u2705 诚度恢复测试完成"))
+                self.root.after(0, lambda: messagebox.showinfo("测试完成", "诚度恢复流程已执行完成！\n请查看日志确认执行结果。"))
+            except Exception as e:
+                self.root.after(0, lambda err=e: self._log(f"\u274c 诚度恢复测试失败: {err}"))
+                self.root.after(0, lambda: self._log("=" * 50))
+                self.root.after(0, lambda err=e: messagebox.showerror("测试失败", f"诚度恢复流程执行失败：\n{err}"))
+
+        threading.Thread(target=_run, daemon=True).start()
+
 
 
     def _open_scene_settings(self):
