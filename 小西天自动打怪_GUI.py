@@ -28,6 +28,7 @@ from mhxy_engine import (
 # ============== 扩展默认配置 ==============
 DEFAULT_CONFIG = {
     "serial": "",
+    "device_order": [],
     "map": "小西天",
     # 新版 UI 映射（战斗中补给）
     "hp_method": "酒肆",
@@ -140,6 +141,11 @@ class AutoFightGUI:
         self.engine_threads = {}      # serial -> Thread
         self._device_widgets = {}     # serial -> {status, hp, mp, bb, bc}
         self._threshold_labels = {}
+        self._selected_devices = set()  # 设备管理页勾选的设备
+        self._device_order = list(self.cfg.get("device_order", []) or [])
+        self._drag_serial = None        # 拖拽排序：当前拖动的设备
+        self._drag_y0 = 0               # 拖拽起始 y
+        self._drag_widget = None        # 拖拽起始控件
 
         # GUI系统日志文件
         self.gui_log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
@@ -465,6 +471,19 @@ class AutoFightGUI:
     # ---------- Tab2: 设备管理 ----------
     def _build_tab2(self):
         """构建设备管理 Tab（ttkbootstrap 风格）"""
+        # 设备行操作栏小按钮样式：复制场景控制按钮配色，缩小字体与内边距
+        style = ttk.Style()
+        for src, dst in [
+            ("success.TButton", "SmallSuccess.TButton"),
+            ("danger.TButton", "SmallDanger.TButton"),
+            ("Outline.TButton", "SmallOutline.TButton"),
+        ]:
+            opts = dict(style.configure(src) or {})
+            opts["font"] = ("Microsoft YaHei", 8)
+            opts["padding"] = (6, 2)
+            style.configure(dst, **opts)
+            style.map(dst, **style.map(src))
+
         tab2 = ttk.Frame(self.notebook, padding=15)
         self.notebook.add(tab2, text="设备管理")
         tab2.columnconfigure(0, weight=1)
@@ -477,6 +496,13 @@ class AutoFightGUI:
                    width=10, bootstyle="outline").pack(side=tk.LEFT, padx=(0, 10))
         ttk.Label(top_frame, text="列出所有 ADB 设备，可独立控制每台设备的启停",
                   foreground="gray", font=("Microsoft YaHei", 9)).pack(side=tk.LEFT)
+        # 右侧批量操作按钮
+        batch_frame = ttk.Frame(top_frame)
+        batch_frame.pack(side=tk.RIGHT)
+        ttk.Button(batch_frame, text="▶ 一键启动", width=10, bootstyle="success",
+                   command=self._start_selected_devices).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(batch_frame, text="⏹ 一键停止", width=10, bootstyle="danger",
+                   command=self._stop_selected_devices).pack(side=tk.LEFT)
 
         # 设备列表面板（Canvas + Scrollbar）
         canvas_frame = ttk.Frame(tab2)
@@ -530,51 +556,86 @@ class AutoFightGUI:
                       foreground="orange", font=("Microsoft YaHei", 10)).pack(pady=20)
             return
 
-        # 表头
-        hdr = ttk.Frame(self.dev_list_frame)
-        hdr.pack(fill=tk.X, pady=(0, 8))
-        for ci in range(8):
-            hdr.columnconfigure(ci, weight=1)
-        hdr.columnconfigure(8, weight=0)
+        # 按手动排序顺序显示：以已保存的顺序为准，新设备追加到末尾
+        ordered = [s for s in self.cfg.get("device_order", []) if s in devices]
+        for s in devices:
+            if s not in ordered:
+                ordered.append(s)
+        self._device_order = ordered
+
+        # 表头与数据行共用同一个 grid，保证各列边界完全一致
+        self.dev_table = ttk.Frame(self.dev_list_frame)
+        self.dev_table.pack(fill=tk.X)
+        self.dev_table.columnconfigure(0, weight=0)
+        for ci in range(1, 9):
+            self.dev_table.columnconfigure(ci, weight=1)
+        self.dev_table.columnconfigure(9, weight=0)
         for ci, (txt, wd) in enumerate([
-            ("设备序列号", 16), ("设备名称", 10),
+            ("选择", 0), ("设备序列号", 16), ("设备名称", 10),
             ("状态", 6), ("HP", 5), ("MP", 5),
             ("BB", 5), ("战斗", 4), ("时长", 6), ("操作", 0),
         ]):
-            ttk.Label(hdr, text=txt, font=("Microsoft YaHei", 9, "bold"),
-                      width=wd if wd else None, anchor="w").grid(row=0, column=ci, sticky="ew", padx=2)
+            tk.Label(self.dev_table, text=txt, font=("Microsoft YaHei", 9, "bold"),
+                     width=wd if wd else None, anchor="center", bg="white",
+                     bd=0, padx=4, pady=2).grid(row=0, column=ci, sticky="ew")
 
-        for serial in devices:
+        self._device_row = 1
+        for serial in ordered:
             self._add_device_row(serial)
+
+    def _table_cell(self, parent, row, col, serial=None, **kw):
+        """在设备表格中创建一个单元格（与操作栏同风格：白底无边框）"""
+        kw.setdefault("bg", "white")
+        kw.setdefault("bd", 0)
+        kw.setdefault("padx", 4)
+        kw.setdefault("pady", 2)
+        lbl = tk.Label(parent, **kw)
+        lbl.grid(row=row, column=col, sticky="ew")
+        if serial is not None:
+            self._bind_row_drag(lbl, serial)
+        return lbl
 
     def _add_device_row(self, serial):
         """在设备管理 Tab 中添加一行"""
         engine = self.engines.get(serial)
         running = engine is not None and engine.running
 
-        row_frame = ttk.Frame(self.dev_list_frame)
-        row_frame.pack(fill=tk.X, pady=1)
+        row = self._device_row
+        self._device_row += 1
+        parent = self.dev_table
 
-        ttk.Label(row_frame, text=serial, width=16, anchor="w",
-                  font=("Consolas", 9)).grid(row=0, column=0, sticky="ew", padx=2)
+        # 多选复选框列
+        sel_frame = tk.Frame(parent, bg="white", bd=0)
+        sel_frame.grid(row=row, column=0, sticky="ew")
+        sel_var = tk.BooleanVar(value=serial in self._selected_devices)
+
+        def on_check(s=serial, v=sel_var):
+            if v.get():
+                self._selected_devices.add(s)
+            else:
+                self._selected_devices.discard(s)
+
+        ttk.Checkbutton(sel_frame, variable=sel_var, command=on_check,
+                        bootstyle="primary").pack(expand=True)
+        self._bind_row_drag(sel_frame, serial)
+
+        self._table_cell(parent, row, 1, serial=serial, text=serial, width=16,
+                         anchor="center", font=("Consolas", 9))
 
         # device_name
         dev_names = self.cfg.get("device_names", {})
         dev_name = dev_names.get(serial, "")
-        for ci in range(8):
-            row_frame.columnconfigure(ci, weight=1)
-        row_frame.columnconfigure(8, weight=0)
-        name_lbl = ttk.Label(row_frame, text=dev_name or "点击设置", width=10, anchor="w",
-                             foreground="gray" if not dev_name else "",
-                             cursor="hand2")
-        name_lbl.grid(row=0, column=1, sticky="ew", padx=2)
-        name_lbl.bind("<Button-1>", lambda e, s=serial, lbl=name_lbl: self._rename_device(s, lbl))
+        name_kw = {"text": dev_name or "点击设置", "width": 10, "anchor": "center",
+                   "cursor": "hand2"}
+        if not dev_name:
+            name_kw["foreground"] = "gray"
+        name_lbl = self._table_cell(parent, row, 2, serial=serial, **name_kw)
+        name_lbl._is_name_cell = True
 
         status_text = "运行中" if running else "空闲"
         status_color = "green" if running else "gray"
-        status_lbl = ttk.Label(row_frame, text=status_text, foreground=status_color,
-                               width=6, anchor="w")
-        status_lbl.grid(row=0, column=2, sticky="ew", padx=2)
+        status_lbl = self._table_cell(parent, row, 3, serial=serial, text=status_text,
+                                      foreground=status_color, width=6, anchor="center")
 
         hp_v, mp_v, bb_v = "--", "--", "--"
         if running:
@@ -582,16 +643,16 @@ class AutoFightGUI:
             mp_v = f"{engine.last_mp:.0f}%"
             bb_v = "--" if engine.has_no_bb else f"{engine.last_bb:.0f}%"
 
-        hp_lbl = ttk.Label(row_frame, text=hp_v, width=5, anchor="w")
-        hp_lbl.grid(row=0, column=3, sticky="ew", padx=2)
-        mp_lbl = ttk.Label(row_frame, text=mp_v, width=5, anchor="w")
-        mp_lbl.grid(row=0, column=4, sticky="ew", padx=2)
-        bb_lbl = ttk.Label(row_frame, text=bb_v, width=5, anchor="w")
-        bb_lbl.grid(row=0, column=5, sticky="ew", padx=2)
+        hp_lbl = self._table_cell(parent, row, 4, serial=serial, text=hp_v,
+                                  width=5, anchor="center")
+        mp_lbl = self._table_cell(parent, row, 5, serial=serial, text=mp_v,
+                                  width=5, anchor="center")
+        bb_lbl = self._table_cell(parent, row, 6, serial=serial, text=bb_v,
+                                  width=5, anchor="center")
 
         bc_v = f"{engine.battle_count}" if running else "--"
-        bc_lbl = ttk.Label(row_frame, text=bc_v, width=4, anchor="w")
-        bc_lbl.grid(row=0, column=6, sticky="ew", padx=2)
+        bc_lbl = self._table_cell(parent, row, 7, serial=serial, text=bc_v,
+                                  width=4, anchor="center")
 
         # 当前场景时长
         if running and getattr(engine, "start_time", 0):
@@ -599,44 +660,64 @@ class AutoFightGUI:
             duration = f"{elapsed // 60:02d}:{elapsed % 60:02d}"
         else:
             duration = "--"
-        dur_lbl = ttk.Label(row_frame, text=duration, width=6, anchor="w")
-        dur_lbl.grid(row=0, column=7, sticky="ew", padx=2)
+        dur_lbl = self._table_cell(parent, row, 8, serial=serial, text=duration,
+                                   width=6, anchor="center")
 
-        btn_frame = ttk.Frame(row_frame)
-        btn_frame.grid(row=0, column=8, padx=2)
-        start_btn2 = ttk.Button(btn_frame, text="▶", width=2, bootstyle="success",
-                               command=lambda s=serial: self._start_device(s))
-        start_btn2.pack(side=tk.LEFT, padx=1)
-        stop_btn2 = ttk.Button(btn_frame, text="⏹", width=2, bootstyle="danger",
+        btn_frame = tk.Frame(parent, bg="white", bd=0, padx=4)
+        btn_frame.grid(row=row, column=9, sticky="ew")
+        start_btn2 = ttk.Button(btn_frame, text="▶ 启动", width=7,
+                                style="SmallSuccess.TButton",
+                                command=lambda s=serial: self._start_device(s))
+        start_btn2.pack(side=tk.LEFT, padx=(0, 3))
+        stop_btn2 = ttk.Button(btn_frame, text="⏹ 停止", width=7,
+                               style="SmallDanger.TButton",
                                command=lambda s=serial: self._stop_device(s))
-        stop_btn2.pack(side=tk.LEFT, padx=1)
-
-        if running:
-            start_btn2.configure(state=tk.DISABLED)
-            stop_btn2.configure(state=tk.NORMAL)
-        else:
-            start_btn2.configure(state=tk.NORMAL)
-            stop_btn2.configure(state=tk.DISABLED)
-
-        ttk.Button(btn_frame, text="📸", width=2, bootstyle="outline",
-                   command=lambda s=serial: self._device_screenshot(s)).pack(
-            side=tk.LEFT, padx=1)
+        stop_btn2.pack(side=tk.LEFT, padx=(0, 3))
+        ttk.Button(btn_frame, text="📸 截图", width=7,
+                   style="SmallOutline.TButton",
+                   command=lambda s=serial: self._device_screenshot(s)).pack(side=tk.LEFT)
 
         self._device_widgets[serial] = {
             "status": status_lbl, "hp": hp_lbl, "mp": mp_lbl,
             "bb": bb_lbl, "bc": bc_lbl, "dur": dur_lbl,
+            "start": start_btn2, "stop": stop_btn2,
         }
+        self._update_device_row_buttons(serial)
+
+    def _update_device_row_buttons(self, serial):
+        """根据设备运行状态更新设备行的按钮与状态（与场景控制页按钮逻辑一致）"""
+        w = self._device_widgets.get(serial)
+        if not w:
+            return
+        engine = self.engines.get(serial)
+        running = engine is not None and engine.running
+        if running:
+            w["start"].configure(state=tk.DISABLED)
+            w["stop"].configure(state=tk.NORMAL)
+            w["status"].configure(text="运行中", foreground="green")
+        else:
+            w["start"].configure(state=tk.NORMAL)
+            w["stop"].configure(state=tk.DISABLED)
+            w["status"].configure(text="空闲", foreground="gray")
+            w["hp"].configure(text="--")
+            w["mp"].configure(text="--")
+            w["bb"].configure(text="--")
+            w["bc"].configure(text="--")
+            w["dur"].configure(text="--")
 
     def _start_device(self, serial):
-        """启动指定设备的引擎"""
+        """启动指定设备的引擎（与场景控制页「启动」一致：同步配置→绑定→保存→启动）"""
         if serial in self.engines and self.engines[serial].running:
             self._log(f"[{serial}] 已在运行中")
             return
+        self._sync_ui_to_cfg()
+        self.cfg["serial"] = serial
+        save_config(self.cfg)
+        self.device_combo.set(serial)
+        self.dev_status.configure(text=f"设备: {serial}", foreground="green")
+
         self._draw_status("green")
         self.status_label.configure(text="运行中")
-        self._update_tab1_buttons()
-        self._refresh_devices()
-        self._refresh_device_tab()
 
         cfg = dict(self.cfg)
         cfg["serial"] = serial
@@ -645,23 +726,126 @@ class AutoFightGUI:
         engine = AutoFightEngine(cfg, self.log_queue)
         engine.coord_enabled = self.coord_enabled.get()
         self.engines[serial] = engine
-        if serial == self.cfg.get("serial"):
-            self.engine = engine
+        self.engine = engine
         t = threading.Thread(target=engine.run_loop, daemon=True)
         self.engine_threads[serial] = t
         t.start()
+        self._update_device_row_buttons(serial)
         # 引擎启动后延迟更新按钮状态
         self.root.after(500, self._update_tab1_buttons)
         self._log(f"[{serial}] ▶ 引擎启动")
 
     def _stop_device(self, serial):
-        """停止指定设备的引擎"""
+        """停止指定设备的引擎（与场景控制页「停止」一致）"""
         engine = self.engines.get(serial)
         if engine:
             engine.running = False
             if hasattr(engine, '_loyalty_stop_event'):
                 engine._loyalty_stop_event.set()
+        self._update_device_row_buttons(serial)
+        self.root.after(500, self._update_tab1_buttons)
         self._log(f"[{serial}] ⏹ 正在停止...")
+
+    def _selected_serials(self):
+        """按当前显示顺序返回已勾选的设备"""
+        return [s for s in self._device_order if s in self._selected_devices]
+
+    def _start_selected_devices(self):
+        """一键启动所有勾选的设备"""
+        serials = self._selected_serials()
+        if not serials:
+            messagebox.showwarning("提示", "请先勾选要启动的设备")
+            return
+        for s in serials:
+            self._start_device(s)
+        self._log(f"▶ 一键启动 {len(serials)} 台设备")
+
+    def _stop_selected_devices(self):
+        """一键停止所有勾选的设备"""
+        serials = self._selected_serials()
+        if not serials:
+            messagebox.showwarning("提示", "请先勾选要停止的设备")
+            return
+        for s in serials:
+            self._stop_device(s)
+        self._log(f"⏹ 一键停止 {len(serials)} 台设备")
+
+    def _bind_row_drag(self, widget, serial):
+        """给行的单元格绑定拖拽排序事件"""
+        widget.bind("<Button-1>", lambda e, s=serial: self._on_row_drag_start(s, e))
+        widget.bind("<ButtonRelease-1>", lambda e, s=serial: self._on_row_drag_end(s, e))
+
+    def _on_row_drag_start(self, serial, event):
+        self._drag_serial = serial
+        self._drag_y0 = event.y_root
+        self._drag_widget = event.widget
+
+    def _on_row_drag_end(self, serial, event):
+        """拖拽松手：按鼠标位置重新插入行并保存顺序"""
+        if self._drag_serial != serial:
+            return
+        widget = self._drag_widget
+        self._drag_serial = None
+        self._drag_widget = None
+        # 移动距离很小视为单击：名称列触发重命名，其它列无操作
+        if abs(event.y_root - self._drag_y0) < 4:
+            if widget is not None and getattr(widget, "_is_name_cell", False):
+                self._rename_device(serial, widget)
+            return
+        target = self._row_pos_at_y(event.y_root)
+        try:
+            idx = self._device_order.index(serial)
+        except ValueError:
+            return
+        if target is None or idx == target:
+            return
+        self._device_order.pop(idx)
+        self._device_order.insert(target, serial)
+        self.cfg["device_order"] = self._merged_device_order()
+        save_config(self.cfg)
+        self._refresh_device_tab()
+
+    def _merged_device_order(self):
+        """合并显示顺序与已保存顺序：暂未连接的设备保留原槽位"""
+        saved = list(self.cfg.get("device_order", []))
+        current = list(self._device_order)
+        current_set = set(current)
+        merged = []
+        placed = set()
+        idx = 0
+        for s in saved:
+            if s in current_set:
+                while idx < len(current) and current[idx] in placed:
+                    idx += 1
+                if idx < len(current):
+                    t = current[idx]
+                    merged.append(t)
+                    placed.add(t)
+                    idx += 1
+            else:
+                merged.append(s)
+                placed.add(s)
+        for t in current:
+            if t not in placed:
+                merged.append(t)
+                placed.add(t)
+        return merged
+
+    def _row_pos_at_y(self, y):
+        """把屏幕 y 坐标换算成目标行位置（0 为第一行）"""
+        best = None
+        best_dist = None
+        for w in self.dev_table.winfo_children():
+            gi = w.grid_info()
+            r = int(gi.get("row", -1))
+            if r < 1:
+                continue
+            center = (w.winfo_rooty() + w.winfo_height() / 2)
+            dist = abs(y - center)
+            if best is None or dist < best_dist:
+                best = r - 1
+                best_dist = dist
+        return best
 
     def _device_screenshot(self, serial):
         """为指定设备截图（始终使用ADB实时截图）"""
