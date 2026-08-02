@@ -807,6 +807,8 @@ class AutoFightEngine:
 
         self._last_loyalty_recovery = 0  # 上次诚度恢复时的战斗场次
 
+        self._force_run_map = False       # 酒肆休息完成后立即跑图
+
         self.start_time = 0
 
 
@@ -1302,6 +1304,9 @@ class AutoFightEngine:
         self.jiusi_used_time = time.time()
 
         self._log("  🍶 酒肆恢复完成")
+
+        # 休息完成后，0.3秒后直接打开地图跑图（跳过坐标停止检测）
+        self._force_run_map = True
 
 
 
@@ -2467,29 +2472,7 @@ class AutoFightEngine:
 
         self._wait_combat_end()
 
-        # 战斗结束后取消自动战斗
-
-        for _ in range(5):
-
-            frame = self.get_frame()
-
-            if frame is None:
-
-                time.sleep(0.2)
-
-                continue
-
-            cancel = self.find(frame, "PK-取消自动战斗")
-
-            if cancel:
-
-                self.tap(cancel[0], cancel[1])
-
-                self._log("  🚫 已取消自动战斗")
-
-                break
-
-            time.sleep(0.3)
+        # 取消自动战斗已统一在 post_combat 处理（对每场战斗生效），此处不再重复点击
 
     def _save_debug_combat(self, frame, targets, display_name):
 
@@ -3287,17 +3270,32 @@ class AutoFightEngine:
 
         self.was_in_pk = False
 
-        # 【已注释】战斗结束后「取消自动战斗」「重置回合数」的点击（会多出两下随机点击）
-        # cancel = self.find(frame, "PK-取消自动战斗")
-        #
-        # if cancel:
-        #
-        #     self._log("  🔄 取消自动战斗")
-        #
-        #     self.tap(cancel[0], cancel[1])
-        #
-        #     time.sleep(0.5)
-        #
+        # 战斗结束后取消自动战斗：点击后重新确认，仍在则继续点击，直到消失（对所有战斗生效）
+        for _ in range(5):
+
+            frame = self.get_frame()
+
+            if frame is None:
+
+                time.sleep(0.2)
+
+                continue
+
+            cancel = self.find(frame, "PK-取消自动战斗")
+
+            if cancel:
+
+                self.tap(cancel[0], cancel[1])
+
+                self._log("  🔄 取消自动战斗")
+
+                time.sleep(0.3)  # 等待点击生效
+
+                continue  # 重新识别，确认取消按钮已消失
+
+            break
+
+        # 【已注释】重置回合数点击（避免多余点击）
         # reset = self.find(frame, "重置回合数")
         #
         # if reset:
@@ -3666,7 +3664,13 @@ class AutoFightEngine:
 
                     t0 = time.time()
 
-                    coord_stopped, cur_map, cur_coord = self.check_coord_stopped(frame)
+                    # 休息完：等待0.3秒后直接跑图，跳过坐标停止检测
+                    if self._force_run_map:
+                        self._force_run_map = False
+                        time.sleep(0.3)
+                        coord_stopped, cur_map, cur_coord = True, self.last_map_name, self.last_coord
+                    else:
+                        coord_stopped, cur_map, cur_coord = self.check_coord_stopped(frame)
 
                     if loop % 5 == 0:
 
