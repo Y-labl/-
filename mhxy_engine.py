@@ -805,6 +805,8 @@ class AutoFightEngine:
 
         self.battle_count = 0
 
+        self._last_loyalty_recovery = 0  # 上次诚度恢复时的战斗场次
+
         self.start_time = 0
 
 
@@ -3285,35 +3287,35 @@ class AutoFightEngine:
 
         self.was_in_pk = False
 
-        cancel = self.find(frame, "PK-取消自动战斗")
-
-        if cancel:
-
-            self._log("  🔄 取消自动战斗")
-
-            self.tap(cancel[0], cancel[1])
-
-            time.sleep(0.5)
-
-        reset = self.find(frame, "重置回合数")
-
-        if reset:
-
-            self._log("  🔄 重置回合数")
-
-            self.tap(reset[0], reset[1])
-
-            time.sleep(0.5)
+        # 【已注释】战斗结束后「取消自动战斗」「重置回合数」的点击（会多出两下随机点击）
+        # cancel = self.find(frame, "PK-取消自动战斗")
+        #
+        # if cancel:
+        #
+        #     self._log("  🔄 取消自动战斗")
+        #
+        #     self.tap(cancel[0], cancel[1])
+        #
+        #     time.sleep(0.5)
+        #
+        # reset = self.find(frame, "重置回合数")
+        #
+        # if reset:
+        #
+        #     self._log("  🔄 重置回合数")
+        #
+        #     self.tap(reset[0], reset[1])
+        #
+        #     time.sleep(0.5)
 
 
         # ===== 战斗计数 + 诚度恢复检测 =====
         self.battle_count += 1
         self._log(f"  📊 战斗场次: {self.battle_count}")
 
-        # 检查是否需要执行诚度恢复（每55-60场执行一次）
-        # 使用取模运算：累计场次每达到55的倍数时，在0-5的范围内触发
-        remainder = self.battle_count % 55
-        if 0 <= remainder <= 5 and self.battle_count >= 55:
+        # 检查是否需要执行诚度恢复（每55-60场执行一次，每个周期只触发一次）
+        if self.battle_count >= 55 and self.battle_count - self._last_loyalty_recovery >= 55:
+            self._last_loyalty_recovery = self.battle_count
             self._log(f"  🔔 战斗场次达到 {self.battle_count}，开始执行诚度恢复...")
             self._do_loyalty_recovery()
             self._log("  ✅ 诚度恢复完成")
@@ -3442,6 +3444,8 @@ class AutoFightEngine:
         self.start_time = time.time()
 
         self.battle_count = 0
+
+        self._last_loyalty_recovery = 0
 
         scene_start_time = time.time()
 
