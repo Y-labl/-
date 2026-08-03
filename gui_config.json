@@ -1,5 +1,5 @@
 {
-  "serial": "WEENU18806160281",
+  "serial": "WEENU18904103110",
   "map": "小西天",
   "hp_enabled": false,
   "hp_threshold": 50,
@@ -120,11 +120,24 @@
   },
   "coord_enabled": true,
   "device_names": {
-    "WEENU18A15102480": "129化生寺",
-    "WEENU18A18102828": "145龙宫",
-    "WEENU19314102545": "129方寸",
-    "WEENU18810135788": "129女神木",
-    "WEENU18904103110": "129男化生寺"
+    "WEENU18A15102480": "诏安县华表村",
+    "WEENU18A18102828": "145龙宫（恋）",
+    "WEENU19314102545": "醉一世芳华ん",
+    "WEENU18810135788": "鸿元·方寸",
+    "WEENU18904103110": "醉一抹深秋ん"
   },
-  "capture_bb_enabled": true
+  "capture_bb_enabled": true,
+  "device_order": [
+    "WEENU18A18102828",
+    "WEENU18A15102480",
+    "WEENU18810135788",
+    "WEENU19314102545",
+    "WEENU18904103110",
+    "JUBNU18728128405",
+    "JUBNU18813107912",
+    "JUBNU18930138252",
+    "WEENU18720159489",
+    "WEENU18806160281",
+    "WEENU18917107778"
+  ]
 }

@@ -216,26 +216,6 @@ def adb_key(serial, keycode):
 
 
 
-def adb_swipe(serial, x1, y1, x2, y2, duration_ms=500):
-
-    """模拟手指滑动：从 (x1,y1) 滑到 (x2,y2)。用于滑过后排怪物露出被遮挡的名字"""
-
-    x1 += random.randint(-3, 3)
-
-    y1 += random.randint(-3, 3)
-
-    x2 += random.randint(-3, 3)
-
-    y2 += random.randint(-3, 3)
-
-    sp.run([_ADB_EXE, "-s", serial, "shell", "input", "touchscreen", "swipe",
-
-            str(x1), str(y1), str(x2), str(y2), str(duration_ms)],
-
-           capture_output=True, timeout=5, creationflags=sp.CREATE_NO_WINDOW)
-
-
-
 
 
 def adb_screencap(serial):
@@ -809,6 +789,8 @@ class AutoFightEngine:
 
         self._force_run_map = False       # 酒肆休息完成后立即跑图
 
+        self.total_runtime = 0.0          # 累计运行时长（秒），跨重启保留
+
         self.start_time = 0
 
 
@@ -1205,6 +1187,10 @@ class AutoFightEngine:
 
         for _ in range(10):
 
+            if not self.running:
+
+                return
+
             f = self.get_frame()
 
             if f is not None and not self.is_in_pk(f):
@@ -1228,6 +1214,10 @@ class AutoFightEngine:
         found_skill = False
 
         for attempt in range(5):
+
+            if not self.running:
+
+                return
 
             f = self.get_frame()
 
@@ -1270,6 +1260,10 @@ class AutoFightEngine:
         found_rest = False
 
         for attempt in range(8):
+
+            if not self.running:
+
+                return
 
             f = self.get_frame()
 
@@ -1699,22 +1693,6 @@ class AutoFightEngine:
 
 
 
-    def _swipe_to_reveal_monsters(self):
-
-        """滑动后排怪物露出被遮挡的名字"""
-
-        p1 = (349, 568)
-
-        p2 = (950, 235)
-
-        self._log(f"  滑动 ({p1[0]},{p1[1]}) -> ({p2[0]},{p2[1]})")
-
-        adb_swipe(self.serial, p1[0], p1[1], p2[0], p2[1], duration_ms=2000)
-
-        time.sleep(0.3)
-
-    
-
     def do_combat(self):
 
         self._log("⚔️ 开始战斗流程")
@@ -1830,10 +1808,6 @@ class AutoFightEngine:
         if len(matched_targets) >= 5:
 
             self._log(f"  👆 检测到前排怪物，划过后排显露名字")
-
-            # self._swipe_to_reveal_monsters()
-
-            # time.sleep(0.3)
 
             frame2 = self.get_frame()
 
@@ -2015,6 +1989,28 @@ class AutoFightEngine:
                         dedup_s.append(t)
                 steal_targets = dedup_s
 
+        # 第一回合没识别到偷卡目标时，不立即放弃：稍等重新截图识别（滑动已移除，不做镜头滑动）
+        if (not steal_targets and tou_targets and matched_targets
+                and self.cfg.get("miaoshou_enabled", True)):
+            self._log("  🔍 第一次未识别到偷卡目标，进行第二次识别")
+            if not self._check_in_combat():
+                return
+            time.sleep(1.0)
+            f_retry = self.get_frame()
+            if f_retry is not None:
+                steal_targets = []
+                for candidate in tou_targets:
+                    cur = self._find_all(f_retry, candidate, threshold=0.80, roi=COMBAT_ROI)
+                    if cur:
+                        steal_targets.extend(cur)
+                dedup_s = []
+                for t in sorted(steal_targets, key=lambda x: x[2], reverse=True):
+                    if not any(abs(t[0]-d[0])**2+abs(t[1]-d[1])**2 < 625 for d in dedup_s):
+                        dedup_s.append(t)
+                steal_targets = dedup_s
+                if steal_targets:
+                    self._log(f"  🎯 第二次识别到 {len(steal_targets)} 个偷卡目标")
+
         if not steal_targets:
             self._log(f"  ℹ️ 当前战斗无偷卡目标，直接击杀")
             self._post_steal_action(skip_wait=True, matched_targets=matched_targets)
@@ -2122,7 +2118,7 @@ class AutoFightEngine:
 
 
 
-        # ?????????????????????????????
+        # 检测怪物位置，优先攻击顺序：护佑 > 爆炸 > 暴击
         monster_pos = None
 
         for _ in range(5):
@@ -2135,7 +2131,7 @@ class AutoFightEngine:
             map_name = self.last_map_name or self.cfg.get("map", "")
             tou = _gt(map_name) or []
 
-            # ?????????
+            # 检测所有怪物
             all_mon_pts = []
             for cand in tou:
                 pts = self._find_all(frame, cand, threshold=0.80, roi=COMBAT_ROI)
@@ -2143,11 +2139,12 @@ class AutoFightEngine:
                 if pts and monster_pos is None:
                     monster_pos = (pts[0][0], pts[0][1])
 
-            # ????/???????????????????
-            huyou_pts = self._find_all(frame, "PK-????", threshold=0.70, roi=COMBAT_ROI)
-            baoji_pts = self._find_all(frame, "PK-????", threshold=0.70, roi=COMBAT_ROI)
-            special_text = huyou_pts if huyou_pts else (baoji_pts if baoji_pts else [])
-            tag = "??" if huyou_pts else ("??" if baoji_pts else "")
+            # 护佑/爆炸/暴击文字，优先攻击对应怪物（文字在怪物下方）
+            huyou_pts = self._find_all(frame, "PK-护佑文字", threshold=0.70, roi=COMBAT_ROI)
+            baozha_pts = self._find_all(frame, "PK-爆炸文字", threshold=0.70, roi=COMBAT_ROI)
+            baoji_pts = self._find_all(frame, "PK-暴击文字", threshold=0.70, roi=COMBAT_ROI)
+            special_text = huyou_pts if huyou_pts else (baozha_pts if baozha_pts else (baoji_pts if baoji_pts else []))
+            tag = "护佑" if huyou_pts else ("爆炸" if baozha_pts else ("暴击" if baoji_pts else ""))
             if special_text and all_mon_pts:
                 mx, my = special_text[0][0], special_text[0][1]
                 best_m, best_d = None, 999999
@@ -2161,9 +2158,9 @@ class AutoFightEngine:
                             best_m = (m[0], m[1])
                 if best_m:
                     monster_pos = best_m
-                    self._log(f"  \U0001f3af ???{tag}?? -> ???? ({best_m[0]},{best_m[1]})")
+                    self._log(f"  🎯 检测到{tag}文字 -> 优先攻击 ({best_m[0]},{best_m[1]})")
                 else:
-                    self._log(f"  \u26a0 {tag}????????")
+                    self._log(f"  ⚠️ {tag}文字未匹配到怪物")
 
             if monster_pos:
                 break
@@ -2234,11 +2231,12 @@ class AutoFightEngine:
                         monster_pos = (pts[0][0], pts[0][1])
 
                 # 检测护佑/暴击文字，用已有怪物坐标匹配（文字在怪物下方）
-                # 护佑优先
+                # 优先顺序：护佑 > 爆炸 > 暴击
                 huyou_pts = self._find_all(f_mon, "PK-护佑文字", threshold=0.70, roi=COMBAT_ROI)
+                baozha_pts = self._find_all(f_mon, "PK-爆炸文字", threshold=0.70, roi=COMBAT_ROI)
                 baoji_pts = self._find_all(f_mon, "PK-暴击文字", threshold=0.70, roi=COMBAT_ROI)
-                special_text = huyou_pts if huyou_pts else (baoji_pts if baoji_pts else [])
-                tag = "护佑" if huyou_pts else ("暴击" if baoji_pts else "")
+                special_text = huyou_pts if huyou_pts else (baozha_pts if baozha_pts else (baoji_pts if baoji_pts else []))
+                tag = "护佑" if huyou_pts else ("爆炸" if baozha_pts else ("暴击" if baoji_pts else ""))
                 if special_text and all_mon_pts:
                     mx, my = special_text[0][0], special_text[0][1]
                     best_m, best_d = None, 999999
@@ -2765,6 +2763,10 @@ class AutoFightEngine:
     def _wait_combat_end(self):
 
         for _ in range(30):
+
+            if not self.running:
+
+                return
 
             frame = self.get_frame()
 
@@ -3295,6 +3297,9 @@ class AutoFightEngine:
 
             break
 
+        # 取消完成后立即跑图：下一次主循环直接打开地图，不再等坐标停止检测
+        self._force_run_map = True
+
         # 【已注释】重置回合数点击（避免多余点击）
         # reset = self.find(frame, "重置回合数")
         #
@@ -3440,10 +3445,6 @@ class AutoFightEngine:
 
 
         self.start_time = time.time()
-
-        self.battle_count = 0
-
-        self._last_loyalty_recovery = 0
 
         scene_start_time = time.time()
 
@@ -3887,6 +3888,13 @@ class AutoFightEngine:
     def stop(self):
 
         self.running = False
+
+        # 累计本次运行时长（跨重启保留），start_time 置 0 防止重复累计
+        if self.start_time > 0:
+
+            self.total_runtime += max(0.0, time.time() - self.start_time)
+
+            self.start_time = 0
 
         if self.client:
 
@@ -4663,14 +4671,6 @@ if __name__ == "__main__":
     app = AutoFightGUI()
 
     app.run()
-
-
-
-
-
-
-
-
 
 
 

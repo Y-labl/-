@@ -31,6 +31,12 @@ SCENE_MAPPING = {
         "map_click": {"x1": 180, "y1": 220, "x2": 500, "y2": 380},
         "support_type": "support",
     },
+    "凤巢五层": {
+        "tou_targets": ["PK-召唤兽-凤凰", "PK-召唤兽-天将", "PK-召唤兽-金翼"],
+        "jineng_targets": ["PK-召唤兽-凤凰", "PK-召唤兽-天将", "PK-召唤兽-金翼"],
+        "map_click": {"x1": 180, "y1": 220, "x2": 500, "y2": 380},
+        "support_type": "support",
+    },
     "小西天": {
         "tou_targets": ["PK-召唤兽-炎魔神"],
         "jineng_targets": ["PK-召唤兽-金饶僧", "PK-召唤兽-噬天虎", "PK-召唤兽-炎魔神", "PK-召唤兽-夜罗刹"],

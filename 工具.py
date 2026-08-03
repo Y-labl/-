@@ -686,6 +686,9 @@ class ToolEngine:
                 last_stable_t = 0
                 reached = False
                 while time.time() - start_t < timeout:
+                    if self._stop_event and self._stop_event.is_set():
+                        self._log(f"[{i}] 收到停止信号，退出等待坐标")
+                        return
                     frame = self.get_frame()
                     if frame is None:
                         time.sleep(0.3)
@@ -716,6 +719,9 @@ class ToolEngine:
                     self._log("[{}] 已到达目标坐标: {} ({},{})".format(i, target_map, target_x, target_y))
                     self._log("[{}] 依次点击 {} 个位置: {}".format(i, len(clicks), clicks))
                     for idx_c, (px, py) in enumerate(clicks):
+                        if self._stop_event and self._stop_event.is_set():
+                            self._log(f"[{i}] 收到停止信号，中断点击")
+                            return
                         self._log("[{}]   点击 [{}/{}] ({},{})".format(i, idx_c+1, len(clicks), px, py))
                         self.tap(px, py)
                         time.sleep(0.2)

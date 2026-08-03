@@ -25,6 +25,10 @@ from mhxy_engine import (
 )
 
 
+# 设备统计文件（按天记录，关闭程序后重启可恢复当日累计）
+STATS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs", "device_stats.txt")
+
+
 # ============== 扩展默认配置 ==============
 DEFAULT_CONFIG = {
     "serial": "",
@@ -62,6 +66,7 @@ DEFAULT_CONFIG = {
         {"enabled": False, "scene": "龙窟六层", "rings": "得3个环", "cards": "得2张卡片", "time": "满180分钟", "after": "后换场景"},
         {"enabled": False, "scene": "凤巢三层", "rings": "得3个环", "cards": "得2张卡片", "time": "满180分钟", "after": "后换场景"},
         {"enabled": False, "scene": "凤巢四层", "rings": "得3个环", "cards": "无要求", "time": "满180分钟", "after": "后换场景"},
+        {"enabled": False, "scene": "凤巢五层", "rings": "得3个环", "cards": "得2张卡片", "time": "满180分钟", "after": "后换场景"},
         {"enabled": True, "scene": "小西天", "rings": "得3个环", "cards": "得2张卡片", "time": "满180分钟", "after": "后换场景"},
         {"enabled": False, "scene": "子母河底", "rings": "得3个环", "cards": "无要求", "time": "满180分钟", "after": "后换场景"},
         {"enabled": False, "scene": "麒麟山", "rings": "得3个环", "cards": "得2张卡片", "time": "满180分钟", "after": "后换场景"},
@@ -655,8 +660,12 @@ class AutoFightGUI:
                                   width=4, anchor="center")
 
         # 当前场景时长
+        total_runtime = getattr(engine, "total_runtime", 0) or 0
         if running and getattr(engine, "start_time", 0):
-            elapsed = int(time.time() - engine.start_time)
+            elapsed = int(total_runtime + (time.time() - engine.start_time))
+            duration = f"{elapsed // 60:02d}:{elapsed % 60:02d}"
+        elif total_runtime > 0:
+            elapsed = int(total_runtime)
             duration = f"{elapsed // 60:02d}:{elapsed % 60:02d}"
         else:
             duration = "--"
@@ -705,6 +714,41 @@ class AutoFightGUI:
             w["bc"].configure(text="--")
             w["dur"].configure(text="--")
 
+    def _load_device_stats(self):
+        """读取今日设备统计（跨重启保留，按天重置）"""
+        try:
+            if os.path.exists(STATS_FILE):
+                with open(STATS_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if data.get("date") == datetime.now().strftime("%Y-%m-%d"):
+                    return data
+        except Exception:
+            pass
+        return {"date": "", "devices": {}}
+
+    def _save_device_stats(self):
+        """把当前各引擎统计写入今日文件"""
+        devices = {}
+        for serial, eng in self.engines.items():
+            if eng is None:
+                continue
+            runtime = getattr(eng, "total_runtime", 0) or 0
+            if getattr(eng, "start_time", 0) > 0:
+                runtime += max(0.0, time.time() - eng.start_time)
+            devices[serial] = {
+                "battle_count": getattr(eng, "battle_count", 0),
+                "total_runtime": runtime,
+                "last_loyalty": getattr(eng, "_last_loyalty_recovery", 0),
+            }
+        try:
+            os.makedirs(os.path.dirname(STATS_FILE), exist_ok=True)
+            with open(STATS_FILE, "w", encoding="utf-8") as f:
+                json.dump(
+                    {"date": datetime.now().strftime("%Y-%m-%d"), "devices": devices},
+                    f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            self._log(f"⚠️ 统计保存失败: {e}")
+
     def _start_device(self, serial):
         """启动指定设备的引擎（与场景控制页「启动」一致：同步配置→绑定→保存→启动）"""
         if serial in self.engines and self.engines[serial].running:
@@ -724,6 +768,20 @@ class AutoFightGUI:
         # 传递设备名称配置给引擎
         cfg["device_names"] = self.cfg.get("device_names", {})
         engine = AutoFightEngine(cfg, self.log_queue)
+        # 统计恢复：优先用本次运行期间的旧引擎，否则读今日统计文件（按天重置）
+        old_engine = self.engines.get(serial)
+        if old_engine is not None:
+            engine.battle_count = old_engine.battle_count
+            engine._last_loyalty_recovery = getattr(old_engine, "_last_loyalty_recovery", 0)
+            runtime = getattr(old_engine, "total_runtime", 0) or 0
+            if getattr(old_engine, "start_time", 0) > 0:
+                runtime += max(0.0, time.time() - old_engine.start_time)
+            engine.total_runtime = runtime
+        else:
+            stats = self._load_device_stats().get("devices", {}).get(serial, {})
+            engine.battle_count = stats.get("battle_count", 0)
+            engine._last_loyalty_recovery = stats.get("last_loyalty", 0)
+            engine.total_runtime = stats.get("total_runtime", 0) or 0
         engine.coord_enabled = self.coord_enabled.get()
         self.engines[serial] = engine
         self.engine = engine
@@ -745,6 +803,7 @@ class AutoFightGUI:
         self._update_device_row_buttons(serial)
         self.root.after(500, self._update_tab1_buttons)
         self._log(f"[{serial}] ⏹ 正在停止...")
+        self._save_device_stats()
 
     def _selected_serials(self):
         """按当前显示顺序返回已勾选的设备"""
@@ -995,6 +1054,7 @@ class AutoFightGUI:
 
     # ---------- 引擎控制 ----------
     def _on_engine_stopped(self):
+        self._save_device_stats()
         self._draw_status("gray")
         self.status_label.configure(text="已停止")
         self.root.after(100, self._update_tab1_buttons)
@@ -1044,7 +1104,8 @@ class AutoFightGUI:
                     bc = self.engine.battle_count
                     self.battle_display.configure(text=f"⚔ {bc} 场")
                     if self.engine.start_time > 0:
-                        elapsed = int(time.time() - self.engine.start_time)
+                        elapsed = int((getattr(self.engine, "total_runtime", 0) or 0)
+                                      + (time.time() - self.engine.start_time))
                         m, s = divmod(elapsed, 60)
                         self.time_display.configure(text=f"⏱ {m:02d}:{s:02d}")
                 # 同步更新设备管理页的每台设备数据
@@ -1057,7 +1118,8 @@ class AutoFightGUI:
                             w["bb"].configure(text="--" if eng.has_no_bb else f"{eng.last_bb:.0f}%")
                             w["bc"].configure(text=str(eng.battle_count))
                             if getattr(eng, "start_time", 0):
-                                elapsed = int(time.time() - eng.start_time)
+                                elapsed = int((getattr(eng, "total_runtime", 0) or 0)
+                                              + (time.time() - eng.start_time))
                                 w["dur"].configure(text=f"{elapsed // 60:02d}:{elapsed % 60:02d}")
                             w["status"].configure(text="运行中", foreground="green")
         except queue.Empty:
@@ -1399,11 +1461,14 @@ class AutoFightGUI:
         self.cfg["scene_config"] = scene_config
 
     def on_close(self):
+        self._save_device_stats()
         running_count = sum(1 for e in self.engines.values() if e.running)
         if running_count > 0:
             if messagebox.askyesno("确认", f"有 {running_count} 个引擎正在运行，确定要退出吗？"):
                 for e in self.engines.values():
                     e.running = False
+                    if hasattr(e, '_loyalty_stop_event'):
+                        e._loyalty_stop_event.set()
                 for t in self.engine_threads.values():
                     t.join(timeout=3)
                 self.root.destroy()
@@ -1418,7 +1483,7 @@ class AutoFightGUI:
 class SceneSettingsDialog:
     """场景之妙手空空 - 多场景配置弹窗"""
 
-    SCENE_NAMES = ["龙窟五层", "凤巢四层", "子母河底", "小西天", "小雷音寺", "女娲神迹", "须弥东界"]
+    SCENE_NAMES = ["龙窟五层", "凤巢四层", "凤巢五层", "子母河底", "小西天", "小雷音寺", "女娲神迹", "须弥东界"]
     RING_OPTIONS = ["无要求", "得1个环", "得2个环", "得3个环"]
     CARD_OPTIONS = ["无要求", "得1张卡片", "得2张卡片"]
     TIME_OPTIONS = ["无要求", "满60分钟", "满120分钟", "满180分钟"]
@@ -1568,6 +1633,7 @@ class SceneSettingsDialog:
                 defaults = [
                     ("龙窟五层", "得3个环", "得2张卡片"),
                     ("凤巢四层", "得3个环", "无要求"),
+                    ("凤巢五层", "得3个环", "得2张卡片"),
                     ("子母河底", "得3个环", "无要求"),
                     ("小西天", "得3个环", "得2张卡片"),
                     ("小雷音寺", "得3个环", "得2张卡片"),
