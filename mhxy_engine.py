@@ -1659,6 +1659,62 @@ class AutoFightEngine:
 
 
 
+    def _tap_defend(self, log_label="", max_attempts=3, appear_timeout=4.0, check_wait=0.5):
+
+        """点完技能和怪物后调用：等待识别（宠物）防御按钮，识别到就点并二次确认，按钮仍在就再点。"""
+
+        taps = 0
+
+        start = time.time()
+
+        while True:
+
+            if not self.running:
+
+                return False
+
+            frame = self.get_frame()
+
+            defend = self.find(frame, "PK-防御") if frame is not None else None
+
+            if defend is None:
+
+                if taps == 0 and time.time() - start < appear_timeout:
+
+                    # 宠物操作界面可能延迟出现，轮询等待
+
+                    time.sleep(0.2)
+
+                    continue
+
+                if taps == 0:
+
+                    self._log(f"  ⚠️ 未识别到{log_label}防御按钮，跳过")
+
+                    return False
+
+                self._log(f"  ✅ {log_label}防御点击成功，按钮已消失")
+
+                return True
+
+            elif taps < max_attempts:
+
+                self.tap(defend[0], defend[1])
+
+                taps += 1
+
+                self._log(f"  🎯 {log_label}点防御 ({defend[0]},{defend[1]}) 第{taps}次")
+
+            else:
+
+                self._log(f"  ⚠️ {log_label}防御按钮点击{max_attempts}次后仍存在，未确认成功")
+
+                return False
+
+            time.sleep(check_wait)
+
+
+
     def _save_detection_debug(self, frame, name, targets):
 
         """保存怪物检测标注截图用于调试"""
@@ -2062,7 +2118,7 @@ class AutoFightEngine:
 
                     best = max(available, key=lambda c: c[2])
                     tx, ty, conf = best[0], best[1], best[2]
-                    ms = self._wait_for_skill(timeout=10.0)
+                    ms = self._wait_for_skill(timeout=20.0)
                     if ms is None:
                         self._log(f"  第{i+1}次: 超时，跳过")
                         continue
@@ -2072,16 +2128,10 @@ class AutoFightEngine:
                     self.tap(tx, ty)
                     time.sleep(0.2)
                     if not self.has_no_bb:
-                        defend_tmpl = self.find(frame, "PK-防御")
-                        if defend_tmpl:
-                            self.tap(defend_tmpl[0], defend_tmpl[1])
-                            self._log(f"  🎯 宝宝点防御 ({defend_tmpl[0]},{defend_tmpl[1]})")
-                        else:
-                            self._log(f"  ⚠️ 未识别到防御按钮，宝宝跳过")
+                        self._tap_defend(log_label="宝宝")
                         time.sleep(0.2)
                     self._log(f"  🎯 第{i+1}次 妙手空空 -> ({tx},{ty}) conf={conf:.2f}")
                     clicked.append((tx, ty))
-                    time.sleep(random.uniform(2.0, 3.0))
             else:
                 if self.cfg.get("miaoshou_enabled", True):
                     self._log("  ⏭️ 妙手空空已关闭")
@@ -2170,11 +2220,10 @@ class AutoFightEngine:
         # 等待第4回合（除了skip_wait=True即无偷窃目标的情况）
         if not skip_wait:
             self._log("  🎯 等待下回合（第4回合）后执行战斗操作")
-            nxt = self._wait_for_skill(timeout=15.0)
+            nxt = self._wait_for_skill(timeout=20.0)
             if nxt is None:
-                self._log("  ⚠️ 等待下回合超时，跳过")
-                self._try_escape()
-                self._wait_combat_end()
+                self._log("  ⚡ 等待下回合超时，点自动让游戏接管（防卡死）")
+                self._tap_auto_and_wait()
                 return
 
         if mode_skill:
@@ -2191,15 +2240,13 @@ class AutoFightEngine:
 
                 self._log("  \U0001f3af \u7b49\u5f85\u4e0b\u56de\u5408\uff08\u7b2c4\u6b21\u5999\u624b\u7a7a\u7a7a\u51fa\u73b0\uff09\u540e\u70b9\u6cd5\u672f\u6280\u80fd")
 
-                nxt = self._wait_for_skill(timeout=15.0)
+                nxt = self._wait_for_skill(timeout=20.0)
 
                 if nxt is None:
 
-                    self._log("  \u26a0\ufe0f 等待下回合超时，跳过法术技能")
+                    self._log("  ⚡ 等待下回合超时，点自动让游戏接管（防卡死）")
 
-                    self._try_escape()
-
-                    self._wait_combat_end()
+                    self._tap_auto_and_wait()
 
                     return
 
@@ -2408,17 +2455,7 @@ class AutoFightEngine:
 
             self._log("  🛡 防御后自动战斗")
 
-            defend = self.find(frame, "PK-防御") if frame is not None else None
-
-            if defend:
-
-                self.tap(defend[0], defend[1])
-
-            else:
-
-                self.tap(700, 400)  # 防御按钮备选位置
-
-            time.sleep(0.8)
+            self._tap_defend(log_label="人物")
 
             if monster_pos:
 
@@ -3525,13 +3562,29 @@ class AutoFightEngine:
 
 
 
-                # === 战斗中：仅检测战斗是否结束，跳过其他检测 ===
+                # === 战斗中：检测回合是否恢复 / 战斗是否结束 ===
 
                 if self.was_in_pk:
 
                     in_pk = self.is_in_pk(frame)
 
                     if in_pk:
+
+                        # 卡死恢复：妙手空空技能出现 = 轮到玩家操作，继续偷卡流程
+
+                        if self.cfg.get("miaoshou_enabled", True):
+
+                            ms = self.find(frame, "PK-妙手空空技能", threshold=0.60)
+
+                            if ms is not None:
+
+                                self._log(f"[{loop}] 🔄 检测到妙手空空技能，继续偷卡流程")
+
+                                self.do_combat()
+
+                                time.sleep(0.3)
+
+                                continue
 
                         time.sleep(0.1)
 
@@ -4671,6 +4724,3 @@ if __name__ == "__main__":
     app = AutoFightGUI()
 
     app.run()
-
-
-
