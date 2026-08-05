@@ -624,8 +624,9 @@ class AutoFightGUI:
                         bootstyle="primary").pack(expand=True)
         self._bind_row_drag(sel_frame, serial)
 
-        self._table_cell(parent, row, 1, serial=serial, text=serial, width=16,
-                         anchor="center", font=("Consolas", 9))
+        serial_lbl = self._table_cell(parent, row, 1, serial=serial, text=serial, width=16,
+                                      anchor="center", font=("Consolas", 9), cursor="hand2")
+        serial_lbl._is_serial_cell = True
 
         # device_name
         dev_names = self.cfg.get("device_names", {})
@@ -846,10 +847,12 @@ class AutoFightGUI:
         widget = self._drag_widget
         self._drag_serial = None
         self._drag_widget = None
-        # 移动距离很小视为单击：名称列触发重命名，其它列无操作
+        # 移动距离很小视为单击：名称列触发重命名，序列号列复制到剪贴板
         if abs(event.y_root - self._drag_y0) < 4:
             if widget is not None and getattr(widget, "_is_name_cell", False):
                 self._rename_device(serial, widget)
+            elif widget is not None and getattr(widget, "_is_serial_cell", False):
+                self._copy_serial(serial, widget)
             return
         target = self._row_pos_at_y(event.y_root)
         try:
@@ -863,6 +866,22 @@ class AutoFightGUI:
         self.cfg["device_order"] = self._merged_device_order()
         save_config(self.cfg)
         self._refresh_device_tab()
+
+    def _copy_serial(self, serial, lbl):
+        """点击设备序列号复制到剪贴板，并短暂显示"已复制"提示"""
+        self.root.clipboard_clear()
+        self.root.clipboard_append(serial)
+        old_text = lbl.cget("text")
+        old_fg = lbl.cget("foreground")
+
+        def restore():
+            try:
+                lbl.configure(text=old_text, foreground=old_fg)
+            except Exception:
+                pass
+
+        lbl.configure(text="已复制 ✓", foreground="green")
+        self.root.after(1200, restore)
 
     def _merged_device_order(self):
         """合并显示顺序与已保存顺序：暂未连接的设备保留原槽位"""
@@ -1083,6 +1102,12 @@ class AutoFightGUI:
                 msg = self.log_queue.get_nowait()
                 if msg == "__STOPPED__":
                     self.root.after(0, self._on_engine_stopped)
+                    continue
+                if isinstance(msg, str) and msg.startswith("__ALERT__:"):
+                    parts = msg.split(":", 2)
+                    dev = parts[1] if len(parts) > 1 else ""
+                    text = parts[2] if len(parts) > 2 else msg
+                    self.root.after(0, lambda d=dev, t=text: messagebox.showwarning("提醒", f"设备 [{d}]\n{t}"))
                     continue
                 self._log_to_ui(msg)
                 if self.engine:

@@ -787,6 +787,12 @@ class AutoFightEngine:
 
         self._last_loyalty_recovery = 0  # 上次诚度恢复时的战斗场次
 
+        self._loyalty_recovery_requested = False   # 战斗中识别不到防御（可能忠诚度问题），战后执行恢复
+
+        self._loyalty_recovery_done = False        # 战后已执行过忠诚度恢复，等待下一场验证
+
+        self._lifespan_alerted = False             # 本场战斗是否已弹框提醒宝宝无寿命
+
         self._force_run_map = False       # 酒肆休息完成后立即跑图
 
         self.total_runtime = 0.0          # 累计运行时长（秒），跨重启保留
@@ -1042,8 +1048,6 @@ class AutoFightEngine:
         friend = self.find(frame, "好友入口")
 
         return friend is None or friend[0] < 100
-
-
 
     # ========== HP/MP/BB 检测与补药 ==========
 
@@ -1691,7 +1695,7 @@ class AutoFightEngine:
 
                     self._log(f"  ⚠️ 未识别到{log_label}防御按钮，跳过")
 
-                    return False
+                    return "missing"
 
                 self._log(f"  ✅ {log_label}防御点击成功，按钮已消失")
 
@@ -1753,6 +1757,7 @@ class AutoFightEngine:
 
         self._log("⚔️ 开始战斗流程")
         self.last_skill = None  # clear old cache
+        self._lifespan_alerted = False             # 每场战斗重置：是否已弹框提醒宝宝无寿命
 
         map_name = self.last_map_name or self.cfg.get("map", "小西天")
 
@@ -1793,8 +1798,6 @@ class AutoFightEngine:
         if not self.is_in_pk(frame):
 
             return
-
-
 
         matched_targets = []
 
@@ -2128,7 +2131,24 @@ class AutoFightEngine:
                     self.tap(tx, ty)
                     time.sleep(0.2)
                     if not self.has_no_bb:
-                        self._tap_defend(log_label="宝宝")
+                        defend_status = self._tap_defend(log_label="宝宝")
+                        if defend_status == "missing":
+                            if self._loyalty_recovery_done:
+                                # 战后已恢复过忠诚度，本场仍识别不到防御 → 宝宝没有寿命
+                                if not self._lifespan_alerted:
+                                    self._lifespan_alerted = True
+                                    self._log("  ❌ 战后已恢复忠诚度，本场仍识别不到防御按钮，召唤兽可能没有寿命")
+                                    try:
+                                        self.log.put(f"__ALERT__:{self.device_id}:召唤兽可能没有寿命，无法出战，请检查！")
+                                    except Exception:
+                                        pass
+                            else:
+                                # 首次识别不到：标记战后执行忠诚度恢复
+                                self._loyalty_recovery_requested = True
+                                self._log("  ⚠️ 未识别到防御按钮，可能召唤兽忠诚度为0，战斗结束后执行忠诚度恢复")
+                        else:
+                            # 防御按钮正常识别到，说明宝宝可正常出战，清除恢复标记
+                            self._loyalty_recovery_done = False
                         time.sleep(0.2)
                     self._log(f"  🎯 第{i+1}次 妙手空空 -> ({tx},{ty}) conf={conf:.2f}")
                     clicked.append((tx, ty))
@@ -2223,7 +2243,7 @@ class AutoFightEngine:
             nxt = self._wait_for_skill(timeout=20.0)
             if nxt is None:
                 self._log("  ⚡ 等待下回合超时，点自动让游戏接管（防卡死）")
-                self._tap_auto_and_wait()
+                self._auto_with_attack_fix(monster_pos)
                 return
 
         if mode_skill:
@@ -2246,7 +2266,7 @@ class AutoFightEngine:
 
                     self._log("  ⚡ 等待下回合超时，点自动让游戏接管（防卡死）")
 
-                    self._tap_auto_and_wait()
+                    self._auto_with_attack_fix(monster_pos)
 
                     return
 
@@ -2508,6 +2528,110 @@ class AutoFightEngine:
         self._wait_combat_end()
 
         # 取消自动战斗已统一在 post_combat 处理（对每场战斗生效），此处不再重复点击
+
+
+
+    def _auto_with_attack_fix(self, monster_pos=None):
+
+        """点自动并校验：若自动重复的是妙手空空/防御（挂错技能），取消自动改用攻击技能重新挂自动。"""
+
+        time.sleep(0.5)
+
+        self._log("  🤖 点自动(765,409)")
+
+        self.tap(765, 409)
+
+        time.sleep(1.0)
+
+        frame = self.get_frame()
+
+        ms = self.find(frame, "PK-妙手空空技能", threshold=0.60) if frame is not None else None
+
+        defend = self.find(frame, "PK-防御") if frame is not None else None
+
+        if ms is None or defend is None:
+
+            self._log("  ✅ 自动技能正常（未挂成妙手空空/防御）")
+
+            self._wait_combat_end()
+
+            return
+
+        self._log("  ⚠️ 自动挂成了妙手空空/防御，取消自动改用攻击技能")
+
+        # 取消自动战斗（点击后确认，仍在则继续点）
+
+        for _ in range(5):
+
+            frame = self.get_frame()
+
+            if frame is None:
+
+                time.sleep(0.2)
+
+                continue
+
+            cancel = self.find(frame, "PK-取消自动战斗")
+
+            if cancel:
+
+                self.tap(cancel[0], cancel[1])
+
+                self._log("  🔄 取消自动战斗")
+
+                time.sleep(0.3)
+
+                continue
+
+            break
+
+        time.sleep(0.5)
+
+        self.tap(713, 145)  # 法术技能
+
+        time.sleep(0.5)
+
+        # 重新检测怪物位置
+
+        if monster_pos is None:
+
+            from target_mapping import get_all_monsters as _gt_mon
+
+            _all_mon = _gt_mon(self.last_map_name or self.cfg.get("map", "")) or []
+
+            f_mon = self.get_frame()
+
+            for cand in _all_mon:
+
+                if f_mon is None:
+
+                    break
+
+                pts = self._find_all(f_mon, cand, threshold=0.80, roi=COMBAT_ROI)
+
+                if pts:
+
+                    monster_pos = (pts[0][0], pts[0][1])
+
+                    break
+
+        if monster_pos:
+
+            self.tap(monster_pos[0], monster_pos[1])
+
+            time.sleep(0.4)
+
+            self._log(f"  🎯 重新攻击怪物 ({monster_pos[0]},{monster_pos[1]})")
+
+        else:
+
+            self._log("  ⚠️ 未检测到怪物，直接重新点自动")
+
+        self._log("  🤖 重新点自动(765,409)")
+
+        self.tap(765, 409)
+
+        self._wait_combat_end()
 
     def _save_debug_combat(self, frame, targets, display_name):
 
@@ -3352,6 +3476,13 @@ class AutoFightEngine:
         # ===== 战斗计数 + 诚度恢复检测 =====
         self.battle_count += 1
         self._log(f"  📊 战斗场次: {self.battle_count}")
+
+        # 战斗中识别不到防御（可能忠诚度问题）→ 战斗结束后执行忠诚度恢复
+        if self._loyalty_recovery_requested:
+            self._loyalty_recovery_requested = False
+            self._loyalty_recovery_done = True
+            self._log("  🔔 战斗中未识别到防御按钮，战斗结束执行忠诚度恢复")
+            self._do_loyalty_recovery()
 
         # 检查是否需要执行诚度恢复（每55-60场执行一次，每个周期只触发一次）
         if self.battle_count >= 55 and self.battle_count - self._last_loyalty_recovery >= 55:
