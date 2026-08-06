@@ -25,41 +25,75 @@ class CNNUtil(object):
     def __init__(self):
         self.detector = SingleImageDetector()
 
-    def findFourPersonLocal(self, deviceId, left=227, top=80, width=360, height=150, curFrame=None):
-        frame = None
-        if curFrame is not None:
-            frame = curFrame
-        else:
-            frame = scrcpyUtil.getFrame(deviceId)
-        cv_save_img(f"{logTmpPath()}/{getLogTimeHour()}/{deviceId}-{getLogTime()}-FourPerson-LocalOrig.png", frame)
+    def _score_roi(self, frame, left, top, width, height):
+        """对 ROI 的 4 个 90 宽槽位做 CNN 打分，返回 (槽位列表, 最佳槽位, 最佳概率)。"""
         indexProbs = []
         for i in range(4):
             itemLeft = left + 90 * i
             itemRoi = frame[top:top + height, itemLeft:itemLeft + 90]
             prob = self.detector.predict_img(itemRoi)
             indexProbs.append((i, prob))
+        best_index, best_prob = max(indexProbs, key=lambda x: x[1])
+        return indexProbs, best_index, best_prob
+
+    def findFourPersonLocal(self, deviceId, left=227, top=80, width=360, height=150, curFrame=None):
+        frame = None
+        if curFrame is not None:
+            frame = curFrame
+        else:
+            frame = scrcpyUtil.getFrame(deviceId)
+        if frame is None:
+            orderLog(deviceId, "本地识别四小人：获取画面失败")
+            return
+        # 多候选 ROI：默认标准区域(227,80,360,150) 与检测区域都试一遍，
+        # 取最高分那一组，避免 findFourPersonDetectArea 的“在/请”字定位
+        # 与真实头像错位导致点击落空（实测错位时默认区域仍可到 1.000）。
+        candidates = [
+            (227, 80, 360, 150),
+            (left, top, width, height),
+        ]
+        seen = set()
+        best_score = None      # (prob, index, roi)
+        best_indexProbs = None
+        for l, t, w, h in candidates:
+            if (l, t, w, h) in seen:
+                continue
+            seen.add((l, t, w, h))
+            try:
+                indexProbs, b_idx, b_prob = self._score_roi(frame, l, t, w, h)
+            except Exception as e:
+                logger.debug(f"ROI({l},{t},{w},{h}) 打分异常: {e}")
+                continue
+            if best_score is None or b_prob > best_score[0]:
+                best_score = (b_prob, b_idx, (l, t, w, h))
+                best_indexProbs = indexProbs
+        if best_score is None:
+            orderLog(deviceId, "本地识别四小人：候选 ROI 均无效")
+            return
+        best_prob, best_index, (left, top, width, height) = best_score
+        cv_save_img(f"{logTmpPath()}/{getLogTimeHour()}/{deviceId}-{getLogTime()}-FourPerson-LocalOrig.png", frame)
+        for i, prob in best_indexProbs:
+            itemLeft = left + 90 * i
+            itemRoi = frame[top:top + height, itemLeft:itemLeft + 90]
             if prob > 0.8:
                 cv_save_img(f"{logTmpPath()}/{getLogTimeHour()}/front/{deviceId}-{getLogTime()}-FourPerson-Local-Item{i}-Similar-{prob:.4f}.png", itemRoi)
             elif prob > 0.4:
                 cv_save_img(f"{logTmpPath()}/{getLogTimeHour()}/notsure/{deviceId}-{getLogTime()}-FourPerson-Local-Item{i}-Similar-{prob:.4f}.png", itemRoi)
             else:
                 cv_save_img(f"{logTmpPath()}/{getLogTimeHour()}/back/{deviceId}-{getLogTime()}-FourPerson-Local-Item{i}-Similar-{prob:.4f}.png", itemRoi)
+        if best_prob > CONF_THRESHOLD:
+            clickPoint = QPoint(left + 90 * best_index + 45, top + height // 2)
+            click(deviceId, clickPoint)
+            orderLog(deviceId, f"本地识别四小人目标：{best_index} ,置信度 {best_prob:.4f}, ROI({left},{top},{width},{height}), 点击坐标 {clickPoint}")
+            time.sleep(random.uniform(1, 1.5))
         else:
-            best_item = max(indexProbs, key=(lambda x: x[1]))
-            best_index, best_prob = best_item
-            if best_prob > CONF_THRESHOLD:
-                clickPoint = QPoint(left + 90 * best_index + 45, top + height / 2)
-                click(deviceId, clickPoint)
-                orderLog(deviceId, f"本地识别四小人目标：{best_index} ,置信度 {best_prob:.4f}, 点击坐标 {clickPoint}")
-                time.sleep(random.uniform(1, 1.5))
-            else:
-                orderLog(deviceId, f"本地识别四小人最高置信度{best_prob:.4f}不足阈值(0.8)")
-            # 网络兜底仅在不低于 0.4（疑似但未到阈值）时触发，
-            # 明显非四小人界面（走路画面通常 <0.01）不再请求网络。
+            orderLog(deviceId, f"本地识别四小人最高置信度{best_prob:.4f}不足阈值(0.8)")
+            # 网络兜底仅在“疑似但未达阈值”(0.4~0.8) 时触发；
+            # 点击成功（>0.8）说明界面已处理，无需再走网络判定。
             if best_prob >= 0.4:
                 if isShowFourPerson(deviceId):
-                    left, top, width, height = findFourPersonDetectArea(deviceId)
-                    if left != 0:
+                    d_left, d_top, d_width, d_height = findFourPersonDetectArea(deviceId)
+                    if d_left != 0:
                         orderLog(deviceId, "网络-四小人识别区域227,80,360,150")
                         findFourPersonAndClick(deviceId)
                     else:
