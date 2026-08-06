@@ -740,7 +740,7 @@ class AutoFightGUI:
     def _run_backpack_test(self, serial):
         def log(msg):
             self.root.after(0, lambda m=msg: self._test_log(m))
-        log(f"开始背包测试：{serial}")
+        log(f"开始背包测试（全量扫描）：{serial}")
         from xbw_features import backend as xbw_backend
         xbw_backend.set_stop_event(self._test_stop_event)
         saved = self._xbw_backend_snapshot()
@@ -748,11 +748,12 @@ class AutoFightGUI:
         try:
             from xbw_features.threads.dk_changjing import check_backpack
             prev = getattr(self, "_test_pkg_snapshot", None)
-            result = check_backpack(serial, prev, stop_event=self._test_stop_event)
+            result = check_backpack(serial, prev, stop_event=self._test_stop_event,
+                                    scan_mode="all")
             self._test_pkg_snapshot = result["snapshot"]
             log(f"背包占用槽位：{len(result['snapshot'])}/20")
-            log(f"本次新增：环 {result['add_huan']} 个 / 卡 {result['add_card']} 张"
-                + ("（首次扫描为基线，再次运行可对比新增）" if prev is None else ""))
+            log(f"全量扫描结果：环 {result['add_huan']} 个 / 卡 {result['add_card']} 张"
+                + ("（已逐个点击全部占用槽位匹配“装备条件/怪物卡片”）"))
             if result["ring_points"]:
                 log("检测到【环】：" + "  ".join(f"({x},{y})" for x, y in result["ring_points"]))
             if result["card_points"]:

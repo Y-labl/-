@@ -58,11 +58,14 @@ def next_check_interval():
     return random.uniform(*PKG_CHECK_INTERVAL)
 
 
-def check_backpack(deviceId, prev_snapshot=None, stop_event=None):
+def check_backpack(deviceId, prev_snapshot=None, stop_event=None, scan_mode="new"):
     """
     打开背包 -> 取 20 格占用快照 -> 与上次快照 diff 出新增槽位 ->
     逐个点击并模板匹配“装备条件/怪物卡片”，返回环/卡数量、位置与背包截图。
 
+    :param scan_mode:
+        "new" - 只检查新增槽位（自动流程用，满背包时新增为 0）
+        "all" - 检查全部占用槽位（功能测试页用，可检出已存在的环/卡）
     :return: dict(snapshot, add_huan, add_card, ring_points, card_points, bag_frame)
     """
     def stopped():
@@ -78,19 +81,23 @@ def check_backpack(deviceId, prev_snapshot=None, stop_event=None):
         add_card = 0
         ring_points = []
         card_points = []
-        if prev_snapshot:
-            add_points = get_diff_points(prev_snapshot, tmp_products)
-            for add_p in add_points:
-                if stopped():
-                    break
-                click(deviceId, add_p)
-                time.sleep(random.uniform(1.5, 2.8))
-                if findPic(deviceId, "装备条件", width=400):
-                    add_huan += 1
-                    ring_points.append((add_p.x(), add_p.y()))
-                if findPic(deviceId, "怪物卡片", width=400):
-                    add_card += 1
-                    card_points.append((add_p.x(), add_p.y()))
+        if scan_mode == "all":
+            scan_points = list(tmp_products)
+        elif prev_snapshot:
+            scan_points = get_diff_points(prev_snapshot, tmp_products)
+        else:
+            scan_points = []
+        for add_p in scan_points:
+            if stopped():
+                break
+            click(deviceId, add_p)
+            time.sleep(random.uniform(1.5, 2.8))
+            if findPic(deviceId, "装备条件", width=400):
+                add_huan += 1
+                ring_points.append((add_p.x(), add_p.y()))
+            if findPic(deviceId, "怪物卡片", width=400):
+                add_card += 1
+                card_points.append((add_p.x(), add_p.y()))
         return {
             "snapshot": tmp_products,
             "add_huan": add_huan,
