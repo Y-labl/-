@@ -13,7 +13,7 @@ import time
 from datetime import datetime
 
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import filedialog, messagebox
 import ttkbootstrap as ttk
 
 from mhxy_engine import (
@@ -422,6 +422,9 @@ class AutoFightGUI:
         # ===== Tab 2: 设备管理 =====
         self._build_tab2()
 
+        # ===== Tab 3: 功能测试 =====
+        self._build_tab3()
+
     # ---------- 辅助 UI ----------
     def _add_supply_row(self, parent, row, label, method_var, method_values,
                         threshold_var, bootstyle, key):
@@ -558,6 +561,199 @@ class AutoFightGUI:
             self.dev_scrollbar.grid_remove()
         else:
             self.dev_scrollbar.grid()
+
+    # ---------- Tab3: 功能测试 ----------
+    def _build_tab3(self):
+        """功能测试 Tab：本地四小人识别（上传图片）/ 背包环卡 / 切换地图"""
+        tab3 = ttk.Frame(self.notebook, padding=15)
+        self.notebook.add(tab3, text="功能测试")
+        tab3.columnconfigure(0, weight=1)
+        tab3.rowconfigure(2, weight=1)
+
+        # 设备 + 地图选择
+        sel = ttk.Labelframe(tab3, text=" 选择设备 / 地图 ", padding=10)
+        sel.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        ttk.Label(sel, text="设备：").grid(row=0, column=0, sticky="w")
+        self.test_device_combo = ttk.Combobox(sel, state="readonly", width=26, bootstyle="primary")
+        self.test_device_combo.grid(row=0, column=1, sticky="w", padx=(0, 8))
+        ttk.Button(sel, text="刷新", command=self._refresh_test_devices,
+                   width=6, bootstyle="outline").grid(row=0, column=2, sticky="w", padx=(0, 16))
+        ttk.Label(sel, text="目标地图：").grid(row=0, column=3, sticky="w")
+        self.test_map_combo = ttk.Combobox(sel, state="readonly", width=16)
+        self.test_map_combo.grid(row=0, column=4, sticky="w")
+
+        # 地图列表（小霸王 67 个点卡地图参数）
+        try:
+            from xbw_features.game_action.map_action import mapParamsListDK
+            self._test_maps = [p.area for p in mapParamsListDK]
+        except Exception:
+            self._test_maps = ["小西天", "女娲神迹", "龙窟五层", "凤巢四层"]
+        self.test_map_combo["values"] = self._test_maps
+        if self._test_maps:
+            self.test_map_combo.current(0)
+
+        # 三个测试按钮
+        btns = ttk.Frame(tab3)
+        btns.grid(row=1, column=0, sticky="ew", pady=(0, 10))
+        ttk.Button(btns, text="① 本地识别四小人（上传图片）", bootstyle="primary",
+                   command=self._test_four_person_image).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(btns, text="② 测试背包环/卡", bootstyle="success",
+                   command=self._test_backpack).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(btns, text="③ 测试切换地图", bootstyle="warning",
+                   command=self._test_switch_map).pack(side=tk.LEFT)
+
+        # 图片预览区
+        preview = ttk.Labelframe(tab3, text=" 四小人识别预览 ", padding=6)
+        preview.grid(row=2, column=0, sticky="nsew")
+        preview.columnconfigure(0, weight=1)
+        preview.rowconfigure(0, weight=1)
+        self._test_photo = None
+        self.test_image_label = ttk.Label(preview, text="选择一张游戏截图，本地识别后会在这里标注显示",
+                                          anchor="center", bootstyle="secondary")
+        self.test_image_label.grid(row=0, column=0, sticky="nsew")
+
+        # 初始化设备列表
+        self._refresh_test_devices()
+
+    def _refresh_test_devices(self):
+        try:
+            devs = list_adb_devices()
+            self.test_device_combo["values"] = devs
+            cur = self.test_device_combo.get()
+            self.test_device_combo.set(cur if cur in devs else (devs[0] if devs else ""))
+            self._log(f"功能测试：检测到 {len(devs)} 台设备")
+        except Exception as e:
+            self._log(f"功能测试：刷新设备失败 {e}")
+
+    # ---------- 测试动作 ----------
+    def _test_four_person_image(self):
+        """上传图片 -> 本地识别四小人 -> 标注显示"""
+        path = filedialog.askopenfilename(
+            title="选择游戏截图（四小人界面）",
+            filetypes=[("图片", "*.png *.jpg *.jpeg *.bmp"), ("所有文件", "*.*")])
+        if not path:
+            return
+        threading.Thread(target=self._run_four_person_image_test, args=(path,), daemon=True).start()
+
+    def _run_four_person_image_test(self, path):
+        def log(msg):
+            self.root.after(0, lambda: self._log(msg))
+        log(f"开始本地识别：{path}")
+        try:
+            import cv2
+            import numpy as np
+            frame = cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_COLOR)
+            if frame is None:
+                log("❌ 图片读取失败")
+                return
+            from xbw_features.four_person.tester import analyze_four_person_image
+            result = analyze_four_person_image(frame)
+            if result is None or result.get("frame") is None:
+                log("❌ 识别失败：" + str(result.get("error", "未知")))
+                return
+            rgb = cv2.cvtColor(result["frame"], cv2.COLOR_BGR2RGB)
+            h, w = rgb.shape[:2]
+            scale = min(1.0, 760.0 / w)
+            if scale < 1.0:
+                rgb = cv2.resize(rgb, (int(w * scale), int(h * scale)))
+            from PIL import Image, ImageTk
+            img = Image.fromarray(rgb)
+            photo = ImageTk.PhotoImage(img)
+            self.root.after(0, lambda p=photo, r=result: self._show_test_image(p, r))
+            log(f"识别结果：ROI={result['roi']} 最佳槽位={result['best_index']} "
+                f"置信度={result['best_prob']:.4f} 点击点={result['click_point']}")
+            log("各槽位：" + "  ".join(f"slot{i}={p:.2f}" for i, p in result["slots"]))
+            log("✅ 本地识别成功" if result["success"] else "⚠️ 最高置信度不足 0.8（可能不是四小人界面）")
+        except Exception as e:
+            log(f"❌ 识别异常：{e}")
+
+    def _show_test_image(self, photo, result):
+        self._test_photo = photo
+        self.test_image_label.configure(image=photo, text="")
+
+    def _test_backpack(self):
+        serial = self.test_device_combo.get().strip()
+        if not serial:
+            self._log("请先在功能测试页签选择设备")
+            return
+        if not self._ensure_engine_stopped("背包测试"):
+            return
+        threading.Thread(target=self._run_backpack_test, args=(serial,), daemon=True).start()
+
+    def _run_backpack_test(self, serial):
+        def log(msg):
+            self.root.after(0, lambda: self._log(msg))
+        log(f"开始背包测试：{serial}")
+        saved = self._xbw_backend_snapshot()
+        self._xbw_backend_standalone(serial, log)
+        try:
+            from xbw_features.threads.dk_changjing import check_backpack
+            prev = getattr(self, "_test_pkg_snapshot", None)
+            snapshot, add_huan, add_card = check_backpack(serial, prev)
+            self._test_pkg_snapshot = snapshot
+            log(f"背包占用槽位：{len(snapshot)}/20")
+            log(f"本次新增：环 {add_huan} 个 / 卡 {add_card} 张"
+                + ("（首次扫描为基线，再次运行可对比新增）" if prev is None else ""))
+            log("✅ 背包检查完成")
+        except Exception as e:
+            log(f"❌ 背包测试异常：{e}")
+        finally:
+            self._xbw_backend_restore(saved)
+
+    def _test_switch_map(self):
+        serial = self.test_device_combo.get().strip()
+        if not serial:
+            self._log("请先在功能测试页签选择设备")
+            return
+        target = self.test_map_combo.get().strip()
+        if not target:
+            self._log("请选择目标地图")
+            return
+        if not self._ensure_engine_stopped("切换地图测试"):
+            return
+        threading.Thread(target=self._run_switch_map_test, args=(serial, target), daemon=True).start()
+
+    def _run_switch_map_test(self, serial, target):
+        def log(msg):
+            self.root.after(0, lambda: self._log(msg))
+        log(f"开始切换地图测试：{serial} -> {target}")
+        saved = self._xbw_backend_snapshot()
+        self._xbw_backend_standalone(serial, log)
+        try:
+            from xbw_features import go_to_chang_jing
+            go_to_chang_jing(serial, target)
+            log(f"✅ 已执行切图流程（目标 {target}），请查看游戏画面确认")
+        except Exception as e:
+            log(f"❌ 切换地图异常：{e}")
+        finally:
+            self._xbw_backend_restore(saved)
+
+    def _ensure_engine_stopped(self, label):
+        running = [d for d, e in self.engines.items() if getattr(e, "running", False)]
+        if running:
+            self._log(f"⚠️ {label}需要独占 ADB 后端：请先停止引擎设备 {', '.join(running)} 再测试")
+            return False
+        return True
+
+    def _xbw_backend_snapshot(self):
+        from xbw_features import backend as xbw_backend
+        b = xbw_backend.backend
+        return (b.screencap_fn, b.tap_fn, b.log_fn, b.cache_seconds)
+
+    def _xbw_backend_standalone(self, serial, log):
+        """临时切到独立 ADB 后端（按所选设备取帧/点击），并把日志回灌 GUI。"""
+        from xbw_features import backend as xbw_backend
+        xbw_backend.backend.set(
+            screencap_fn=None,
+            tap_fn=None,
+            log_fn=lambda d, m: log(f"[{d}] {m}"),
+            cache_seconds=0)
+
+    def _xbw_backend_restore(self, saved):
+        from xbw_features import backend as xbw_backend
+        xbw_backend.backend.set(
+            screencap_fn=saved[0], tap_fn=saved[1], log_fn=saved[2],
+            cache_seconds=saved[3] if saved[3] is not None else 0.2)
 
     def _refresh_device_tab(self):
         """刷新设备管理 Tab"""

@@ -5,3 +5,4 @@ pyscrcpy
 ttkbootstrap
 onnxruntime
 loguru
+Pillow
