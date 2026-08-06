@@ -125,6 +125,35 @@ def test_backpack_grid():
     check("diff 新增 1 槽", len(added) == 1, str(len(added)))
 
 
+# ============ 4.5 findTextPosition 回归（曾因 wrongCount 未定义崩溃） ============
+def test_find_text_position():
+    print("[4.5] findTextPosition 点阵匹配")
+    from xbw_features.common.util.color_util import findTextPosition, zaiTextPoints
+
+    def white():
+        return np.full((448, 800, 3), 255, dtype=np.uint8)
+
+    backend.setup(screencap_fn=lambda d: white(), tap_fn=lambda *a, **k: None,
+                  log_fn=lambda *a, **k: None, cache_seconds=0)
+    # 无匹配（用户线上报错路径）：纯白帧找“在”字 -> None 且不抛 UnboundLocalError
+    try:
+        r = findTextPosition("t", zaiTextPoints, 250, 55, 60, 68,
+                             isColorFunc=lambda c: c.red() > 110 and c.green() > 110 and c.blue() > 100)
+        check("无匹配返回 None 不崩溃", r is None, str(r))
+    except Exception as e:
+        check("无匹配返回 None 不崩溃", False, repr(e))
+
+    # 有匹配：2x2 黑色点阵贴在 (100,100) -> 返回 (100,100)
+    from xbw_features.qtcompat import QPoint
+    pts = [QPoint(0, 0), QPoint(1, 0), QPoint(0, 1), QPoint(1, 1)]
+    frame = white()
+    frame[100:103, 100:103] = (0, 0, 0)
+    backend.setup(screencap_fn=lambda d: frame, tap_fn=lambda *a, **k: None,
+                  log_fn=lambda *a, **k: None, cache_seconds=0)
+    r2 = findTextPosition("t", pts, 50, 50, 200, 200, isColorFunc=lambda c: c.red() < 50)
+    check("点阵匹配返回锚点 (100,100)", r2 == QPoint(100, 100), str(r2))
+
+
 # ============ 5. 切换场参数完整性 ============
 def test_map_params():
     print("[5] 切换场参数完整性")
@@ -184,6 +213,7 @@ if __name__ == "__main__":
     test_detector()
     test_find_pic()
     test_backpack_grid()
+    test_find_text_position()
     test_map_params()
     test_switch_condition()
     test_is_show_four_person()

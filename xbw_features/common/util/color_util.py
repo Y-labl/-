@@ -2974,11 +2974,20 @@ def isNeedWuYiColor(deviceId):
 
 
 def findTextPosition(deviceId, textPoints, left, top, width, height, isColorFunc=None, curframe=None, rongCuo=0.1):
+    """在 (left,top,width,height) 区域内逐像素匹配 textPoints 点阵。
+
+    反编译残留修复：原代码把 `for textP in textPoints` 移出了扫描循环，
+    导致未匹配到目标时 wrongCount 未定义直接抛 UnboundLocalError，
+    且点阵匹配/背景校验只在最后一个候选像素上执行。
+    这里按原意图重建：命中起始色 -> 整组点阵匹配 -> 背景校验 -> 返回坐标。
+    """
     frame = None
     if curframe is not None:
         frame = curframe
     else:
         frame = scrcpyUtil.getFrame(deviceId)
+    if frame is None:
+        return None
     for y in range(height):
         for x in range(width):
             xTMP = left + x
@@ -2988,64 +2997,61 @@ def findTextPosition(deviceId, textPoints, left, top, width, height, isColorFunc
             if isOkColor:
                 isAllColorOk = True
                 wrongCount = 0
-
-    for textP in textPoints:
-        tmpX = xTMP + textP.x()
-        tmpY = yTMP + textP.y()
-        color2 = getColorFromFrame(frame, QPoint(tmpX, tmpY))
-        if isColorFunc(color2) is False:
-            wrongCount += 1
-        if wrongCount >= len(textPoints) * rongCuo:
-            isAllColorOk = False
-            break
-        if isAllColorOk:
-            isBgOk = True
-            bgPoints = []
-            bgOkPercent = 0.85
-            tip = ""
-            if textPoints == baobaoRedPoints:
-                bgPoints = baobaoRedPoints_Bg
-                bgOkPercent = 0.5
-                tip = "红色宝宝"
-            else:
-                if textPoints == baobaoBluePoints:
-                    bgPoints = baobaoBluePoints_Bg
-                    tip = "蓝色宝宝"
-                else:
-                    if textPoints == huyouRedPoints:
-                        bgPoints = huyouRedPoints_Bg
-                        tip = "红色护佑"
+                for textP in textPoints:
+                    tmpX = xTMP + textP.x()
+                    tmpY = yTMP + textP.y()
+                    color2 = getColorFromFrame(frame, QPoint(tmpX, tmpY))
+                    if isColorFunc(color2) is False:
+                        wrongCount += 1
+                    if wrongCount >= len(textPoints) * rongCuo:
+                        isAllColorOk = False
+                        break
+                if isAllColorOk:
+                    isBgOk = True
+                    bgPoints = []
+                    bgOkPercent = 0.85
+                    tip = ""
+                    if textPoints == baobaoRedPoints:
+                        bgPoints = baobaoRedPoints_Bg
+                        bgOkPercent = 0.5
+                        tip = "红色宝宝"
                     else:
-                        if textPoints == toulingRedPoints:
-                            bgPoints = toulingRedPoints_Bg
-                            tip = "红色头领"
+                        if textPoints == baobaoBluePoints:
+                            bgPoints = baobaoBluePoints_Bg
+                            tip = "蓝色宝宝"
                         else:
-                            if textPoints == baozhaRedPoints:
-                                bgPoints = baozhaRedPoints_Bg
-                                bgOkPercent = 0.75
-                                tip = "红色爆炸"
+                            if textPoints == huyouRedPoints:
+                                bgPoints = huyouRedPoints_Bg
+                                tip = "红色护佑"
                             else:
-                                if textPoints == jingyingRedPoints:
-                                    bgPoints = jingyingRedPoints_Bg
-                                    tip = "红色精英"
+                                if textPoints == toulingRedPoints:
+                                    bgPoints = toulingRedPoints_Bg
+                                    tip = "红色头领"
                                 else:
-                                    if textPoints == zaiTextPoints:
-                                        bgPoints = zaiTextPoints_Bg
-                                        bgOkPercent = 0.7
-                                        tip = "四小人在"
-            if len(bgPoints) > 0:
-                bgOkCount = 0
-                for bgP in bgPoints:
-                    bgColor = getColorFromFrame(frame, QPoint(bgP.x() + xTMP, bgP.y() + yTMP))
-                    if isColorFunc(bgColor) is False:
-                        bgOkCount += 1
-
-                if bgOkCount / len(bgPoints) < bgOkPercent:
-                    isBgOk = False
-            if isBgOk:
-                return QPoint(xTMP, yTMP)
-    else:
-        return
+                                    if textPoints == baozhaRedPoints:
+                                        bgPoints = baozhaRedPoints_Bg
+                                        bgOkPercent = 0.75
+                                        tip = "红色爆炸"
+                                    else:
+                                        if textPoints == jingyingRedPoints:
+                                            bgPoints = jingyingRedPoints_Bg
+                                            tip = "红色精英"
+                                        else:
+                                            if textPoints == zaiTextPoints:
+                                                bgPoints = zaiTextPoints_Bg
+                                                bgOkPercent = 0.7
+                                                tip = "四小人在"
+                    if len(bgPoints) > 0:
+                        bgOkCount = 0
+                        for bgP in bgPoints:
+                            bgColor = getColorFromFrame(frame, QPoint(bgP.x() + xTMP, bgP.y() + yTMP))
+                            if isColorFunc(bgColor) is False:
+                                bgOkCount += 1
+                        if bgOkCount / len(bgPoints) < bgOkPercent:
+                            isBgOk = False
+                    if isBgOk:
+                        return QPoint(xTMP, yTMP)
+    return None
 
 
 def isRedBaoBaoTextColor(color):
