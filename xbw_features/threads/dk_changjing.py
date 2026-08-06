@@ -17,9 +17,11 @@ import re
 import time
 
 from xbw_features.qtcompat import QPoint
-from xbw_features.common.util.log_util import orderLog
+from xbw_features.common.util.log_util import logTmpPath, orderLog
 from xbw_features.common.util.color_util import PKG_CENTER_CUR_PKG, getHasProductPoints
 from xbw_features.common.util.math_util import get_diff_points
+from xbw_features.common.util.file_util import cv_save_img
+from xbw_features.common.util.time_util import getLogTime, getLogTimeHour
 from xbw_features.common.util.img_util import checkAtDaoJu, findPic
 from xbw_features.common.util.click_util import click
 from xbw_features.common.util.scrcpy_util import scrcpyUtil
@@ -76,6 +78,12 @@ def check_backpack(deviceId, prev_snapshot=None, stop_event=None, scan_mode="new
     bag_frame = None
     try:
         bag_frame = scrcpyUtil.getFrame(deviceId)
+        if bag_frame is not None:
+            try:
+                cv_save_img(f"{logTmpPath()}/{getLogTimeHour()}/{deviceId}-{getLogTime()}-Backpack.png",
+                            bag_frame)
+            except Exception:
+                pass
         tmp_products = getHasProductPoints(deviceId, firstCenterPoint=PKG_CENTER_CUR_PKG)
         add_huan = 0
         add_card = 0
