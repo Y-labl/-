@@ -77,6 +77,8 @@ def check_backpack(deviceId, prev_snapshot=None, stop_event=None, scan_mode="new
     clickOpenPkg(deviceId)
     bag_frame = None
     try:
+        # 等背包渲染完成再截图，避免抓到打开动画帧导致 20 格全判占用
+        time.sleep(0.5)
         bag_frame = scrcpyUtil.getFrame(deviceId)
         if bag_frame is not None:
             try:
@@ -95,11 +97,13 @@ def check_backpack(deviceId, prev_snapshot=None, stop_event=None, scan_mode="new
             scan_points = get_diff_points(prev_snapshot, tmp_products)
         else:
             scan_points = []
+        # 测试页全量扫描加快单格等待；自动流程保持原节奏
+        wait_range = (0.7, 1.2) if scan_mode == "all" else (1.5, 2.8)
         for add_p in scan_points:
             if stopped():
                 break
             click(deviceId, add_p)
-            time.sleep(random.uniform(1.5, 2.8))
+            time.sleep(random.uniform(*wait_range))
             if findPic(deviceId, "装备条件", width=400):
                 add_huan += 1
                 ring_points.append((add_p.x(), add_p.y()))

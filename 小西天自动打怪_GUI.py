@@ -708,25 +708,45 @@ class AutoFightGUI:
         """在背包截图上标注检测到的环（红圈）/卡（绿圈）并显示。"""
         try:
             import cv2
+            import numpy as np
+            from PIL import Image, ImageDraw, ImageFont
             ann = bag_frame.copy()
             for x, y in result.get("ring_points", []):
                 cv2.circle(ann, (int(x), int(y)), 14, (0, 0, 255), 3)
-                cv2.putText(ann, "环", (int(x) - 12, int(y) - 18),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2, cv2.LINE_AA)
             for x, y in result.get("card_points", []):
                 cv2.circle(ann, (int(x), int(y)), 14, (0, 200, 0), 3)
-                cv2.putText(ann, "卡", (int(x) - 12, int(y) - 18),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 200, 0), 2, cv2.LINE_AA)
+            # 中文标注用 PIL + 系统字体（OpenCV putText 不支持中文）
+            font = self._test_cn_font(28)
+            pil = Image.fromarray(cv2.cvtColor(ann, cv2.COLOR_BGR2RGB))
+            draw = ImageDraw.Draw(pil)
+            for x, y in result.get("ring_points", []):
+                draw.text((int(x) - 14, int(y) - 30), "环", font=font, fill=(255, 0, 0))
+            for x, y in result.get("card_points", []):
+                draw.text((int(x) - 14, int(y) - 30), "卡", font=font, fill=(0, 200, 0))
+            ann = cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
             rgb = cv2.cvtColor(ann, cv2.COLOR_BGR2RGB)
             h, w = rgb.shape[:2]
             scale = min(1.0, 760.0 / w)
             if scale < 1.0:
                 rgb = cv2.resize(rgb, (int(w * scale), int(h * scale)))
-            from PIL import Image, ImageTk
+            from PIL import ImageTk
             self._test_photo = ImageTk.PhotoImage(Image.fromarray(rgb))
             self.test_image_label.configure(image=self._test_photo, text="")
         except Exception as e:
             self._test_log(f"⚠️ 背包标注显示失败：{e}")
+
+    def _test_cn_font(self, size):
+        """取一个可用的中文字体（微软雅黑/黑体/宋体）。"""
+        from PIL import ImageFont
+        for path in (r"C:/Windows/Fonts/msyh.ttc",
+                     r"C:/Windows/Fonts/simhei.ttf",
+                     r"C:/Windows/Fonts/simsun.ttc"):
+            if os.path.exists(path):
+                try:
+                    return ImageFont.truetype(path, size)
+                except Exception:
+                    continue
+        return ImageFont.load_default()
 
     def _test_backpack(self):
         serial = self.test_device_combo.get().strip()
