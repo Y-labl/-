@@ -219,7 +219,7 @@ def isInPk(deviceId):
         return friendEnterPoint is None or friendEnterPoint and friendEnterPoint.x() < 100
 
 
-def isShowFourPerson(deviceId):
+def isShowFourPerson(deviceId, click_back=True):
     for i in range(3):
         if isShowRoleAvatar(deviceId):
             return False
@@ -229,7 +229,7 @@ def isShowFourPerson(deviceId):
         if friendEnterPoint:
             return False
         time.sleep(0.5)
-    isHasBackPoint = findPic(deviceId, "PK-撤销战斗操作", withClick=True)
+    isHasBackPoint = findPic(deviceId, "PK-撤销战斗操作", withClick=click_back)
     if isHasBackPoint:
         return False
     return True
