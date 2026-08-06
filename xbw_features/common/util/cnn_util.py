@@ -36,27 +36,26 @@ class CNNUtil(object):
         best_index, best_prob = max(indexProbs, key=lambda x: x[1])
         return indexProbs, best_index, best_prob
 
-    def findFourPersonLocal(self, deviceId, left=227, top=80, width=360, height=150, curFrame=None):
-        frame = None
-        if curFrame is not None:
-            frame = curFrame
-        else:
-            frame = scrcpyUtil.getFrame(deviceId)
-        if frame is None:
-            orderLog(deviceId, "本地识别四小人：获取画面失败")
-            return
-        # 多候选 ROI：默认标准区域(227,80,360,150) 与检测区域都试一遍，
-        # 取最高分那一组，避免 findFourPersonDetectArea 的“在/请”字定位
-        # 与真实头像错位导致点击落空（实测错位时默认区域仍可到 1.000）。
+    def best_four_person_roi(self, frame, left, top, width, height):
+        """
+        多候选 ROI 打分取最高：
+          - 默认标准区域 (227,80,360,150)
+          - 检测区域 (left,top,width,height)
+          - 检测区域 y 方向 -50 ~ +20 扫描（“请/在”字定位与真实头像行
+            在不同设备/界面下存在 20~50px 偏差，固定 ROI 会裁到头像外）
+        :return: (roi, best_index, best_prob, indexProbs) 或 (None,None,None,None)
+        """
         candidates = [
             (227, 80, 360, 150),
             (left, top, width, height),
         ]
+        for dy in range(-50, 21, 10):
+            candidates.append((left, top + dy, width, height))
         seen = set()
-        best_score = None      # (prob, index, roi)
+        best_score = None
         best_indexProbs = None
         for l, t, w, h in candidates:
-            if (l, t, w, h) in seen:
+            if (l, t, w, h) in seen or l < 0 or t < 0 or l + w > 800 or t + h > 448:
                 continue
             seen.add((l, t, w, h))
             try:
@@ -68,9 +67,25 @@ class CNNUtil(object):
                 best_score = (b_prob, b_idx, (l, t, w, h))
                 best_indexProbs = indexProbs
         if best_score is None:
+            return None, None, None, None
+        best_prob, best_index, best_roi = best_score
+        return best_roi, best_index, best_prob, best_indexProbs
+
+    def findFourPersonLocal(self, deviceId, left=227, top=80, width=360, height=150, curFrame=None):
+        frame = None
+        if curFrame is not None:
+            frame = curFrame
+        else:
+            frame = scrcpyUtil.getFrame(deviceId)
+        if frame is None:
+            orderLog(deviceId, "本地识别四小人：获取画面失败")
+            return
+        best_roi, best_index, best_prob, best_indexProbs = self.best_four_person_roi(
+            frame, left, top, width, height)
+        if best_roi is None:
             orderLog(deviceId, "本地识别四小人：候选 ROI 均无效")
             return
-        best_prob, best_index, (left, top, width, height) = best_score
+        left, top, width, height = best_roi
         cv_save_img(f"{logTmpPath()}/{getLogTimeHour()}/{deviceId}-{getLogTime()}-FourPerson-LocalOrig.png", frame)
         for i, prob in best_indexProbs:
             itemLeft = left + 90 * i
