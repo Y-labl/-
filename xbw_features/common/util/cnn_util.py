@@ -137,17 +137,13 @@ class CNNUtil(object):
         if best_prob < 0.4:
             orderLog(deviceId, "本地判定非四小人界面（置信度过低），跳过")
             return
-        # ===== 界面判定 =====
-        # 严格判定（头像/好友入口/撤销）确认是四小人界面 -> 放行；
-        # 严格判否且画面较亮（亮度>=60）-> 普通战斗/跑图场景，跳过防误点。
-        # 真四小人界面均为暗色弹窗，不受亮度限制影响。
-        try:
-            _ui_confirmed = bool(isShowFourPerson(deviceId))
-        except Exception:
-            _ui_confirmed = True
+        # ===== 快速防误点 =====
+        # 四小人头像位置会随时间变化（动画/轮换），点击必须及时，
+        # 因此点击前不做慢速严格判定（原 2~3 秒延时会导致点旧位置）。
+        # 仅用“画面较亮（亮度>=60）= 普通战斗/跑图场景”快速拦截。
         _bright = float(frame.mean()) if frame is not None else 255.0
-        if not _ui_confirmed and _bright >= 60:
-            orderLog(deviceId, f"严格判定非四小人且画面较亮(亮度={_bright:.0f})，跳过")
+        if _bright >= 60:
+            orderLog(deviceId, f"画面较亮(亮度={_bright:.0f})，跳过四小人处理")
             return
         if best_prob > CONF_THRESHOLD:
             # 与功能测试页一致：槽位中心 65% 高度处点击（部分 NPC 较矮，中心易落空）
