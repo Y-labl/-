@@ -137,32 +137,34 @@ class CNNUtil(object):
         if best_prob < 0.4:
             orderLog(deviceId, "本地判定非四小人界面（置信度过低），跳过")
             return
-        # ===== 界面判定（点击与图灵兜底共用） =====
-        # 严格判定（头像/好友入口/撤销）确认是四小人界面 -> 直接放行；
-        # 严格判否时（部分真界面变体也判否），仅以“画面为暗色面板（亮度<60）”
-        # 兜底：真四小人界面都是暗色弹窗，亮色战斗/跑图场景直接拦截。
-        # 注意：同一界面 CNN 分数会在 0.89~1.0 间抖动，不能用高阈值拦截。
+        # ===== 界面判定 =====
+        # 严格判定（头像/好友入口/撤销）确认是四小人界面 -> 放行；
+        # 严格判否且画面较亮（亮度>=60）-> 普通战斗/跑图场景，跳过防误点。
+        # 真四小人界面均为暗色弹窗，不受亮度限制影响。
         try:
             _ui_confirmed = bool(isShowFourPerson(deviceId))
         except Exception:
             _ui_confirmed = True
         _bright = float(frame.mean()) if frame is not None else 255.0
         if not _ui_confirmed and _bright >= 60:
-            orderLog(deviceId,
-                     f"严格判定非四小人且证据不足(best={best_prob:.3f} 亮度={_bright:.0f})，跳过")
+            orderLog(deviceId, f"严格判定非四小人且画面较亮(亮度={_bright:.0f})，跳过")
             return
         if best_prob > CONF_THRESHOLD:
-            # 严格判否但证据足够（暗色高分）时，用头像行中心定位更可靠
-            _avatar_row_x = self._find_avatar_row(frame, top, height) if not _ui_confirmed else None
-            # 点击点取槽位高度 65% 处：部分 NPC 较矮，中心点击可能落空
-            if _avatar_row_x is not None:
-                clickX = int(_avatar_row_x)
-            else:
-                clickX = left + 90 * best_index + 45
-            clickPoint = QPoint(clickX, top + int(height * 0.65))
+            # 与功能测试页一致：槽位中心 65% 高度处点击（部分 NPC 较矮，中心易落空）
+            clickPoint = QPoint(left + 90 * best_index + 45, top + int(height * 0.65))
             click(deviceId, clickPoint)
             orderLog(deviceId, f"本地识别四小人目标：{best_index} ,置信度 {best_prob:.4f}, ROI({left},{top},{width},{height}), 点击坐标 {clickPoint}")
             time.sleep(random.uniform(1, 1.5))
+            # 点击后验证：四小人界面还在 -> 直接调用图灵云兜底
+            try:
+                frame2 = scrcpyUtil.getFrame(deviceId)
+                if frame2 is not None:
+                    roi2, _, prob2, _ = self.best_four_person_roi(frame2, left, top, width, height)
+                    if roi2 is not None and prob2 > 0.5:
+                        orderLog(deviceId, f"点击后四小人仍在（置信度{prob2:.3f}），调用图灵云兜底")
+                        findFourPersonAndClick(deviceId)
+            except Exception as e:
+                logger.debug(f"点击后验证异常: {e}")
         else:
             # 疑似但本地未达阈值(0.4~0.8) -> 图灵云兜底
             orderLog(deviceId, f"本地识别四小人最高置信度{best_prob:.4f}不足阈值(0.8)，调用图灵云识别")
