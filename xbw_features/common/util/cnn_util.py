@@ -80,6 +80,10 @@ class CNNUtil(object):
         if frame is None:
             orderLog(deviceId, "本地识别四小人：获取画面失败")
             return
+        # “在/请”字检测区域可能返回 (0,0,0,0)，此时回退默认标准区域，
+        # 与功能测试页签行为一致（默认区域 + y 扫描仍可识别）。
+        if left <= 0 or top <= 0 or width <= 0 or height <= 0:
+            left, top, width, height = 227, 80, 360, 150
         best_roi, best_index, best_prob, best_indexProbs = self.best_four_person_roi(
             frame, left, top, width, height)
         if best_roi is None:

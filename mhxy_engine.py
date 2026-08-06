@@ -3126,8 +3126,10 @@ class AutoFightEngine:
                 if left != 0:
                     self._log(f"  🧠 本地四小人识别区域 ({left},{top},{w},{h})")
                     cnnUtil.findFourPersonLocal(self.serial, left, top, w, h)
-                    return
-                self._log("  ⚠️ 本地未找到四小人识别区域，降级图灵云")
+                else:
+                    self._log("  ⚠️ 本地未找到“在/请”识别区域，回退默认区域识别")
+                    cnnUtil.findFourPersonLocal(self.serial)
+                return
             except Exception as e:
                 self._log(f"  ⚠️ 本地四小人识别异常({e})，降级图灵云")
 
@@ -3825,7 +3827,8 @@ class AutoFightEngine:
                                         self._log(f"  🧠 本地四小人识别区域 ({left},{top},{w},{h})")
                                         _xbw_cnn.findFourPersonLocal(self.serial, left, top, w, h)
                                     else:
-                                        self._log("  ⚠️ 本地未找到四小人识别区域，重试")
+                                        self._log("  ⚠️ 本地未找到“在/请”识别区域，回退默认区域识别")
+                                        _xbw_cnn.findFourPersonLocal(self.serial)
                                     time.sleep(1)
                                     continue
                             except Exception as e:
