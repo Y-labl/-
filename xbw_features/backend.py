@@ -36,6 +36,14 @@ if not os.path.exists(_ADB_EXE):
 ADB_EXE = _ADB_EXE
 
 
+class StopTest(BaseException):
+    """测试停止信号。
+
+    继承 BaseException 而不是 Exception，这样 goToMapAction / 各动作函数里的
+    `except Exception` 不会把它吞掉，能真正中断跑图/背包等长任务。
+    """
+
+
 def _device_size(deviceId):
     """查询设备分辨率（landscape），缓存避免反复查询。"""
     if not hasattr(_device_size, "_cache"):
@@ -79,6 +87,11 @@ class _Backend(object):
         self.log_fn = None             # fn(deviceId, msg)
         self.cache_seconds = 0.25      # 帧缓存时长，避免同一帧重复 ADB 截图
         self._frame_cache = {}         # deviceId -> (ts, frame_800x448)
+        self.stop_event = None         # threading.Event：功能测试页停止信号
+
+    def check_stop(self):
+        if self.stop_event is not None and self.stop_event.is_set():
+            raise StopTest("测试已停止")
 
     def set(self, screencap_fn=None, tap_fn=None, log_fn=None, cache_seconds=None):
         if screencap_fn is not None:
@@ -114,6 +127,7 @@ class _Backend(object):
 
     def get_frame(self, deviceId, fresh=False):
         """返回 800x448 BGR 帧；缓存时间内复用，减少 ADB 截图开销。"""
+        self.check_stop()
         now = time.time()
         cached = self._frame_cache.get(deviceId)
         if not fresh and cached is not None and (now - cached[0]) < self.cache_seconds:
@@ -126,6 +140,7 @@ class _Backend(object):
         return frame
 
     def tap(self, deviceId, x, y, is_double=False):
+        self.check_stop()
         fn = self.tap_fn or self._default_tap
         fn(deviceId, x, y, is_double=is_double)
 
@@ -170,3 +185,13 @@ def log(deviceId, msg):
 def clear_cache(deviceId=None):
     """模块级便捷入口，等价于 backend.clear_cache。"""
     return backend.clear_cache(deviceId)
+
+
+def set_stop_event(ev):
+    """设置停止信号（功能测试页停止按钮用）。"""
+    backend.stop_event = ev
+
+
+def clear_stop_event():
+    """清除停止信号。"""
+    backend.stop_event = None

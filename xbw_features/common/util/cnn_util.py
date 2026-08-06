@@ -101,7 +101,8 @@ class CNNUtil(object):
             else:
                 cv_save_img(f"{logTmpPath()}/{getLogTimeHour()}/back/{deviceId}-{getLogTime()}-FourPerson-Local-Item{i}-Similar-{prob:.4f}.png", itemRoi)
         if best_prob > CONF_THRESHOLD:
-            clickPoint = QPoint(left + 90 * best_index + 45, top + height // 2)
+            # 点击点取槽位高度 65% 处：部分 NPC 较矮，中心点击可能落空
+            clickPoint = QPoint(left + 90 * best_index + 45, top + int(height * 0.65))
             click(deviceId, clickPoint)
             orderLog(deviceId, f"本地识别四小人目标：{best_index} ,置信度 {best_prob:.4f}, ROI({left},{top},{width},{height}), 点击坐标 {clickPoint}")
             time.sleep(random.uniform(1, 1.5))

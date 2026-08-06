@@ -66,7 +66,7 @@ def analyze_four_person_image(frame_bgr, device_id="local"):
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
 
     click_x = l + 90 * best_index + 45
-    click_y = t + h // 2
+    click_y = t + int(h * 0.65)   # 与线上一致：槽位高度 65% 处，适配较矮 NPC
     cv2.circle(annotated, (click_x, click_y), 7, (0, 0, 255), -1)
     label = f"BEST slot{best_index} prob={best_prob:.4f} click({click_x},{click_y}) ROI({l},{t},{w},{h})"
     cv2.putText(annotated, label, (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2, cv2.LINE_AA)

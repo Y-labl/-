@@ -600,17 +600,32 @@ class AutoFightGUI:
         ttk.Button(btns, text="② 测试背包环/卡", bootstyle="success",
                    command=self._test_backpack).pack(side=tk.LEFT, padx=(0, 10))
         ttk.Button(btns, text="③ 测试切换地图", bootstyle="warning",
-                   command=self._test_switch_map).pack(side=tk.LEFT)
+                   command=self._test_switch_map).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(btns, text="⏹ 停止", bootstyle="danger",
+                   command=self._test_stop).pack(side=tk.LEFT)
+
+        self._test_stop_event = threading.Event()
 
         # 图片预览区
-        preview = ttk.Labelframe(tab3, text=" 四小人识别预览 ", padding=6)
-        preview.grid(row=2, column=0, sticky="nsew")
+        preview = ttk.Labelframe(tab3, text=" 识别预览（四小人 / 背包环卡标注） ", padding=6)
+        preview.grid(row=2, column=0, sticky="nsew", pady=(0, 8))
         preview.columnconfigure(0, weight=1)
         preview.rowconfigure(0, weight=1)
         self._test_photo = None
-        self.test_image_label = ttk.Label(preview, text="选择一张游戏截图，本地识别后会在这里标注显示",
+        self.test_image_label = ttk.Label(preview, text="四小人识别/背包环卡标注会显示在这里",
                                           anchor="center", bootstyle="secondary")
         self.test_image_label.grid(row=0, column=0, sticky="nsew")
+
+        # 测试日志区
+        log_card = ttk.Labelframe(tab3, text=" 测试日志 ", padding=6)
+        log_card.grid(row=3, column=0, sticky="ew")
+        log_card.columnconfigure(0, weight=1)
+        self.test_log_text = tk.Text(log_card, height=6, font=("Microsoft YaHei", 9),
+                                     state=tk.DISABLED, wrap="word")
+        self.test_log_text.grid(row=0, column=0, sticky="ew")
+        tlog_sb = ttk.Scrollbar(log_card, orient=tk.VERTICAL, command=self.test_log_text.yview)
+        tlog_sb.grid(row=0, column=1, sticky="ns")
+        self.test_log_text.configure(yscrollcommand=tlog_sb.set)
 
         # 初始化设备列表
         self._refresh_test_devices()
@@ -625,6 +640,24 @@ class AutoFightGUI:
         except Exception as e:
             self._log(f"功能测试：刷新设备失败 {e}")
 
+    def _test_log(self, msg):
+        """测试页日志：写入页内日志区并同步到主日志。"""
+        ts = datetime.now().strftime("%H:%M:%S")
+        line = f"[{ts}] {msg}"
+        try:
+            self.test_log_text.configure(state=tk.NORMAL)
+            self.test_log_text.insert(tk.END, line + "\n")
+            self.test_log_text.see(tk.END)
+            self.test_log_text.configure(state=tk.DISABLED)
+        except Exception:
+            pass
+        self._log(f"[测试] {msg}")
+
+    def _test_stop(self):
+        """停止按钮：置位停止信号，长任务在下一次取帧/点击时中断。"""
+        self._test_stop_event.set()
+        self._test_log("⏹ 停止信号已发送，正在等待当前步骤结束...")
+
     # ---------- 测试动作 ----------
     def _test_four_person_image(self):
         """上传图片 -> 本地识别四小人 -> 标注显示"""
@@ -637,7 +670,7 @@ class AutoFightGUI:
 
     def _run_four_person_image_test(self, path):
         def log(msg):
-            self.root.after(0, lambda: self._log(msg))
+            self.root.after(0, lambda m=msg: self._test_log(m))
         log(f"开始本地识别：{path}")
         try:
             import cv2
@@ -671,6 +704,30 @@ class AutoFightGUI:
         self._test_photo = photo
         self.test_image_label.configure(image=photo, text="")
 
+    def _show_bag_annotation(self, bag_frame, result):
+        """在背包截图上标注检测到的环（红圈）/卡（绿圈）并显示。"""
+        try:
+            import cv2
+            ann = bag_frame.copy()
+            for x, y in result.get("ring_points", []):
+                cv2.circle(ann, (int(x), int(y)), 14, (0, 0, 255), 3)
+                cv2.putText(ann, "环", (int(x) - 12, int(y) - 18),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2, cv2.LINE_AA)
+            for x, y in result.get("card_points", []):
+                cv2.circle(ann, (int(x), int(y)), 14, (0, 200, 0), 3)
+                cv2.putText(ann, "卡", (int(x) - 12, int(y) - 18),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 200, 0), 2, cv2.LINE_AA)
+            rgb = cv2.cvtColor(ann, cv2.COLOR_BGR2RGB)
+            h, w = rgb.shape[:2]
+            scale = min(1.0, 760.0 / w)
+            if scale < 1.0:
+                rgb = cv2.resize(rgb, (int(w * scale), int(h * scale)))
+            from PIL import Image, ImageTk
+            self._test_photo = ImageTk.PhotoImage(Image.fromarray(rgb))
+            self.test_image_label.configure(image=self._test_photo, text="")
+        except Exception as e:
+            self._test_log(f"⚠️ 背包标注显示失败：{e}")
+
     def _test_backpack(self):
         serial = self.test_device_combo.get().strip()
         if not serial:
@@ -682,23 +739,37 @@ class AutoFightGUI:
 
     def _run_backpack_test(self, serial):
         def log(msg):
-            self.root.after(0, lambda: self._log(msg))
+            self.root.after(0, lambda m=msg: self._test_log(m))
         log(f"开始背包测试：{serial}")
+        from xbw_features import backend as xbw_backend
+        xbw_backend.set_stop_event(self._test_stop_event)
         saved = self._xbw_backend_snapshot()
         self._xbw_backend_standalone(serial, log)
         try:
             from xbw_features.threads.dk_changjing import check_backpack
             prev = getattr(self, "_test_pkg_snapshot", None)
-            snapshot, add_huan, add_card = check_backpack(serial, prev)
-            self._test_pkg_snapshot = snapshot
-            log(f"背包占用槽位：{len(snapshot)}/20")
-            log(f"本次新增：环 {add_huan} 个 / 卡 {add_card} 张"
+            result = check_backpack(serial, prev, stop_event=self._test_stop_event)
+            self._test_pkg_snapshot = result["snapshot"]
+            log(f"背包占用槽位：{len(result['snapshot'])}/20")
+            log(f"本次新增：环 {result['add_huan']} 个 / 卡 {result['add_card']} 张"
                 + ("（首次扫描为基线，再次运行可对比新增）" if prev is None else ""))
+            if result["ring_points"]:
+                log("检测到【环】：" + "  ".join(f"({x},{y})" for x, y in result["ring_points"]))
+            if result["card_points"]:
+                log("检测到【卡】：" + "  ".join(f"({x},{y})" for x, y in result["card_points"]))
+            # 在背包截图上标注环/卡并显示
+            bag = result.get("bag_frame")
+            if bag is not None:
+                self.root.after(0, lambda f=bag, r=result: self._show_bag_annotation(f, r))
             log("✅ 背包检查完成")
+        except xbw_backend.StopTest:
+            log("⏹ 背包测试已停止")
         except Exception as e:
             log(f"❌ 背包测试异常：{e}")
         finally:
             self._xbw_backend_restore(saved)
+            xbw_backend.clear_stop_event()
+            self._test_stop_event.clear()
 
     def _test_switch_map(self):
         serial = self.test_device_combo.get().strip()
@@ -715,18 +786,24 @@ class AutoFightGUI:
 
     def _run_switch_map_test(self, serial, target):
         def log(msg):
-            self.root.after(0, lambda: self._log(msg))
+            self.root.after(0, lambda m=msg: self._test_log(m))
         log(f"开始切换地图测试：{serial} -> {target}")
+        from xbw_features import backend as xbw_backend
+        xbw_backend.set_stop_event(self._test_stop_event)
         saved = self._xbw_backend_snapshot()
         self._xbw_backend_standalone(serial, log)
         try:
             from xbw_features import go_to_chang_jing
             go_to_chang_jing(serial, target)
             log(f"✅ 已执行切图流程（目标 {target}），请查看游戏画面确认")
+        except xbw_backend.StopTest:
+            log("⏹ 切换地图测试已停止")
         except Exception as e:
             log(f"❌ 切换地图异常：{e}")
         finally:
             self._xbw_backend_restore(saved)
+            xbw_backend.clear_stop_event()
+            self._test_stop_event.clear()
 
     def _ensure_engine_stopped(self, label):
         running = [d for d, e in self.engines.items() if getattr(e, "running", False)]

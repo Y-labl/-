@@ -22,6 +22,7 @@ from xbw_features.common.util.color_util import PKG_CENTER_CUR_PKG, getHasProduc
 from xbw_features.common.util.math_util import get_diff_points
 from xbw_features.common.util.img_util import checkAtDaoJu, findPic
 from xbw_features.common.util.click_util import click
+from xbw_features.common.util.scrcpy_util import scrcpyUtil
 from xbw_features.common.util.detect_position_util import detectPosition
 from xbw_features.game_action.unit.common_unit import (
     clickOpenPkg,
@@ -57,31 +58,50 @@ def next_check_interval():
     return random.uniform(*PKG_CHECK_INTERVAL)
 
 
-def check_backpack(deviceId, prev_snapshot=None):
+def check_backpack(deviceId, prev_snapshot=None, stop_event=None):
     """
     打开背包 -> 取 20 格占用快照 -> 与上次快照 diff 出新增槽位 ->
-    逐个点击并模板匹配“装备条件/怪物卡片”。
+    逐个点击并模板匹配“装备条件/怪物卡片”，返回环/卡数量、位置与背包截图。
 
-    :return: (新快照列表, 新增环数, 新增卡数)
+    :return: dict(snapshot, add_huan, add_card, ring_points, card_points, bag_frame)
     """
+    def stopped():
+        return stop_event is not None and stop_event.is_set()
+
     orderLog(deviceId, "偷偷检查背包")
     clickOpenPkg(deviceId)
+    bag_frame = None
     try:
+        bag_frame = scrcpyUtil.getFrame(deviceId)
         tmp_products = getHasProductPoints(deviceId, firstCenterPoint=PKG_CENTER_CUR_PKG)
         add_huan = 0
         add_card = 0
+        ring_points = []
+        card_points = []
         if prev_snapshot:
             add_points = get_diff_points(prev_snapshot, tmp_products)
             for add_p in add_points:
+                if stopped():
+                    break
                 click(deviceId, add_p)
                 time.sleep(random.uniform(1.5, 2.8))
                 if findPic(deviceId, "装备条件", width=400):
                     add_huan += 1
+                    ring_points.append((add_p.x(), add_p.y()))
                 if findPic(deviceId, "怪物卡片", width=400):
                     add_card += 1
-        return tmp_products, add_huan, add_card
+                    card_points.append((add_p.x(), add_p.y()))
+        return {
+            "snapshot": tmp_products,
+            "add_huan": add_huan,
+            "add_card": add_card,
+            "ring_points": ring_points,
+            "card_points": card_points,
+            "bag_frame": bag_frame,
+        }
     finally:
-        clickClosePkg(deviceId)
+        if not stopped():
+            clickClosePkg(deviceId)
 
 
 def should_switch_scene(rings_require, cards_require, huan_count, card_count):
@@ -96,19 +116,20 @@ def should_switch_scene(rings_require, cards_require, huan_count, card_count):
 
 
 def check_backpack_and_maybe_switch(deviceId, rings_require, cards_require,
-                                    huan_count, card_count, prev_snapshot=None):
+                                    huan_count, card_count, prev_snapshot=None,
+                                    stop_event=None):
     """
     检查一次背包并累计环/卡计数；达标时返回 reason。
 
     :return: (新快照, 累计环数, 累计卡数, reason 或 None)
     """
-    snapshot, add_huan, add_card = check_backpack(deviceId, prev_snapshot)
-    huan_count += add_huan
-    card_count += add_card
+    result = check_backpack(deviceId, prev_snapshot, stop_event=stop_event)
+    huan_count += result["add_huan"]
+    card_count += result["add_card"]
     reason = None
     if should_switch_scene(rings_require, cards_require, huan_count, card_count):
         reason = "环/卡达标"
-    return snapshot, huan_count, card_count, reason
+    return result["snapshot"], huan_count, card_count, reason
 
 
 def go_to_chang_jing(deviceId, target_area):
