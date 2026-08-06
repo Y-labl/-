@@ -196,6 +196,10 @@ class AutoFightGUI:
         self.combat_mode = tk.StringVar(value=_mode)
         self.auto_path_enabled = tk.BooleanVar(value=cfg.get("auto_path_enabled", True))
         self.coord_enabled = tk.BooleanVar(value=cfg.get("coord_enabled", True))
+        # 小霸王合并功能开关
+        self.local_four_person_enabled = tk.BooleanVar(value=cfg.get("use_local_four_person", True))
+        self.check_pkg_counts_enabled = tk.BooleanVar(value=cfg.get("check_pkg_counts", True))
+        self.real_scene_switch_enabled = tk.BooleanVar(value=cfg.get("use_real_scene_switch", True))
 
         # 日志相关
         self.all_logs = []  # 存储所有日志
@@ -341,6 +345,12 @@ class AutoFightGUI:
                         bootstyle="success-round-toggle").grid(row=0, column=0, sticky="w")
         ttk.Checkbutton(right, text="坐标检测", variable=self.coord_enabled,
                         bootstyle="success-round-toggle").grid(row=1, column=0, sticky="w", pady=(4,0))
+        ttk.Checkbutton(right, text="本地四小人识别", variable=self.local_four_person_enabled,
+                        bootstyle="success-round-toggle").grid(row=2, column=0, sticky="w", pady=(4,0))
+        ttk.Checkbutton(right, text="背包环/卡计数", variable=self.check_pkg_counts_enabled,
+                        bootstyle="success-round-toggle").grid(row=3, column=0, sticky="w", pady=(4,0))
+        ttk.Checkbutton(right, text="真实切场导航", variable=self.real_scene_switch_enabled,
+                        bootstyle="success-round-toggle").grid(row=4, column=0, sticky="w", pady=(4,0))
 
         # ---- 日志 & 实时数据 ----
         log_card = ttk.Labelframe(main, text=" 运行日志 & 实时数据 ", padding=10)
@@ -1364,6 +1374,9 @@ class AutoFightGUI:
         self.combat_mode.set(_mode)
         self.auto_path_enabled.set(cfg.get("auto_path_enabled", True))
         self.coord_enabled.set(cfg.get("coord_enabled", True))
+        self.local_four_person_enabled.set(cfg.get("use_local_four_person", True))
+        self.check_pkg_counts_enabled.set(cfg.get("check_pkg_counts", True))
+        self.real_scene_switch_enabled.set(cfg.get("use_real_scene_switch", True))
 
         self.map_select.set(cfg.get("map", "小西天"))
         self.project_select.set("点卡场景(2币/天)")
@@ -1416,6 +1429,9 @@ class AutoFightGUI:
         cfg["escape_enabled"] = (_mode == "escape")
         cfg["auto_path_enabled"] = self.auto_path_enabled.get()
         cfg["coord_enabled"] = self.coord_enabled.get()
+        cfg["use_local_four_person"] = self.local_four_person_enabled.get()
+        cfg["check_pkg_counts"] = self.check_pkg_counts_enabled.get()
+        cfg["use_real_scene_switch"] = self.real_scene_switch_enabled.get()
 
     def _on_setting_change(self, event=None):
         pass

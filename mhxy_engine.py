@@ -759,6 +759,16 @@ class AutoFightEngine:
 
         self._last_map_click = None  # 上次地图点击坐标，用于距离检查
 
+        # ===== 小霸王三功能合并（xbw_features） =====
+        self._xbw_wired = False
+        self._pkg_snapshot = None        # 上次背包 20 格占用快照
+        self._pkg_check_t = 0.0          # 上次检查背包时间
+        self._pkg_interval = 0.0         # 下次检查间隔（550~700 随机）
+        self._huan_count = 0             # 当前场景累计环数
+        self._card_count = 0             # 当前场景累计卡数
+        self._scene_switch_requested = False
+        self._last_4p_check_t = 0.0      # 战斗中四小人判定节流
+
         # 冷却计时
 
         self.hp_item_used_time = 0
@@ -914,6 +924,79 @@ class AutoFightEngine:
             y += random.randint(-3, 3)
 
         adb_tap(self.serial, int(x * self.scale_x), int(y * self.scale_y))
+
+    # ========== 小霸王三功能（xbw_features）接入 ==========
+
+    def _wire_xbw_backend(self):
+        """把 xbw_features 的取帧/点击/日志桥接到本引擎。"""
+        if self._xbw_wired:
+            return
+        try:
+            from xbw_features import backend as _xbw
+            _xbw.setup(
+                screencap_fn=lambda deviceId: self.get_frame(),
+                tap_fn=lambda deviceId, x, y, is_double=False: self._xbw_tap(x, y, is_double),
+                log_fn=lambda deviceId, msg: self._log(f"[小霸王] {msg}"),
+                cache_seconds=0.2,
+            )
+            self._xbw_wired = True
+            self._log("✅ 已接入小霸王三功能（本地四小人 / 真实切场 / 背包环卡计数）")
+        except Exception as e:
+            self._log(f"⚠️ 小霸王功能包接入失败: {e}")
+
+    def _xbw_tap(self, x, y, is_double=False):
+        """800x448 流坐标 -> 设备坐标（独立于引擎当前 stream 分辨率换算）。"""
+        dw = int(self.stream_w * self.scale_x)
+        dh = int(self.stream_h * self.scale_y)
+        tx = int(x * dw / 800)
+        ty = int(y * dh / 448)
+        if is_double:
+            adb_tap(self.serial, tx, ty)
+            time.sleep(random.uniform(0.05, 0.1))
+        adb_tap(self.serial, tx, ty)
+
+    def _do_real_scene_switch(self, target_map):
+        """
+        用小霸王 goToMapAction 真实导航到目标场景；
+        失败返回 False，由调用方回退到原来的“仅切换模板”方式。
+        """
+        if not self.cfg.get("use_real_scene_switch", True):
+            return False
+        try:
+            from xbw_features import go_to_chang_jing
+            self._log(f"  🗺️ 真实导航到 {target_map} ...")
+            go_to_chang_jing(self.serial, target_map)
+            self._log(f"  ✅ 已导航到 {target_map}")
+            time.sleep(1)
+            return True
+        except Exception as e:
+            self._log(f"  ⚠️ 真实切场失败({e})，回退本地切场")
+            return False
+
+    def _check_backpack_counts(self, scene):
+        """
+        小霸王“偷偷检查背包”：20 格快照 diff 新增槽位 ->
+        模板匹配“装备条件/怪物卡片”累计环/卡计数；达标置位切场请求。
+        """
+        try:
+            from xbw_features import check_backpack_and_maybe_switch
+            rings_req = scene.get("rings", "无要求")
+            cards_req = scene.get("cards", "无要求")
+            self._log(f"  🎒 背包检查：当前环 {self._huan_count} / 卡 {self._card_count}"
+                      f"（要求 {rings_req} / {cards_req}）")
+            self._pkg_snapshot, self._huan_count, self._card_count, reason = \
+                check_backpack_and_maybe_switch(
+                    self.serial, rings_req, cards_req,
+                    self._huan_count, self._card_count, self._pkg_snapshot)
+            self._log(f"  🎒 检查后：环 {self._huan_count} / 卡 {self._card_count}")
+            if reason:
+                self._log(f"  🎉 {reason}，准备切换场景")
+                self._scene_switch_requested = True
+        except Exception as e:
+            self._log(f"  ⚠️ 背包检查异常: {e}")
+        finally:
+            self._pkg_check_t = time.time()
+            self._pkg_interval = 0.0   # 下次重新随机 550~700 秒
 
 
 
@@ -2999,7 +3082,9 @@ class AutoFightEngine:
 
     def _is_show_four_person(self, frame=None):
 
-        """四小人检测：HP/MP + 角色头像"""
+        """四小人界面预筛：HP/MP+头像。
+        真伪由本地 CNN 打分判定（实测：走路画面各槽位概率≈0，
+        真·四小人界面单槽位>0.9），网络兜底仅在不低于 0.4 时触发。"""
 
         if frame is None:
 
@@ -3025,15 +3110,26 @@ class AutoFightEngine:
 
     def _handle_four_person(self):
 
-        """四小人检测：截取区域 -> 图灵云API识别 -> 点击坐标"""
+        """四小人处理：优先本地 ONNX（小霸王合并功能），失败降级图灵云API。
+        调用方（主循环）已确认四小人界面。"""
 
-        if not self._is_show_four_person():
+        if not self._xbw_wired and not self._is_show_four_person():
 
             self._log("  👥 非四小人界面，跳过检测")
 
             return
 
-
+        if self.cfg.get("use_local_four_person", True):
+            try:
+                from xbw_features import findFourPersonDetectArea, cnnUtil
+                left, top, w, h = findFourPersonDetectArea(self.serial)
+                if left != 0:
+                    self._log(f"  🧠 本地四小人识别区域 ({left},{top},{w},{h})")
+                    cnnUtil.findFourPersonLocal(self.serial, left, top, w, h)
+                    return
+                self._log("  ⚠️ 本地未找到四小人识别区域，降级图灵云")
+            except Exception as e:
+                self._log(f"  ⚠️ 本地四小人识别异常({e})，降级图灵云")
 
         self._log("  👅 检测到四小人界面，开始识别...")
 
@@ -3612,11 +3708,25 @@ class AutoFightEngine:
 
 
 
+        self._wire_xbw_backend()
+        self._pkg_snapshot = None
+        self._pkg_check_t = time.time()
+        self._pkg_interval = 0.0
+        self._huan_count = 0
+        self._card_count = 0
+        self._scene_switch_requested = False
+
         self.start_time = time.time()
 
         scene_start_time = time.time()
 
-        scene_switch_interval = 600
+        # 切换场间隔：优先读场景配置的“满XX分钟”，否则默认 10 分钟
+        try:
+            from xbw_features import parse_require as _parse_require
+            _switch_minutes = _parse_require(current_scene.get("time")) or 10
+        except Exception:
+            _switch_minutes = 10
+        scene_switch_interval = _switch_minutes * 60
 
         hp_method = self.cfg.get("hp_method", "")
 
@@ -3701,6 +3811,26 @@ class AutoFightEngine:
 
                     if in_pk:
 
+                        # === 战斗中四小人界面（妙手空空弹窗）：本地 CNN 识别并点击 ===
+                        if (self._xbw_wired and self.cfg.get("use_local_four_person", True)
+                                and (time.time() - self._last_4p_check_t) > 1.0):
+                            self._last_4p_check_t = time.time()
+                            try:
+                                if self._is_show_four_person(frame):
+                                    self._log(f"[{loop}] 👥 战斗中检测到四小人界面")
+                                    from xbw_features import findFourPersonDetectArea as _xbw_area
+                                    from xbw_features import cnnUtil as _xbw_cnn
+                                    left, top, w, h = _xbw_area(self.serial)
+                                    if left != 0:
+                                        self._log(f"  🧠 本地四小人识别区域 ({left},{top},{w},{h})")
+                                        _xbw_cnn.findFourPersonLocal(self.serial, left, top, w, h)
+                                    else:
+                                        self._log("  ⚠️ 本地未找到四小人识别区域，重试")
+                                    time.sleep(1)
+                                    continue
+                            except Exception as e:
+                                self._log(f"  ⚠️ 战斗中四小人处理异常: {e}")
+
                         # 卡死恢复：妙手空空技能出现 = 轮到玩家操作，继续偷卡流程
 
                         if self.cfg.get("miaoshou_enabled", True):
@@ -3733,7 +3863,8 @@ class AutoFightEngine:
 
                 # === 场景切换检测：时间到时自动轮询 ===
 
-                if not self.was_in_pk and len(supported) > 1 and (time.time() - scene_start_time) > scene_switch_interval:
+                _switch_due = (time.time() - scene_start_time) > scene_switch_interval
+                if not self.was_in_pk and len(supported) > 1 and (self._scene_switch_requested or _switch_due):
 
                     current_idx = (current_idx + 1) % len(supported)
 
@@ -3745,21 +3876,54 @@ class AutoFightEngine:
 
                     self._log(f"场景切换: {map_name}")
 
+                    self._scene_switch_requested = False
+                    self._do_real_scene_switch(map_name)
+
                     self.cfg["map"] = map_name
 
                     self.load_templates(map_name)
 
                     self.reset_coord_tracking()
 
+                    # 新场景重新计数环/卡
+                    self._pkg_snapshot = None
+                    self._pkg_check_t = time.time()
+                    self._pkg_interval = 0.0
+                    self._huan_count = 0
+                    self._card_count = 0
+
+                    # 按新场景的时间要求重算切换间隔
+                    try:
+                        from xbw_features import parse_require as _parse_require
+                        _switch_minutes = _parse_require(current_scene.get("time")) or 10
+                    except Exception:
+                        _switch_minutes = 10
+                    scene_switch_interval = _switch_minutes * 60
+
                     scene_start_time = time.time()
 
                     continue
+
+                # === 非战斗：背包环/卡计数（小霸王合并功能） ===
+
+                if (self.cfg.get("check_pkg_counts", True) and not self.was_in_pk
+                        and not self._scene_switch_requested):
+                    if self._pkg_interval <= 0:
+                        try:
+                            from xbw_features import next_check_interval as _nci
+                            self._pkg_interval = _nci()
+                        except Exception:
+                            self._pkg_interval = 600
+                    if (time.time() - self._pkg_check_t) >= self._pkg_interval:
+                        self._check_backpack_counts(current_scene)
 
 
 
                 # === 非战斗：四小人检测 ===
 
-                if self._is_show_four_person(frame):
+                if (self._is_show_four_person(frame)
+                        and (time.time() - self._last_4p_check_t) > 2.0):
+                    self._last_4p_check_t = time.time()
 
                     self._log(f"[{loop}] 👥 检测到四小人界面")
 

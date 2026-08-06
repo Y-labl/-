@@ -1,4 +1,4 @@
-﻿__pycache__/
+__pycache__/
 *.pyc
 *.pyo
 screenshots/*.png
@@ -6,4 +6,20 @@ screenshots/*.jpg
 .DS_Store
 *.log
 
-# IDE.idea/
+# IDE
+.idea/
+
+# 构建 / 打包产物
+build/
+dist/
+小霸王.exe_extracted/
+
+# 运行日志 / 截图 / 临时产物
+logs/
+screenshots/
+临时文件/
+有效日志/
+.trash_xbw_test/
+
+# 备份文件
+*.bak

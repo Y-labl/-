@@ -3,3 +3,5 @@ numpy
 adbutils
 pyscrcpy
 ttkbootstrap
+onnxruntime
+loguru

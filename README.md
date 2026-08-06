@@ -5,6 +5,9 @@
 - ⚙️ 可视化设置 HP/MP 阈值、补药方式（九转/94蓝碗/秘制/酒肆）
 - 🗺️ 地图选择：小西天 / 女娲神迹
 - 🃏 **妙手空空场景配置**：支持多场景勾选、环数/卡片/时间要求、后续操作（参考设置页）
+- 🧠 **本地四小人识别（ONNX）**：小霸王反编译功能合并，CNN 本地识别，失败自动降级图灵云 API
+- 🗺️ **真实切场导航**：小霸王 `goToMapAction` 66 区域分支（飞行符/飞行旗/驿站/NPC 对话链）
+- 🎒 **背包环/卡计数**：定时“偷偷检查背包”，20 格快照 diff 新增物品，模板匹配累计环/卡，达标自动切场
 - 📊 实时 HP/MP/BB 数据显示
 - 📋 实时运行日志
 - 💾 配置自动保存
@@ -21,6 +24,9 @@ pip install -r requirements.txt
 ```
 
 依赖列表：`opencv-python`、`numpy`、`adbutils`、`pyscrcpy`、`ttkbootstrap`。
+
+> 小霸王三功能合并包（`xbw_features/`）额外依赖 `onnxruntime`（本地四小人
+> ONNX 推理）与 `loguru`（日志）；项目 `.venv` 已内置两者。
 
 > 如果 pyscrcpy 安装失败，可跳过，程序会自动回退到 ADB 截图模式。
 
@@ -48,6 +54,9 @@ python 小西天自动打怪_GUI.py
 3. 点击 **妙手空空场景设置**，勾选要运行的场景并设置条件
 4. 选择地图（小西天/女娲神迹）
 5. 勾选战斗操作（妙手空空、逃跑、自动寻路等）
+   - **本地四小人识别**：勾选后四小人界面优先用 ONNX 本地识别
+   - **背包环/卡计数**：勾选后每隔 550~700 秒自动检查背包，累计环/卡达标切场
+   - **真实切场导航**：勾选后切场时用小霸王 goToMapAction 真实跑图
 6. 设置战后酒肆恢复阈值
 7. 点击 **▶ 启动**
 
@@ -57,6 +66,12 @@ python 小西天自动打怪_GUI.py
 mhxy-auto-fight/
 ├── 小西天自动打怪_GUI.py    # 新版 UI 主程序
 ├── mhxy_engine.py            # 自动化引擎（原脚本核心逻辑）
+├── xbw_features/             # 小霸王三功能合并包（本地四小人/切换场/背包计数）
+│   ├── four_person/          # ONNX 四小人检测器（subor.onnx）
+│   ├── game_action/          # goToMapAction 66 区域分支 + 67/7 地图参数
+│   ├── common/util/          # findPic/色点/背包 20 格/位置识别等工具
+│   ├── threads/dk_changjing.py # 背包环/卡计数 + 切场条件（函数版）
+│   └── tests/test_smoke.py   # 冒烟测试（不依赖真机）
 ├── run.bat                   # 一键启动脚本
 ├── requirements.txt          # 依赖列表
 ├── gui_config.json           # 配置文件（自动生成）
@@ -64,3 +79,16 @@ mhxy-auto-fight/
 ├── image/                    # 模板图片（294 个 UI/怪物模板）
 └── images/                   # 辅助图片
 ```
+
+## 小霸王三功能（反编译合并）说明
+
+三个功能反编译自安装版“小霸王”并整理合并进本工程，位于 `xbw_features/`：
+
+| 功能 | 关键文件 | 实现 |
+| --- | --- | --- |
+| 本地四小人识别 | `four_person/detector.py`、`common/util/cnn_util.py` | ONNX CNN（`_internal/subor.onnx`，90x90 输入），ROI 切 4 个 90 宽槽位推理，概率 >0.8 点最高槽位；`isShowFourPerson`/`findFourPersonDetectArea` 判定界面与区域，失败降级图灵云 API |
+| 切换场 | `game_action/map_action.py`、`threads/dk_changjing.py` | `goToMapAction` 66 区域分支 + 67 点卡/7 畅玩地图参数；`goToPositionAction` 走图、`_feiXingQi` 飞旗；触发条件=时间满或环/卡达标 |
+| 行囊环/卡计数 | `threads/dk_changjing.py`、`common/util/color_util.py` | 20 格（5x4）网格 + 对角线取色判占用 → 与上次快照 diff 新增槽位 → 逐个点击 → 模板匹配“装备条件”（环）/"怪物卡片"（卡）累计 → 达标切场 |
+
+I/O 全部走 `xbw_features/backend.py`（默认 ADB，引擎运行时自动注入自身截图/点击）。
+独立冒烟测试：`.venv\Scripts\python.exe xbw_features\tests\test_smoke.py`

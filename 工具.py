@@ -191,9 +191,20 @@ def build_steps(config):
         return config["steps"]
     steps = list(_BASE_PART1)  # 步骤 1-6
     steps.extend(config.get("coord_input", []))  # 步骤 7
+    steps.append({"action": "debug_shot", "tag": "after_coord_input", "wait": 0.3})
     steps.extend(_BASE_PART2)  # 步骤 8
     if config.get("wait_target"):
-        steps.append(config["wait_target"])  # 步骤 9
+        wait_step = dict(config["wait_target"])  # 步骤 9
+        retry_inputs = list(config.get("coord_input", []))
+        if retry_inputs:
+            # 重试时地图已关闭，先重新打开地图 -> 输入坐标 -> 关闭地图，
+            # 否则等待循环里 OCR 的是地图面板而非角色坐标
+            wait_step["retry_inputs"] = [
+                {"action": "click_template", "name": "打开地图", "threshold": 0.6, "wait": 0.5},
+            ] + retry_inputs
+            wait_step["retry_inputs"].append(
+                {"action": "click_template", "name": "关闭弹窗", "threshold": 0.5, "wait": 0.5})
+        steps.append(wait_step)
     steps.extend(_BASE_PART3)  # 步骤 10-13
     return steps
 
@@ -287,7 +298,7 @@ class ToolEngine:
     # OCR 裁剪区域（设备分辨率下的坐标，对齐 mhxy_engine.py 的 OCR_CROP）
     OCR_CROP = {"x": 131, "y": 40, "w": 200, "h": 100}
 
-    def _ocr_coord(self, frame):
+    def _ocr_coord(self, frame, log=True):
         """OCR 检测当前地图名和坐标（仅识别顶部地图名+坐标区域），返回 (map_name, (x, y)) 或 (None, None)"""
         fh, fw = frame.shape[:2]
         # 根据流分辨率缩放 OCR 区域
@@ -306,7 +317,7 @@ class ToolEngine:
             text = str(r[1]).strip()
             if text:
                 texts.append(text)
-        if texts:
+        if texts and log:
             self._log("OCR 识别(顶部区域): {}".format(texts))
         map_name = None
         coord = None
@@ -317,6 +328,48 @@ class ToolEngine:
             elif re.search(r"[一-鿿]{2,}", text) and not text.startswith("("):
                 map_name = text
         return map_name, coord
+
+    def _save_debug_frame(self, tag, frame=None):
+        """保存诊断截图到 logs/loyalty_debug/，便于核对坐标输入/地图面板位置。"""
+        try:
+            if frame is None:
+                frame = self.get_frame()
+            if frame is None:
+                return
+            d = os.path.join(SCRIPT_DIR, "logs", "loyalty_debug")
+            os.makedirs(d, exist_ok=True)
+            path = os.path.join(d, "{}_{}_{}.png".format(
+                self.serial, datetime.now().strftime("%H%M%S"), tag))
+            cv2.imencode(".png", frame)[1].tofile(path)
+            self._log("  诊断截图已保存: {}".format(path))
+        except Exception as e:
+            self._log("  诊断截图保存失败: {}".format(e))
+
+    def _retry_coord_input(self, steps):
+        """重新执行坐标输入步骤（打开地图 → 点输入框 → 点数字键盘）。"""
+        for s in steps:
+            if self._stop_event and self._stop_event.is_set():
+                return False
+            action = s["action"]
+            wait = s.get("wait", 0.3)
+            if action == "click_template":
+                frame = self.get_frame()
+                btn = self.find(frame, s["name"], threshold=s.get("threshold", 0.75)) if frame is not None else None
+                if btn is None:
+                    self._log("  [重试] 未找到 {}，跳过该步".format(s["name"]))
+                else:
+                    self._log("  [重试] click {} ({},{})".format(s["name"], btn[0], btn[1]))
+                    self.tap(btn[0], btn[1])
+            elif action == "click_position":
+                self._log("  [重试] click position ({},{})".format(s["x"], s["y"]))
+                self.tap(s["x"], s["y"])
+            elif action == "click_sequence":
+                self._log("  [重试] click_sequence {} points".format(len(s["positions"])))
+                for px, py in s["positions"]:
+                    self.tap(px, py)
+                    time.sleep(s.get("interval", 0.1))
+            time.sleep(wait)
+        return True
 
     def connect(self):
 
@@ -671,6 +724,11 @@ class ToolEngine:
                     time.sleep(interval)
                 time.sleep(wait)
 
+            elif action == "debug_shot":
+                tag = step.get("tag", "shot")
+                self._save_debug_frame(tag)
+                time.sleep(wait)
+
             elif action == "wait_coord":
                 self._init_ocr()
                 target_map = step["target_map"]
@@ -680,41 +738,92 @@ class ToolEngine:
                 timeout = step.get("timeout", 120)
                 stable_time = step.get("stable_time", 1.5)
                 clicks = step.get("clicks", [])
+                retry_inputs = step.get("retry_inputs", [])
+                max_retries = step.get("max_retries", 2)
+                stall_timeout = step.get("stall_timeout", 5)   # 坐标超过 N 秒没变 = 卡住
+                stall_grace = step.get("stall_grace", 8)       # 每轮输入后先给 N 秒起步时间
                 self._log("[{}] 等待坐标: {} ({},{})".format(i, target_map, target_x, target_y))
-                start_t = time.time()
+                self._save_debug_frame("wait_coord_start_{}_{}".format(target_x, target_y))
+                reached = False
                 last_coord = None
                 last_stable_t = 0
-                reached = False
-                while time.time() - start_t < timeout:
+                last_log_t = 0
+                for retry_round in range(max_retries + 1):
                     if self._stop_event and self._stop_event.is_set():
                         self._log(f"[{i}] 收到停止信号，退出等待坐标")
                         return
-                    frame = self.get_frame()
-                    if frame is None:
-                        time.sleep(0.3)
-                        continue
-                    map_name, coord = self._ocr_coord(frame)
-                    now = time.time()
-                    if map_name and target_map in map_name and coord:
-                        dx = abs(coord[0] - target_x)
-                        dy = abs(coord[1] - target_y)
-                        on_target = dx <= tolerance and dy <= tolerance
-                        if on_target:
-                            if last_coord is None:
-                                last_coord = coord
-                                last_stable_t = now
-                                self._log("[{}] 首次进入目标区域: {} ({},{})".format(i, map_name, coord[0], coord[1]))
-                            elif coord == last_coord:
-                                if now - last_stable_t >= stable_time:
-                                    self._log("[{}] 坐标已稳定: {} ({},{})".format(i, map_name, coord[0], coord[1]))
-                                    reached = True
-                                    break
+                    round_start = time.time()
+                    last_read_coord = None
+                    last_move_t = None
+                    while time.time() - round_start < timeout:
+                        if self._stop_event and self._stop_event.is_set():
+                            self._log(f"[{i}] 收到停止信号，退出等待坐标")
+                            return
+                        frame = self.get_frame()
+                        if frame is None:
+                            time.sleep(0.3)
+                            continue
+                        map_name, coord = self._ocr_coord(frame, log=False)
+                        now = time.time()
+                        on_target = False
+                        if map_name and target_map in map_name and coord:
+                            dx = abs(coord[0] - target_x)
+                            dy = abs(coord[1] - target_y)
+                            on_target = dx <= tolerance and dy <= tolerance
+                            if on_target:
+                                if last_coord is None:
+                                    last_coord = coord
+                                    last_stable_t = now
+                                    self._log("[{}] 首次进入目标区域: {} ({},{})".format(i, map_name, coord[0], coord[1]))
+                                elif coord == last_coord:
+                                    if now - last_stable_t >= stable_time:
+                                        self._log("[{}] 坐标已稳定: {} ({},{})".format(i, map_name, coord[0], coord[1]))
+                                        reached = True
+                                        break
+                                else:
+                                    last_coord = coord
+                                    last_stable_t = now
                             else:
-                                last_coord = coord
-                                last_stable_t = now
-                        else:
-                            last_coord = None
-                    time.sleep(0.3)
+                                last_coord = None
+                        # 移动检测：坐标变化即刷新最近移动时间
+                        if coord:
+                            if coord != last_read_coord:
+                                last_read_coord = coord
+                                last_move_t = now
+                            elif last_move_t is None:
+                                last_move_t = now
+                        # 卡住检测：非目标位置、已过起步宽限、坐标超过 stall_timeout 没变
+                        stalled = (not on_target and last_read_coord is not None
+                                   and (now - round_start) > stall_grace
+                                   and last_move_t is not None
+                                   and (now - last_move_t) >= stall_timeout)
+                        if stalled:
+                            self._log("[{}] 角色超过 {}s 未移动（当前 {}），提前重试坐标输入".format(
+                                i, stall_timeout, last_read_coord))
+                            break
+                        # 进度日志：每 15 秒一次，避免 OCR 刷屏
+                        if now - last_log_t >= 15:
+                            last_log_t = now
+                            dist = ""
+                            if coord:
+                                dist = "距离 ({},{})".format(
+                                    abs(coord[0] - target_x), abs(coord[1] - target_y))
+                            self._log("[{}] 等待中... 当前 {} {} {}".format(
+                                i, map_name or "?", coord or "?", dist))
+                        time.sleep(0.3)
+                    if reached:
+                        break
+                    if retry_round < max_retries and retry_inputs:
+                        self._log(f"[{i}] 坐标未到达，重试输入坐标（第 {retry_round + 1}/{max_retries} 次）")
+                        self._save_debug_frame("retry_input_{}".format(retry_round + 1))
+                        ok = self._retry_coord_input(retry_inputs)
+                        self._save_debug_frame("retry_input_{}_done".format(retry_round + 1))
+                        if not ok:
+                            break
+                        last_coord = None
+                        last_stable_t = 0
+                    else:
+                        break
                 if reached:
                     self._log("[{}] 已到达目标坐标: {} ({},{})".format(i, target_map, target_x, target_y))
                     self._log("[{}] 依次点击 {} 个位置: {}".format(i, len(clicks), clicks))
