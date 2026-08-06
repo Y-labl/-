@@ -3713,7 +3713,7 @@ class AutoFightEngine:
         self._wire_xbw_backend()
         self._pkg_snapshot = None
         self._pkg_check_t = time.time()
-        self._pkg_interval = 0.0
+        self._pkg_interval = 30.0   # 启动后约 30 秒先建立背包基线，再进入 550~700 周期
         self._huan_count = 0
         self._card_count = 0
         self._scene_switch_requested = False
@@ -3891,7 +3891,7 @@ class AutoFightEngine:
                     # 新场景重新计数环/卡
                     self._pkg_snapshot = None
                     self._pkg_check_t = time.time()
-                    self._pkg_interval = 0.0
+                    self._pkg_interval = 30.0   # 新场景先快速建基线
                     self._huan_count = 0
                     self._card_count = 0
 
