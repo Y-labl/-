@@ -124,16 +124,6 @@ class CNNUtil(object):
             orderLog(deviceId, "本地识别四小人：候选 ROI 均无效")
             return
         left, top, width, height = best_roi
-        cv_save_img(f"{logTmpPath()}/{getLogTimeHour()}/{deviceId}-{getLogTime()}-FourPerson-LocalOrig.png", frame)
-        for i, prob in best_indexProbs:
-            itemLeft = left + 90 * i
-            itemRoi = frame[top:top + height, itemLeft:itemLeft + 90]
-            if prob > 0.8:
-                cv_save_img(f"{logTmpPath()}/{getLogTimeHour()}/front/{deviceId}-{getLogTime()}-FourPerson-Local-Item{i}-Similar-{prob:.4f}.png", itemRoi)
-            elif prob > 0.4:
-                cv_save_img(f"{logTmpPath()}/{getLogTimeHour()}/notsure/{deviceId}-{getLogTime()}-FourPerson-Local-Item{i}-Similar-{prob:.4f}.png", itemRoi)
-            else:
-                cv_save_img(f"{logTmpPath()}/{getLogTimeHour()}/back/{deviceId}-{getLogTime()}-FourPerson-Local-Item{i}-Similar-{prob:.4f}.png", itemRoi)
         if best_prob < 0.4:
             orderLog(deviceId, "本地判定非四小人界面（置信度过低），跳过")
             return
@@ -150,6 +140,12 @@ class CNNUtil(object):
         if not _ui_confirmed or _bright >= 60:
             orderLog(deviceId, f"严格判定非四小人(亮度={_bright:.0f})，跳过四小人处理")
             return
+        # ===== 仅确认是四小人界面后才保存调试截图 =====
+        # 文件名：年月日时分秒_设备编号；只存原图与最佳槽位两张
+        _ts = time.strftime("%Y%m%d%H%M%S")
+        cv_save_img(f"{logTmpPath()}/{_ts}_{deviceId}_FourPerson.png", frame)
+        _best_crop = frame[top:top + height, left + 90 * best_index:left + 90 * best_index + 90]
+        cv_save_img(f"{logTmpPath()}/{_ts}_{deviceId}_FourPerson_Slot{best_index}.png", _best_crop)
         if best_prob > CONF_THRESHOLD:
             # 与功能测试页一致：槽位中心 65% 高度处点击（部分 NPC 较矮，中心易落空）
             clickPoint = QPoint(left + 90 * best_index + 45, top + int(height * 0.65))
@@ -163,6 +159,7 @@ class CNNUtil(object):
                     roi2, _, prob2, _ = self.best_four_person_roi(frame2, left, top, width, height)
                     if roi2 is not None and prob2 > 0.5:
                         orderLog(deviceId, f"点击后四小人仍在（置信度{prob2:.3f}），调用图灵云兜底")
+                        cv_save_img(f"{logTmpPath()}/{_ts}_{deviceId}_FourPerson_AfterClick.png", frame2)
                         findFourPersonAndClick(deviceId)
             except Exception as e:
                 logger.debug(f"点击后验证异常: {e}")
