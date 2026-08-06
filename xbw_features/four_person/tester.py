@@ -49,28 +49,13 @@ def analyze_four_person_image(frame_bgr, device_id="local"):
     except Exception:
         det_roi = (0, 0, 0, 0)
 
-    candidates = [DEFAULT_ROI]
-    if det_roi and det_roi[0] != 0:
-        candidates.append(tuple(det_roi))
-
-    best = None      # (roi, best_index, best_prob)
-    best_slots = None
-    for roi in dict.fromkeys(candidates):
-        l, t, w, h = roi
-        if l < 0 or t < 0 or l + w > 800 or t + h > 448:
-            continue
-        try:
-            index_probs, b_idx, b_prob = cnnUtil._score_roi(frame, l, t, w, h)
-        except Exception:
-            continue
-        if best is None or b_prob > best[2]:
-            best = (roi, b_idx, b_prob)
-            best_slots = index_probs
-
-    if best is None:
+    det_roi = det_roi if (det_roi and det_roi[0] != 0) else DEFAULT_ROI
+    best_roi, best_index, best_prob, best_slots = cnnUtil.best_four_person_roi(
+        frame, det_roi[0], det_roi[1], det_roi[2], det_roi[3])
+    if best_roi is None:
         return {"success": False, "error": "候选 ROI 均无法评分", "frame": frame}
 
-    (l, t, w, h), best_index, best_prob = best
+    l, t, w, h = best_roi
     annotated = frame.copy()
     for i in range(4):
         x0, y0 = l + i * 90, t
