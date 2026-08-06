@@ -101,6 +101,23 @@ class CNNUtil(object):
             else:
                 cv_save_img(f"{logTmpPath()}/{getLogTimeHour()}/back/{deviceId}-{getLogTime()}-FourPerson-Local-Item{i}-Similar-{prob:.4f}.png", itemRoi)
         if best_prob > CONF_THRESHOLD:
+            # ===== 点击前判定：避免在普通场景（战斗/跑图/结算）误点 =====
+            # 严格判定（头像/好友入口/撤销）确认是四小人界面 -> 直接点；
+            # 严格判否时（部分真界面变体也判否），需要强证据才点：
+            #   最佳槽位 > 0.9 且 >=2 个槽位 >0.4 且画面为暗色面板（亮度 <70）。
+            # 实测：真界面 22:28/18:08 通过；普通场景 23:11~23:17 全部拦截。
+            try:
+                _ui_confirmed = bool(isShowFourPerson(deviceId))
+            except Exception:
+                _ui_confirmed = True
+            if not _ui_confirmed:
+                _slots04 = sum(1 for _, pr in best_indexProbs if pr > 0.4)
+                _bright = float(frame.mean()) if frame is not None else 255.0
+                if best_prob < 0.9 or _slots04 < 2 or _bright >= 70:
+                    orderLog(deviceId,
+                             f"严格判定非四小人，证据不足(best={best_prob:.3f} >0.4槽={_slots04} "
+                             f"亮度={_bright:.0f})，跳过点击")
+                    return
             # 点击点取槽位高度 65% 处：部分 NPC 较矮，中心点击可能落空
             clickPoint = QPoint(left + 90 * best_index + 45, top + int(height * 0.65))
             click(deviceId, clickPoint)
