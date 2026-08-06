@@ -845,7 +845,7 @@ class AutoFightGUI:
             screencap_fn=None,
             tap_fn=None,
             log_fn=lambda d, m: log(f"[{d}] {m}"),
-            cache_seconds=0)
+            cache_seconds=0.2)   # 与引擎一致：0.2s 帧缓存，明显减少 ADB 截图次数
 
     def _xbw_backend_restore(self, saved):
         from xbw_features import backend as xbw_backend
