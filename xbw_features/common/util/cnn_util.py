@@ -71,6 +71,40 @@ class CNNUtil(object):
         best_prob, best_index, best_roi = best_score
         return best_roi, best_index, best_prob, best_indexProbs
 
+    def _find_avatar_row(self, frame, top, height):
+        """
+        在 top 附近多行横向扫描 90 宽槽位，找最长连续高分(>0.5)段。
+        真四小人界面头像成排 -> 连续段 >=3 个（约 90px+ 宽）；
+        普通场景的孤立高分点是散的，构不成连续段。
+        多行扫描兼容各设备头像行 y 偏移（如 18:08 在 y≈100~120，
+        而最佳 ROI 的 top=80 那一行只有 2 个连续点）。
+        :return: 连续段的中心 x（点击用）或 None
+        """
+        if frame is None:
+            return None
+        best_run = []
+        for dy in range(-40, 81, 20):
+            t = top + dy
+            if t < 0 or t + height > 448:
+                continue
+            run = []
+            for x0 in range(60, 700, 30):
+                crop = frame[t:t + height, x0:x0 + 90]
+                if crop.shape != (height, 90, 3):
+                    continue
+                prob = self.detector.predict_img(crop)
+                if prob > 0.5:
+                    run.append(x0)
+                else:
+                    if len(run) > len(best_run):
+                        best_run = run
+                    run = []
+            if len(run) > len(best_run):
+                best_run = run
+        if len(best_run) >= 3:
+            return best_run[0] + (best_run[-1] - best_run[0]) / 2 + 45
+        return None
+
     def findFourPersonLocal(self, deviceId, left=227, top=80, width=360, height=150, curFrame=None):
         frame = None
         if curFrame is not None:
@@ -105,23 +139,27 @@ class CNNUtil(object):
             return
         # ===== 界面判定（点击与图灵兜底共用） =====
         # 严格判定（头像/好友入口/撤销）确认是四小人界面 -> 直接放行；
-        # 严格判否时（部分真界面变体也判否），需要强证据才放行：
-        #   最佳槽位 > 0.9 且 >=2 个槽位 >0.4 且画面为暗色面板（亮度 <70）。
-        # 实测：真界面 22:28/18:08 放行；普通场景 23:11~23:17 全部拦截。
+        # 严格判否时（部分真界面变体也判否），仅以“画面为暗色面板（亮度<60）”
+        # 兜底：真四小人界面都是暗色弹窗，亮色战斗/跑图场景直接拦截。
+        # 注意：同一界面 CNN 分数会在 0.89~1.0 间抖动，不能用高阈值拦截。
         try:
             _ui_confirmed = bool(isShowFourPerson(deviceId))
         except Exception:
             _ui_confirmed = True
-        _slots04 = sum(1 for _, pr in best_indexProbs if pr > 0.4)
         _bright = float(frame.mean()) if frame is not None else 255.0
-        if not _ui_confirmed and (best_prob < 0.9 or _slots04 < 2 or _bright >= 70):
+        if not _ui_confirmed and _bright >= 60:
             orderLog(deviceId,
-                     f"严格判定非四小人且证据不足(best={best_prob:.3f} >0.4槽={_slots04} "
-                     f"亮度={_bright:.0f})，跳过点击与图灵")
+                     f"严格判定非四小人且证据不足(best={best_prob:.3f} 亮度={_bright:.0f})，跳过")
             return
         if best_prob > CONF_THRESHOLD:
+            # 严格判否但证据足够（暗色高分）时，用头像行中心定位更可靠
+            _avatar_row_x = self._find_avatar_row(frame, top, height) if not _ui_confirmed else None
             # 点击点取槽位高度 65% 处：部分 NPC 较矮，中心点击可能落空
-            clickPoint = QPoint(left + 90 * best_index + 45, top + int(height * 0.65))
+            if _avatar_row_x is not None:
+                clickX = int(_avatar_row_x)
+            else:
+                clickX = left + 90 * best_index + 45
+            clickPoint = QPoint(clickX, top + int(height * 0.65))
             click(deviceId, clickPoint)
             orderLog(deviceId, f"本地识别四小人目标：{best_index} ,置信度 {best_prob:.4f}, ROI({left},{top},{width},{height}), 点击坐标 {clickPoint}")
             time.sleep(random.uniform(1, 1.5))
