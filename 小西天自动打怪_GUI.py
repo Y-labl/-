@@ -154,8 +154,8 @@ class AutoFightGUI:
 
         # GUI系统日志文件
         self.gui_log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
-        os.makedirs(self.gui_log_dir, exist_ok=True)
-        self.gui_log_file = os.path.join(self.gui_log_dir, f"GUI_{datetime.now().strftime('%Y%m%d')}.log")
+        self._gui_log_day_dir = None
+        self.gui_log_file = self._gui_daily_log_file()
 
         self._init_vars()
         self._build_ui()
@@ -1466,6 +1466,8 @@ class AutoFightGUI:
     def _write_gui_log(self, timestamp, msg):
         """写入GUI系统日志到文件"""
         try:
+            # 按日期文件夹存储：logs/YYYY-MM-DD/GUI.log（跨天自动切换）
+            self.gui_log_file = self._gui_daily_log_file()
             # 检查日志文件大小，超过10MB自动轮转
             max_size = 10 * 1024 * 1024  # 10MB
             if os.path.exists(self.gui_log_file):
@@ -1484,6 +1486,15 @@ class AutoFightGUI:
                 print(f"GUI日志写入失败: {e}")
             except:
                 pass
+
+    def _gui_daily_log_file(self):
+        """返回当天日期目录下的 GUI 日志路径：logs/YYYY-MM-DD/GUI.log。"""
+        day = datetime.now().strftime("%Y-%m-%d")
+        day_dir = os.path.join(self.gui_log_dir, day)
+        if self._gui_log_day_dir != day_dir:
+            self._gui_log_day_dir = day_dir
+            os.makedirs(day_dir, exist_ok=True)
+        return os.path.join(day_dir, "GUI.log")
 
     def _log_to_ui(self, msg):
         """将日志添加到列表并根据筛选条件显示"""

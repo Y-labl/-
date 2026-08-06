@@ -730,8 +730,8 @@ class AutoFightEngine:
         # 日志文件路径
         import os
         self.log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
-        os.makedirs(self.log_dir, exist_ok=True)
-        self.log_file = os.path.join(self.log_dir, f"{self.device_id}_{datetime.now().strftime('%Y%m%d')}.log")
+        self._log_day_dir = None
+        self.log_file = self._daily_log_file()
 
         self.client = None
 
@@ -859,6 +859,9 @@ class AutoFightEngine:
 
         try:
 
+            # 按日期文件夹存储：logs/YYYY-MM-DD/{device_id}.log（跨天自动切换）
+            self.log_file = self._daily_log_file()
+
             # 检查日志文件大小，超过10MB自动轮转
 
             max_size = 10 * 1024 * 1024  # 10MB
@@ -896,6 +899,15 @@ class AutoFightEngine:
             except:
 
                 pass
+
+    def _daily_log_file(self):
+        """返回当天日期目录下的日志路径：logs/YYYY-MM-DD/{device_id}.log。"""
+        day = datetime.now().strftime("%Y-%m-%d")
+        day_dir = os.path.join(self.log_dir, day)
+        if self._log_day_dir != day_dir:
+            self._log_day_dir = day_dir
+            os.makedirs(day_dir, exist_ok=True)
+        return os.path.join(day_dir, f"{self.device_id}.log")
 
 
 
