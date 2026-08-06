@@ -2132,6 +2132,7 @@ class AutoFightEngine:
                 steal_targets = dedup_s
 
         # 第一回合没识别到偷卡目标时，不立即放弃：稍等重新截图识别（滑动已移除，不做镜头滑动）
+        retry_failed = False
         if (not steal_targets and tou_targets and matched_targets
                 and self.cfg.get("miaoshou_enabled", True)):
             self._log("  🔍 第一次未识别到偷卡目标，进行第二次识别")
@@ -2152,8 +2153,16 @@ class AutoFightEngine:
                 steal_targets = dedup_s
                 if steal_targets:
                     self._log(f"  🎯 第二次识别到 {len(steal_targets)} 个偷卡目标")
+                else:
+                    retry_failed = True
+                    self._log("  🔍 第二次仍未识别到偷卡目标")
 
         if not steal_targets:
+            if retry_failed:
+                self._log("  🏃 第一回合连续2次未识别到偷窃目标，直接逃跑")
+                self._try_escape(force=True)
+                self._wait_combat_end()
+                return
             self._log(f"  ℹ️ 当前战斗无偷卡目标，直接击杀")
             self._post_steal_action(skip_wait=True, matched_targets=matched_targets)
         else:
@@ -2928,9 +2937,9 @@ class AutoFightEngine:
 
             return [(sorted_targets[0][0], sorted_targets[0][1])] * 3
 
-    def _try_escape(self):
+    def _try_escape(self, force=False):
 
-        if not self.cfg.get('escape_enabled', True):
+        if not force and not self.cfg.get('escape_enabled', True):
 
             self._log("  ⏭️ 逃跑已关闭，等待战斗结束")
 
