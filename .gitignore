@@ -5,6 +5,8 @@ screenshots/*.png
 screenshots/*.jpg
 .DS_Store
 *.log
+.env
+node_modules/
 
 # IDE
 .idea/

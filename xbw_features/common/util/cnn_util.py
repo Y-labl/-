@@ -105,7 +105,16 @@ class CNNUtil(object):
             return best_run[0] + (best_run[-1] - best_run[0]) / 2 + 45
         return None
 
-    def findFourPersonLocal(self, deviceId, left=227, top=80, width=360, height=150, curFrame=None):
+    def findFourPersonLocal(self, deviceId, left=None, top=None, width=None, height=None, curFrame=None):
+        """本地四小人：与功能测试页一致——截图后“在/请”定位 + 多候选 ROI 打分。
+
+        入口判定由调用方 _is_show_four_person 负责。流程同测试页：
+        findFourPersonDetectArea 定位（找不到回退默认区域）-> best_four_person_roi
+        多候选打分（默认 + 在/请区域 + y 扫描）-> 最高分槽位。
+        置信度必须 >=0.8 才点击（CNN 没认出弹窗绝不盲点，避免点错被系统踢下线），
+        点 50% 高度，没关掉下移 55% 再点一次；置信度不足/仍不行返回 False，
+        由调用方按 8.5 前图灵方式兜底。返回 True=本地点击成功，False=本地未成功。
+        """
         frame = None
         if curFrame is not None:
             frame = curFrame
@@ -113,60 +122,62 @@ class CNNUtil(object):
             frame = scrcpyUtil.getFrame(deviceId)
         if frame is None:
             orderLog(deviceId, "本地识别四小人：获取画面失败")
-            return
-        # “在/请”字检测区域可能返回 (0,0,0,0)，此时回退默认标准区域，
-        # 与功能测试页签行为一致（默认区域 + y 扫描仍可识别）。
-        if left <= 0 or top <= 0 or width <= 0 or height <= 0:
-            left, top, width, height = 227, 80, 360, 150
-        best_roi, best_index, best_prob, best_indexProbs = self.best_four_person_roi(
-            frame, left, top, width, height)
+            return False
+        # 1) 识别区域：优先用调用方传入的“在/请”定位；否则在本帧重新定位（同测试页）
+        if left and top and width and height:
+            det_roi = (left, top, width, height)
+        else:
+            det_roi = findFourPersonDetectArea(deviceId, curframe=frame)
+            if not (det_roi and det_roi[0] != 0):
+                det_roi = (227, 80, 360, 150)
+        # 2) 多候选 ROI 打分（与测试页 best_four_person_roi 一致：默认 + 在/请区域 + y 扫描）
+        best_roi, best_index, best_prob, _ = self.best_four_person_roi(
+            frame, det_roi[0], det_roi[1], det_roi[2], det_roi[3])
         if best_roi is None:
-            orderLog(deviceId, "本地识别四小人：候选 ROI 均无效")
-            return
+            orderLog(deviceId, "本地识别四小人：候选 ROI 均无效，交给图灵验证")
+            return False
         left, top, width, height = best_roi
-        if best_prob < 0.4:
-            orderLog(deviceId, "本地判定非四小人界面（置信度过低），跳过")
-            return
-        # ===== 界面判定（主闸门） =====
-        # 实测：严格判定（角色头像/好友入口/PK-撤销战斗操作）能正确区分
-        # 真四小人界面（22:28 判定为四小人）与普通战斗画面（00:08:50 等
-        # 全部判定为非四小人）。严格判否即跳过，不点击也不调图灵。
-        # click_back=False 避免误点画面上的“撤销战斗操作”按钮。
-        try:
-            _ui_confirmed = bool(isShowFourPerson(deviceId, click_back=False))
-        except Exception:
-            _ui_confirmed = True
-        _bright = float(frame.mean()) if frame is not None else 255.0
-        if not _ui_confirmed or _bright >= 60:
-            orderLog(deviceId, f"严格判定非四小人(亮度={_bright:.0f})，跳过四小人处理")
-            return
-        # ===== 仅确认是四小人界面后才保存调试截图 =====
-        # 文件名：年月日时分秒_设备编号；只存原图与最佳槽位两张
+        # 先保存原图（含 _is_show_four_person 误判的普通画面），便于排查
         _ts = time.strftime("%Y%m%d%H%M%S")
         cv_save_img(f"{logTmpPath()}/{_ts}_{deviceId}_FourPerson.png", frame)
+        # 置信度门槛：CNN 没认出弹窗（如 _is_show_four_person 误判的普通画面）
+        # 绝不点击，避免连续点错被系统强制掉线；交给 8.5 前图灵验证
+        if best_prob < CONF_THRESHOLD:
+            orderLog(deviceId, f"本地识别四小人最高置信度{best_prob:.4f}不足阈值({CONF_THRESHOLD})，不点击，交给图灵验证")
+            return False
+        # 仅确认是四小人界面后才保存最佳槽位截图
         _best_crop = frame[top:top + height, left + 90 * best_index:left + 90 * best_index + 90]
         cv_save_img(f"{logTmpPath()}/{_ts}_{deviceId}_FourPerson_Slot{best_index}.png", _best_crop)
-        if best_prob > CONF_THRESHOLD:
-            # 与功能测试页一致：槽位中心 65% 高度处点击（部分 NPC 较矮，中心易落空）
-            clickPoint = QPoint(left + 90 * best_index + 45, top + int(height * 0.65))
+        # 点击识别到的槽位 50% 高度；没关掉就下移到 55% 高度再点一次，仍不行才图灵兜底
+        for ratio in (0.5, 0.55):
+            clickPoint = QPoint(left + 90 * best_index + 45, top + int(height * ratio))
             click(deviceId, clickPoint)
-            orderLog(deviceId, f"本地识别四小人目标：{best_index} ,置信度 {best_prob:.4f}, ROI({left},{top},{width},{height}), 点击坐标 {clickPoint}")
+            orderLog(deviceId, f"本地识别四小人目标：槽{best_index} ,置信度 {best_prob:.4f}, ROI({left},{top},{width},{height}), 点击坐标 {clickPoint}")
             time.sleep(random.uniform(1, 1.5))
-            # 点击后验证：四小人界面还在 -> 直接调用图灵云兜底
+            # 点击后验证：四小人界面还在才继续下一次/图灵兜底
+            still = False
             try:
                 frame2 = scrcpyUtil.getFrame(deviceId)
                 if frame2 is not None:
-                    roi2, _, prob2, _ = self.best_four_person_roi(frame2, left, top, width, height)
-                    if roi2 is not None and prob2 > 0.5:
-                        orderLog(deviceId, f"点击后四小人仍在（置信度{prob2:.3f}），调用图灵云兜底")
-                        cv_save_img(f"{logTmpPath()}/{_ts}_{deviceId}_FourPerson_AfterClick.png", frame2)
-                        findFourPersonAndClick(deviceId)
+                    for i in range(4):
+                        itemLeft = left + 90 * i
+                        itemRoi = frame2[top:top + height, itemLeft:itemLeft + 90]
+                        if itemRoi.shape != (height, 90, 3):
+                            continue
+                        if self.detector.predict_img(itemRoi) > 0.5:
+                            still = True
+                            break
             except Exception as e:
                 logger.debug(f"点击后验证异常: {e}")
-        else:
-            # 疑似但本地未达阈值(0.4~0.8) -> 图灵云兜底
-            orderLog(deviceId, f"本地识别四小人最高置信度{best_prob:.4f}不足阈值(0.8)，调用图灵云识别")
-            findFourPersonAndClick(deviceId)
+            if still:
+                cv_save_img(f"{logTmpPath()}/{_ts}_{deviceId}_FourPerson_AfterClick.png", frame2)
+                orderLog(deviceId, f"点击后四小人仍在（{ratio:.0%}高度），继续处理")
+                continue
+            orderLog(deviceId, f"点击后四小人已消失（{ratio:.0%}高度），处理完成")
+            return True
+        # 两次本地点击后弹窗仍在 -> 由调用方走 8.5 前图灵处理
+        orderLog(deviceId, "本地点击两次后四小人仍在")
+        return False
 
 
 cnnUtil = CNNUtil()

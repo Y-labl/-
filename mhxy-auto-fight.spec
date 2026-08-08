@@ -1,7 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('image', 'image'), ('images', 'images'), ('gui_config.json', '.')]
+datas = [('image', 'image'), ('images', 'images'), ('gui_config.json', '.'),
+         ('xbw_features/_internal', 'xbw_features/_internal')]
 binaries = []
 hiddenimports = []
 tmp_ret = collect_all('rapidocr_onnxruntime')

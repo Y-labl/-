@@ -801,6 +801,12 @@ class AutoFightEngine:
 
         self._loyalty_recovery_done = False        # 战后已执行过忠诚度恢复，等待下一场验证
 
+        self._defend_miss_streak = 0               # 本场连续识别不到防御按钮次数（防回合收尾误报）
+
+        self._battle_defend_missed = False         # 本场是否出现过防御未识别到
+
+        self._consecutive_defend_miss_battles = 0  # 连续几场战斗识别不到防御
+
         self._lifespan_alerted = False             # 本场战斗是否已弹框提醒宝宝无寿命
 
         self._force_run_map = False       # 酒肆休息完成后立即跑图
@@ -946,6 +952,7 @@ class AutoFightEngine:
         try:
             from xbw_features import backend as _xbw
             _xbw.setup(
+                deviceId=self.serial,
                 screencap_fn=lambda deviceId: self.get_frame(),
                 tap_fn=lambda deviceId, x, y, is_double=False: self._xbw_tap(x, y, is_double),
                 log_fn=lambda deviceId, msg: self._log(f"[小霸王] {msg}"),
@@ -1758,13 +1765,13 @@ class AutoFightEngine:
 
 
 
-    def _tap_defend(self, log_label="", max_attempts=3, appear_timeout=4.0, check_wait=0.5):
+    def _tap_defend(self, log_label="", max_attempts=3, check_wait=0.5):
 
-        """点完技能和怪物后调用：等待识别（宠物）防御按钮，识别到就点并二次确认，按钮仍在就再点。"""
+        """点完技能/怪物后调用：等 0.3 秒再找防御按钮，找到马上点；
+        点完再识别，按钮还在则再点（最多 max_attempts 次）。"""
 
+        time.sleep(0.3)  # 点完怪物等 0.3 秒，让防御按钮/面板出现
         taps = 0
-
-        start = time.time()
 
         while True:
 
@@ -1777,14 +1784,6 @@ class AutoFightEngine:
             defend = self.find(frame, "PK-防御") if frame is not None else None
 
             if defend is None:
-
-                if taps == 0 and time.time() - start < appear_timeout:
-
-                    # 宠物操作界面可能延迟出现，轮询等待
-
-                    time.sleep(0.2)
-
-                    continue
 
                 if taps == 0:
 
@@ -1848,11 +1847,117 @@ class AutoFightEngine:
 
 
 
+    def _try_capture_bb(self, frame, matched_targets):
+        """对面宝宝文字检测 + 捕捉。do_combat 开头和第四回合攻击前各调用一次；
+        不滑动，直接在当前画面检测。返回 True=检测到宝宝并进入捕捉，False=未检测到。"""
+
+        if frame is None:
+            return False
+
+        bb_markers = []
+
+        # 先检测蓝色文字（直接可见的）
+        cur_blue = self._find_all(frame, "PK-对面宝宝文字蓝色", threshold=0.80, roi=COMBAT_ROI)
+        if cur_blue:
+            bb_markers.extend(cur_blue)
+
+        # 前排怪物可能遮挡后排名字（不做滑动，仅刷新帧再查一次）
+        if len(matched_targets) >= 5:
+            self._log("  👆 检测到前排怪物，后排名字可能被遮挡")
+            frame2 = self.get_frame()
+            if frame2 is not None:
+                cur_red = self._find_all(frame2, "PK-对面宝宝文字红色", threshold=0.80, roi=COMBAT_ROI)
+                if cur_red:
+                    bb_markers.extend(cur_red)
+                cur_blue2 = self._find_all(frame2, "PK-对面宝宝文字蓝色", threshold=0.80, roi=COMBAT_ROI)
+                if cur_blue2:
+                    bb_markers.extend(cur_blue2)
+        else:
+            cur_red = self._find_all(frame, "PK-对面宝宝文字红色", threshold=0.80, roi=COMBAT_ROI)
+            if cur_red:
+                bb_markers.extend(cur_red)
+
+        # 去重
+        dedup_bb = []
+        if bb_markers:
+            for t in sorted(bb_markers, key=lambda x: x[2], reverse=True):
+                if not any(abs(t[0]-d[0])**2+abs(t[1]-d[1])**2 < 625 for d in dedup_bb):
+                    dedup_bb.append(t)
+            self._log(f"  🐶🔴 检测到 {len(dedup_bb)} 个对面宝宝标记")
+            for t in dedup_bb:
+                self._log(f"      宝宝标记 ({t[0]},{t[1]}) conf={t[2]:.2f}")
+
+        if not (self.cfg.get("capture_bb_enabled", False) and dedup_bb):
+            return False
+
+        # 将宝宝文字标记位置转换为对应怪物的点击坐标
+        capture_targets = []
+        for marker in dedup_bb:
+            mx, my = marker[0], marker[1]
+            best_monster = None
+            best_score = 999999
+            for mt in matched_targets:
+                dx = abs(mt[0] - mx)
+                dy = my - mt[1]
+                if 10 < dy < 100 and dx < 60:
+                    score = dx * 2 + abs(dy - 45)
+                    if score < best_score:
+                        best_score = score
+                        best_monster = (mt[0], mt[1])
+            if best_monster:
+                capture_targets.append(best_monster)
+                self._log(f"  🐶 宝宝文字({mx},{my}) -> 匹配怪物({best_monster[0]},{best_monster[1]})")
+            else:
+                fallback = (mx, my - 40)
+                capture_targets.append(fallback)
+                self._log(f"  🐶 宝宝文字({mx},{my}) -> 未匹配到怪物，估算({fallback[0]},{fallback[1]})")
+
+        if not capture_targets:
+            return False
+
+        self._log(f"  🎣 捕捉模式已开启，目标 {len(capture_targets)} 个")
+        MAX_CAPTURE_ROUNDS = 8
+        for cap_round in range(MAX_CAPTURE_ROUNDS):
+            if not self._check_in_combat():
+                break
+            skill_pos = self._wait_for_skill(timeout=10.0)
+            if skill_pos is None:
+                self._log("  ⏳ 等待回合超时，停止捕捉")
+                break
+            # 每回合重新检测所有宝宝文字
+            frame_check = self.get_frame()
+            current_bb = []
+            if frame_check is not None:
+                for bb_name in ["PK-对面宝宝文字蓝色", "PK-对面宝宝文字红色"]:
+                    hits = self._find_all(frame_check, bb_name, threshold=0.80, roi=COMBAT_ROI)
+                    current_bb.extend(hits)
+            still_there = []
+            for ct in capture_targets:
+                for h in current_bb:
+                    if abs(h[0]-ct[0])**2 + abs((h[1]+40)-ct[1])**2 < 2500:
+                        still_there.append(ct)
+                        break
+            if not still_there:
+                self._log(f"  🎣 第{cap_round+1}回合：宝宝已不在场，停止捕捉")
+                break
+            for st in still_there:
+                self.tap(539, 403)
+                time.sleep(0.3)
+                self.tap(st[0], st[1])
+                self._log(f"  🎣 第{cap_round+1}回合 捕捉 ({st[0]},{st[1]})")
+                time.sleep(random.uniform(1.5, 2.5))
+        else:
+            self._log("  🎣 捕捉次数已达上限，继续战斗流程")
+        return True
+
+
+
     def do_combat(self):
 
         self._log("⚔️ 开始战斗流程")
         self.last_skill = None  # clear old cache
         self._lifespan_alerted = False             # 每场战斗重置：是否已弹框提醒宝宝无寿命
+        self._defend_miss_streak = 0               # 每场战斗重置：连续识别不到防御按钮次数
 
         map_name = self.last_map_name or self.cfg.get("map", "小西天")
 
@@ -1893,6 +1998,17 @@ class AutoFightEngine:
         if not self.is_in_pk(frame):
 
             return
+
+        # ===== 战斗中四小人弹窗（妙手空空）：先图灵云识别点击，再走正常流程 =====
+        if self._handle_combat_four_person(frame):
+
+            time.sleep(0.5)
+
+            frame = self.get_frame()
+
+            if frame is None:
+
+                return
 
         matched_targets = []
 
@@ -1941,189 +2057,8 @@ class AutoFightEngine:
 
 
 
-        # ========== 对面宝宝文字检测（妙手空空式 _find_all） ==========
-
-        bb_markers = []
-
-        # 先检测蓝色文字（直接可见的）
-
-        cur_blue = self._find_all(frame, "PK-对面宝宝文字蓝色", threshold=0.80, roi=COMBAT_ROI)
-
-        if cur_blue:
-
-            bb_markers.extend(cur_blue)
-
-        # 判断是否有前排怪物遮挡后排名字
-
-        front_row_y = COMBAT_ROI["y"] + int(COMBAT_ROI["h"] * 0.55)
-
-        has_front_row = any(mt[1] > front_row_y for mt in matched_targets)
-
-        if len(matched_targets) >= 5:
-
-            self._log(f"  👆 检测到前排怪物，划过后排显露名字")
-
-            frame2 = self.get_frame()
-
-            if frame2 is not None:
-
-                cur_red = self._find_all(frame2, "PK-对面宝宝文字红色", threshold=0.80, roi=COMBAT_ROI)
-
-                if cur_red:
-
-                    bb_markers.extend(cur_red)
-
-                cur_blue2 = self._find_all(frame2, "PK-对面宝宝文字蓝色", threshold=0.80, roi=COMBAT_ROI)
-
-                if cur_blue2:
-
-                    bb_markers.extend(cur_blue2)
-
-        else:
-
-            self._log(f"  👆 无前排怪物遮挡，跳过滑动")
-
-            cur_red = self._find_all(frame, "PK-对面宝宝文字红色", threshold=0.80, roi=COMBAT_ROI)
-
-            if cur_red:
-
-                bb_markers.extend(cur_red)
-
-        # 去重
-
-        dedup_bb = []
-
-        if bb_markers:
-
-            for t in sorted(bb_markers, key=lambda x: x[2], reverse=True):
-
-                if not any(abs(t[0]-d[0])**2+abs(t[1]-d[1])**2 < 625 for d in dedup_bb):
-
-                    dedup_bb.append(t)
-
-            self._log(f"  🐶🔴 检测到 {len(dedup_bb)} 个对面宝宝标记")
-
-            for t in dedup_bb:
-
-                self._log(f"      宝宝标记 ({t[0]},{t[1]}) conf={t[2]:.2f}")
-
-
-
-        # ==== 捕捉召唤兽（如果检测到对面宝宝标记） ====
-
-        if self.cfg.get("capture_bb_enabled", False) and dedup_bb:
-
-            # 将宝宝文字标记位置转换为对应怪物的点击坐标
-
-            capture_targets = []
-
-            for marker in dedup_bb:
-
-                mx, my = marker[0], marker[1]
-
-                best_monster = None
-
-                best_score = 999999
-
-                for mt in matched_targets:
-
-                    dx = abs(mt[0] - mx)
-
-                    dy = my - mt[1]
-
-                    if 10 < dy < 100 and dx < 60:
-
-                        score = dx * 2 + abs(dy - 45)
-
-                        if score < best_score:
-
-                            best_score = score
-
-                            best_monster = (mt[0], mt[1])
-
-                if best_monster:
-
-                    capture_targets.append(best_monster)
-
-                    self._log(f"  🐶 宝宝文字({mx},{my}) -> 匹配怪物({best_monster[0]},{best_monster[1]})")
-
-                else:
-
-                    fallback = (mx, my - 40)
-
-                    capture_targets.append(fallback)
-
-                    self._log(f"  🐶 宝宝文字({mx},{my}) -> 未匹配到怪物，估算({fallback[0]},{fallback[1]})")
-
-
-
-            if capture_targets:
-
-                self._log(f"  🎣 捕捉模式已开启，目标 {len(capture_targets)} 个")
-
-                MAX_CAPTURE_ROUNDS = 8
-
-                for cap_round in range(MAX_CAPTURE_ROUNDS):
-
-                    if not self._check_in_combat():
-
-                        break
-
-                    skill_pos = self._wait_for_skill(timeout=10.0)
-
-                    if skill_pos is None:
-
-                        self._log("  ⏳ 等待回合超时，停止捕捉")
-
-                        break
-
-                    # 每回合重新检测所有宝宝文字
-
-                    frame_check = self.get_frame()
-
-                    current_bb = []
-
-                    if frame_check is not None:
-
-                        for bb_name in ["PK-对面宝宝文字蓝色", "PK-对面宝宝文字红色"]:
-
-                            hits = self._find_all(frame_check, bb_name, threshold=0.80, roi=COMBAT_ROI)
-
-                            current_bb.extend(hits)
-
-                    still_there = []
-
-                    for ct in capture_targets:
-
-                        for h in current_bb:
-
-                            if abs(h[0]-ct[0])**2 + abs((h[1]+40)-ct[1])**2 < 2500:
-
-                                still_there.append(ct)
-
-                                break
-
-                    if not still_there:
-
-                        self._log(f"  🎣 第{cap_round+1}回合：宝宝已不在场，停止捕捉")
-
-                        break
-
-                    for st in still_there:
-
-                        self.tap(539, 403)
-
-                        time.sleep(0.3)
-
-                        self.tap(st[0], st[1])
-
-                        self._log(f"  🎣 第{cap_round+1}回合 捕捉 ({st[0]},{st[1]})")
-
-                        time.sleep(random.uniform(1.5, 2.5))
-
-                else:
-
-                    self._log("  🎣 捕捉次数已达上限，继续战斗流程")
+        # ========== 对面宝宝文字检测 + 捕捉（开场检测一次；第四回合攻击前还会再查一次） ==========
+        self._try_capture_bb(frame, matched_targets)
 
 
 
@@ -2168,6 +2103,25 @@ class AutoFightEngine:
                 else:
                     retry_failed = True
                     self._log("  🔍 第二次仍未识别到偷卡目标")
+
+        if not steal_targets:
+            if retry_failed:
+                # 可能四小人弹窗遮挡了偷卡目标：先图灵识别点击四小人，再重试一次
+                if self._handle_combat_four_person():
+                    f3 = self.get_frame()
+                    if f3 is not None:
+                        steal_targets = []
+                        for candidate in tou_targets:
+                            cur = self._find_all(f3, candidate, threshold=0.80, roi=COMBAT_ROI)
+                            if cur:
+                                steal_targets.extend(cur)
+                        dedup_s = []
+                        for t in sorted(steal_targets, key=lambda x: x[2], reverse=True):
+                            if not any(abs(t[0]-d[0])**2+abs(t[1]-d[1])**2 < 625 for d in dedup_s):
+                                dedup_s.append(t)
+                        steal_targets = dedup_s
+                        if steal_targets:
+                            self._log(f"  🎯 点击四小人后识别到 {len(steal_targets)} 个偷卡目标")
 
         if not steal_targets:
             if retry_failed:
@@ -2233,27 +2187,23 @@ class AutoFightEngine:
                     self.tap(cx_ms, cy_ms)
                     time.sleep(random.uniform(0.3, 0.5))
                     self.tap(tx, ty)
-                    time.sleep(0.2)
-                    if not self.has_no_bb:
-                        defend_status = self._tap_defend(log_label="宝宝")
-                        if defend_status == "missing":
-                            if self._loyalty_recovery_done:
-                                # 战后已恢复过忠诚度，本场仍识别不到防御 → 宝宝没有寿命
-                                if not self._lifespan_alerted:
-                                    self._lifespan_alerted = True
-                                    self._log("  ❌ 战后已恢复忠诚度，本场仍识别不到防御按钮，召唤兽可能没有寿命")
-                                    try:
-                                        self.log.put(f"__ALERT__:{self.device_id}:召唤兽可能没有寿命，无法出战，请检查！")
-                                    except Exception:
-                                        pass
-                            else:
-                                # 首次识别不到：标记战后执行忠诚度恢复
-                                self._loyalty_recovery_requested = True
-                                self._log("  ⚠️ 未识别到防御按钮，可能召唤兽忠诚度为0，战斗结束后执行忠诚度恢复")
+                    # 每次妙手空空点完怪物后：_tap_defend 内等 0.3 秒找防御，找到马上点；
+                    # 点完再识别，按钮还在则重新点（最多3次）
+                    defend_status = self._tap_defend(log_label="宝宝")
+                    if defend_status == "missing":
+                        if self.has_no_bb:
+                            # 画面判定未带宝宝，防御按钮不出现属正常，跳过
+                            self._log("  ⚠️ 未识别到宝宝防御按钮（画面判定未带宝宝），跳过")
                         else:
-                            # 防御按钮正常识别到，说明宝宝可正常出战，清除恢复标记
-                            self._loyalty_recovery_done = False
-                        time.sleep(0.2)
+                            # 识别不到多为回合收尾/动画慢，不是忠诚度问题；
+                            # 记录本场缺失标记，连续 2 场战斗缺失才触发忠诚度恢复
+                            self._defend_miss_streak += 1
+                            self._battle_defend_missed = True
+                            self._log(f"  ⚠️ 未识别到宝宝防御按钮（第{self._defend_miss_streak}次，可能回合收尾面板未弹出），跳过")
+                    else:
+                        # 防御按钮正常识别到（点击成功），清除连续缺失标记
+                        self._defend_miss_streak = 0
+                    time.sleep(0.2)
                     self._log(f"  🎯 第{i+1}次 妙手空空 -> ({tx},{ty}) conf={conf:.2f}")
                     clicked.append((tx, ty))
             else:
@@ -2349,6 +2299,12 @@ class AutoFightEngine:
                 self._log("  ⚡ 等待下回合超时，点自动让游戏接管（防卡死）")
                 self._auto_with_attack_fix(monster_pos)
                 return
+
+        # 第四回合攻击怪物前，再检测一次对面有没有宝宝（不滑动，直接看当前画面）
+        if self.cfg.get("capture_bb_enabled", False):
+            f_cap = self.get_frame()
+            if f_cap is not None:
+                self._try_capture_bb(f_cap, matched_targets)
 
         if mode_skill:
 
@@ -3005,6 +2961,29 @@ class AutoFightEngine:
 
                     self.tap(esc[0], esc[1])
 
+                    time.sleep(random.uniform(0.3, 0.5))
+
+                    # 点完逃跑再点一下防御：逃跑失败时本回合仍执行防御动作，
+                    # 避免角色空过回合（与原版小霸王逻辑一致）
+
+                    if self._check_in_combat():
+
+                        d_frame = self.get_frame()
+
+                        if d_frame is not None:
+
+                            defend = self.find(d_frame, "PK-防御", threshold=0.70)
+
+                            if defend is None:
+
+                                defend = self.find(d_frame, "PK-防御", threshold=0.50)
+
+                            if defend:
+
+                                self._log(f"  🛡 点完逃跑再点防御 ({defend[0]},{defend[1]})")
+
+                                self.tap(defend[0], defend[1])
+
                     time.sleep(1.2)
 
                     if not self._check_in_combat():
@@ -3129,6 +3108,70 @@ class AutoFightEngine:
 
 
 
+    def _handle_combat_four_person(self, frame=None):
+
+        """战斗中四小人弹窗（妙手空空）：按 8.5 前逻辑，仅以 _is_show_four_person 判定。
+
+        识别到四小人界面后，固定 ROI 本地 CNN 识别点击（不找“在/请”文字）；
+        本地识别不到（置信度不足/两次点击后仍在/异常）再按 8.5 前方式调用图灵云。
+        返回 True=已检测到并处理，False=当前画面未被判定为四小人界面。
+        """
+
+        try:
+            if not self._is_show_four_person(frame):
+                return False
+
+            self._log("  👥 战斗中检测到四小人界面")
+
+            # 1) 本地识别优先
+            try:
+                from xbw_features import findFourPersonDetectArea, cnnUtil
+                left, top, w, h = findFourPersonDetectArea(self.serial)
+                if left != 0:
+                    self._log(f"  🧠 本地四小人识别区域 ({left},{top},{w},{h})")
+                    handled = cnnUtil.findFourPersonLocal(self.serial, left, top, w, h)
+                else:
+                    self._log("  ⚠️ 本地未找到“在/请”识别区域，回退默认区域识别")
+                    handled = cnnUtil.findFourPersonLocal(self.serial)
+            except Exception as e:
+                self._log(f"  ⚠️ 本地四小人识别异常({e})，按 8.5 前方式调用图灵云")
+                self._four_person_tuling_click()
+                return True
+
+            # 2) 本地两次没点掉/识别不到 -> 按 8.5 前方式调用图灵云
+            if not handled:
+                self._log("  ⚠️ 本地四小人识别未生效，按 8.5 前方式调用图灵云")
+                self._four_person_tuling_click()
+            return True
+        except Exception as e:
+            self._log(f"  ⚠️ 战斗中四小人处理异常: {e}")
+            return False
+
+
+
+    def _four_person_tuling_click(self):
+
+        """8.5 前图灵处理方式：全分辨率截图 -> 固定 ROI(540,170,880,380) 上传
+        图灵云 -> API 坐标换算（设备坐标/scale -> 流坐标）-> tap 点击。"""
+
+        result = self._detect_four_person()
+
+        if result["success"]:
+
+            x, y = result["x"], result["y"]
+
+            self._log(f"  ✅ 图灵四小人识别成功: ({x}, {y})")
+
+            self.tap(x, y)
+
+            return True
+
+        self._log("  ⚠️ 图灵四小人识别失败: " + str(result.get("error", "未知")))
+
+        return False
+
+
+
     def _handle_four_person(self):
 
         """四小人处理：优先本地 ONNX（小霸王合并功能），失败降级图灵云API。
@@ -3146,31 +3189,20 @@ class AutoFightEngine:
                 left, top, w, h = findFourPersonDetectArea(self.serial)
                 if left != 0:
                     self._log(f"  🧠 本地四小人识别区域 ({left},{top},{w},{h})")
-                    cnnUtil.findFourPersonLocal(self.serial, left, top, w, h)
+                    handled = cnnUtil.findFourPersonLocal(self.serial, left, top, w, h)
                 else:
                     self._log("  ⚠️ 本地未找到“在/请”识别区域，回退默认区域识别")
-                    cnnUtil.findFourPersonLocal(self.serial)
-                return
+                    handled = cnnUtil.findFourPersonLocal(self.serial)
+                if handled:
+                    return
+                self._log("  ⚠️ 本地四小人识别未生效，按 8.5 前方式调用图灵云")
             except Exception as e:
-                self._log(f"  ⚠️ 本地四小人识别异常({e})，降级图灵云")
+                self._log(f"  ⚠️ 本地四小人识别异常({e})，按 8.5 前方式调用图灵云")
 
-        self._log("  👅 检测到四小人界面，开始识别...")
+        # 8.5 前图灵处理方式：全分辨率截图 + 固定 ROI + 坐标换算 + tap
+        self._log("  👅 检测到四小人界面，按 8.5 前方式调用图灵云识别...")
 
-        result = self._detect_four_person()
-
-        if result["success"]:
-
-            x, y = result["x"], result["y"]
-
-            self._log(f"  ✅ 四小人识别成功: ({x}, {y})")
-
-            self.tap(x, y)
-
-
-
-        else:
-
-            self._log("  ⚠️ 四小人识别失败: " + str(result.get("error", "未知")))
+        self._four_person_tuling_click()
 
 
 
@@ -3596,11 +3628,15 @@ class AutoFightEngine:
         self.battle_count += 1
         self._log(f"  📊 战斗场次: {self.battle_count}")
 
-        # 战斗中识别不到防御（可能忠诚度问题）→ 战斗结束后执行忠诚度恢复
-        if self._loyalty_recovery_requested:
-            self._loyalty_recovery_requested = False
-            self._loyalty_recovery_done = True
-            self._log("  🔔 战斗中未识别到防御按钮，战斗结束执行忠诚度恢复")
+        # 连续 2 场战斗识别不到防御 → 可能忠诚度问题，战后执行忠诚度恢复
+        if self._battle_defend_missed:
+            self._consecutive_defend_miss_battles += 1
+        else:
+            self._consecutive_defend_miss_battles = 0
+        self._battle_defend_missed = False
+        if self._consecutive_defend_miss_battles >= 2:
+            self._consecutive_defend_miss_battles = 0
+            self._log("  🔔 连续2场战斗未识别到防御按钮，可能召唤兽忠诚度为0，执行忠诚度恢复")
             self._do_loyalty_recovery()
 
         # 检查是否需要执行诚度恢复（每55-60场执行一次，每个周期只触发一次）
@@ -3834,22 +3870,20 @@ class AutoFightEngine:
 
                     if in_pk:
 
-                        # === 战斗中四小人界面（妙手空空弹窗）：本地 CNN 识别并点击 ===
+                        # === 战斗中四小人界面（妙手空空弹窗）：本地 CNN 优先，失败图灵兜底 ===
                         if (self._xbw_wired and self.cfg.get("use_local_four_person", True)
                                 and (time.time() - self._last_4p_check_t) > 1.0):
                             self._last_4p_check_t = time.time()
                             try:
-                                if self._is_show_four_person(frame):
-                                    self._log(f"[{loop}] 👥 战斗中检测到四小人界面")
-                                    from xbw_features import findFourPersonDetectArea as _xbw_area
-                                    from xbw_features import cnnUtil as _xbw_cnn
-                                    left, top, w, h = _xbw_area(self.serial)
-                                    if left != 0:
-                                        self._log(f"  🧠 本地四小人识别区域 ({left},{top},{w},{h})")
-                                        _xbw_cnn.findFourPersonLocal(self.serial, left, top, w, h)
-                                    else:
-                                        self._log("  ⚠️ 本地未找到“在/请”识别区域，回退默认区域识别")
-                                        _xbw_cnn.findFourPersonLocal(self.serial)
+                                if self._handle_combat_four_person(frame):
+                                    # 点击四小人 -> 偷卡（do_combat 内部：偷卡后点宝宝防御）
+                                    time.sleep(0.5)
+                                    if self.cfg.get("miaoshou_enabled", True):
+                                        ms = self.find(frame, "PK-妙手空空技能", threshold=0.60)
+                                        if ms is not None:
+                                            self._log(f"[{loop}] 🔄 点击四小人后继续偷卡流程")
+                                            self.do_combat()
+                                            time.sleep(0.3)
                                     time.sleep(1)
                                     continue
                             except Exception as e:

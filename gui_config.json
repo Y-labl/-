@@ -1,5 +1,5 @@
 {
-  "serial": "WEENU18A15102480",
+  "serial": "WEENU18904103110",
   "map": "子母河底",
   "hp_enabled": false,
   "hp_threshold": 50,
@@ -140,5 +140,8 @@
     "WEENU18720159489",
     "WEENU18917107778",
     "WEENU18806160281"
-  ]
+  ],
+  "use_local_four_person": true,
+  "check_pkg_counts": true,
+  "use_real_scene_switch": true
 }

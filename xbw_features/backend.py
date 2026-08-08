@@ -87,21 +87,36 @@ class _Backend(object):
         self.log_fn = None             # fn(deviceId, msg)
         self.cache_seconds = 0.25      # 帧缓存时长，避免同一帧重复 ADB 截图
         self._frame_cache = {}         # deviceId -> (ts, frame_800x448)
+        self._device_fns = {}          # deviceId -> {screencap_fn, tap_fn, log_fn}
         self.stop_event = None         # threading.Event：功能测试页停止信号
 
     def check_stop(self):
         if self.stop_event is not None and self.stop_event.is_set():
             raise StopTest("测试已停止")
 
-    def set(self, screencap_fn=None, tap_fn=None, log_fn=None, cache_seconds=None):
-        if screencap_fn is not None:
-            self.screencap_fn = screencap_fn
-        if tap_fn is not None:
-            self.tap_fn = tap_fn
-        if log_fn is not None:
-            self.log_fn = log_fn
+    def set(self, deviceId=None, screencap_fn=None, tap_fn=None, log_fn=None, cache_seconds=None):
+        if deviceId is not None:
+            # 多设备：按设备号注册各自取帧/点击/日志函数，避免串线
+            fns = self._device_fns.setdefault(deviceId, {})
+            if screencap_fn is not None:
+                fns["screencap_fn"] = screencap_fn
+            if tap_fn is not None:
+                fns["tap_fn"] = tap_fn
+            if log_fn is not None:
+                fns["log_fn"] = log_fn
+        else:
+            # 兼容单设备：全局设置
+            if screencap_fn is not None:
+                self.screencap_fn = screencap_fn
+            if tap_fn is not None:
+                self.tap_fn = tap_fn
+            if log_fn is not None:
+                self.log_fn = log_fn
         if cache_seconds is not None:
             self.cache_seconds = cache_seconds
+
+    def _fns(self, deviceId):
+        return self._device_fns.get(deviceId) or {}
 
     def _default_screencap(self, deviceId):
         r = subprocess.run([ADB_EXE, "-s", deviceId, "exec-out", "screencap", "-p"],
@@ -132,7 +147,7 @@ class _Backend(object):
         cached = self._frame_cache.get(deviceId)
         if not fresh and cached is not None and (now - cached[0]) < self.cache_seconds:
             return cached[1]
-        fn = self.screencap_fn or self._default_screencap
+        fn = self._fns(deviceId).get("screencap_fn") or self.screencap_fn or self._default_screencap
         frame = fn(deviceId)
         frame = _normalize_frame(frame)
         if frame is not None:
@@ -141,19 +156,22 @@ class _Backend(object):
 
     def tap(self, deviceId, x, y, is_double=False):
         self.check_stop()
-        fn = self.tap_fn or self._default_tap
+        fn = self._fns(deviceId).get("tap_fn") or self.tap_fn or self._default_tap
         fn(deviceId, x, y, is_double=is_double)
 
     def clear_cache(self, deviceId=None):
         if deviceId is None:
             self._frame_cache.clear()
+            self._device_fns.clear()
         else:
             self._frame_cache.pop(deviceId, None)
+            self._device_fns.pop(deviceId, None)
 
     def log(self, deviceId, msg):
-        if self.log_fn is not None:
+        fn = self._fns(deviceId).get("log_fn") or self.log_fn
+        if fn is not None:
             try:
-                self.log_fn(deviceId, msg)
+                fn(deviceId, msg)
             except Exception:
                 pass
 
@@ -161,9 +179,9 @@ class _Backend(object):
 backend = _Backend()
 
 
-def setup(screencap_fn=None, tap_fn=None, log_fn=None, cache_seconds=None):
+def setup(deviceId=None, screencap_fn=None, tap_fn=None, log_fn=None, cache_seconds=None):
     """引擎集成入口：注入自己的截图 / 点击 / 日志函数。"""
-    backend.set(screencap_fn=screencap_fn, tap_fn=tap_fn,
+    backend.set(deviceId=deviceId, screencap_fn=screencap_fn, tap_fn=tap_fn,
                 log_fn=log_fn, cache_seconds=cache_seconds)
 
 
