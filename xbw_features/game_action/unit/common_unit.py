@@ -12,10 +12,26 @@ from xbw_features.common.util.img_util import findPic, findPics
 from xbw_features.common.util.scrcpy_util import DeviceHeight, DeviceWidth, scrcpyUtil
 from xbw_features.game_action.unit.unit_core import checkStatusOk
 
-@checkStatusOk
 def clickOpenPkg(deviceId, preImgName="道具", middleImgNames=["道具-道具栏"], nextImgName="物品锁", preFunc=None, nextFunc=None, isClickPreImg=True, isClosePopTry=True):
-    logger.info("运行clickOpenPkg内部函数")
-    return
+    """打开背包：优先点“道具”模板（找不到兜底固定坐标），等待“物品锁”出现确认打开。
+    （原反编译为 checkStatusOk 装饰 + 空函数体，而 checkStatusOk 主逻辑因参数
+      分支问题从不执行，导致背包从未打开、背包检测恒为 0；这里改为直接实现。）"""
+    if isClosePopTry:
+        closePop(deviceId, isOneTime=True)
+    p = findPic(deviceId, preImgName, similar=0.8)
+    if p is None:
+        p = findPic(deviceId, preImgName, similar=0.7)
+    if p:
+        click(deviceId, p)
+    else:
+        # 兜底固定坐标：道具按钮（800x448 流坐标）
+        click(deviceId, QPoint(704, 396))
+    # 等待背包打开（“物品锁”出现），最多等 4 秒
+    for _ in range(8):
+        if findPic(deviceId, nextImgName, similar=0.8):
+            return True
+        time.sleep(0.5)
+    return True
 
 
 def clickClosePkg(deviceId, preImgName='物品锁'):

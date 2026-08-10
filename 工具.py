@@ -12,6 +12,10 @@ from datetime import datetime
 import re
 from rapidocr_onnxruntime import RapidOCR
 
+# 打包为 windowed exe（console=False）后，调用控制台程序（adb.exe）会闪黑框，
+# 所有 subprocess 调用必须带 CREATE_NO_WINDOW 抑制窗口弹出
+CREATE_NO_WINDOW = getattr(sp, "CREATE_NO_WINDOW", 0)
+
 # ── 路径 ──
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 IMAGE_DIR = os.path.join(SCRIPT_DIR, "image")
@@ -88,7 +92,7 @@ def match_template(screenshot, template, threshold=0.75, debug_name=""):
 
 def adb_tap(serial, x, y):
     sp.run([_ADB_EXE, "-s", serial, "shell", "input", "tap", str(x), str(y)],
-           capture_output=True, timeout=3)
+           capture_output=True, timeout=3, creationflags=CREATE_NO_WINDOW)
 
 
 # ======================== 场景恢复配置 ========================
@@ -376,7 +380,7 @@ class ToolEngine:
         # 验证 ADB
         try:
             r = sp.run([_ADB_EXE, "-s", self.serial, "shell", "echo", "ok"],
-                       capture_output=True, text=True, timeout=5)
+                       capture_output=True, text=True, timeout=5, creationflags=CREATE_NO_WINDOW)
             if r.returncode != 0 or r.stdout.strip() != "ok":
                 self._log(f"ADB 连接失败: {r.stderr.strip()}")
                 return False
@@ -389,7 +393,7 @@ class ToolEngine:
         device_w, device_h = 0, 0
         try:
             r = sp.run([_ADB_EXE, "-s", self.serial, "shell", "wm", "size"],
-                       capture_output=True, text=True, timeout=5)
+                       capture_output=True, text=True, timeout=5, creationflags=CREATE_NO_WINDOW)
             import re
             m = re.search(r"(\d+)x(\d+)", r.stdout)
             if m:
@@ -711,7 +715,7 @@ class ToolEngine:
                 self.tap(tx, ty)
                 time.sleep(0.3)
                 sp.run([_ADB_EXE, "-s", self.serial, "shell", "input", "text", str(text)],
-                       capture_output=True, timeout=3)
+                       capture_output=True, timeout=3, creationflags=CREATE_NO_WINDOW)
                 time.sleep(wait)
                 frame = self.get_frame()
 
@@ -902,7 +906,7 @@ def run_loyalty_recovery(serial, map_name="", stop_event=None, client=None):
             try:
                 import re
                 r = sp.run([_ADB_EXE, "-s", serial, "shell", "wm", "size"],
-                           capture_output=True, text=True, timeout=5)
+                           capture_output=True, text=True, timeout=5, creationflags=CREATE_NO_WINDOW)
                 m = re.search(r"(\d+)x(\d+)", r.stdout)
                 if m:
                     device_w, device_h = int(m.group(1)), int(m.group(2))

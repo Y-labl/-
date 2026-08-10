@@ -62,7 +62,11 @@ GUI_CONFIG_FILE = os.path.join(SCRIPT_DIR, "gui_config.json")
 
 # OCR区域（设备坐标，直接使用全分辨率ADB截图）
 
-OCR_CROP = {"x": 131, "y": 40, "w": 200, "h": 100}
+# OCR区域（800x448 流坐标；get_frame 已统一归一化到 800x448，直接按流坐标裁剪）。
+# 覆盖左上角 y0-100：16:9 设备地图名/坐标在 x54-137，20:9 设备偏右在 x100-240，
+# 两区域合并后 (40,0,220,100) 可同时覆盖两种设备布局。
+# OCR_CROP = {"x": 131, "y": 40, "w": 200, "h": 100}  # 旧：1920x1080 设备坐标，20:9 设备会裁偏
+OCR_CROP = {"x": 40, "y": 0, "w": 220, "h": 100}
 
 OCR_INTERVAL = 0.15
 
@@ -795,17 +799,21 @@ class AutoFightEngine:
 
         self.battle_count = 0
 
-        self._last_loyalty_recovery = 0  # 上次诚度恢复时的战斗场次
-
         self._loyalty_recovery_requested = False   # 战斗中识别不到防御（可能忠诚度问题），战后执行恢复
 
         self._loyalty_recovery_done = False        # 战后已执行过忠诚度恢复，等待下一场验证
 
         self._defend_miss_streak = 0               # 本场连续识别不到防御按钮次数（防回合收尾误报）
 
-        self._battle_defend_missed = False         # 本场是否出现过防御未识别到
+        self._battle_defend_attempted = False      # 本场是否尝试过点防御（有偷卡且非无宝宝）
 
-        self._consecutive_defend_miss_battles = 0  # 连续几场战斗识别不到防御
+        self._battle_defend_ok = False             # 本场是否至少一次成功识别到防御
+
+        self._loyalty_recovery_pending = False     # 3次防御都没识别到逃跑后，待执行忠诚度恢复
+
+        self._loyalty_recovery_done_since_miss = False  # 是否已为“未参战”执行过一次恢复
+
+        self._pet_no_lifespan = False              # 恢复后仍3次都没识别到 -> 判定没寿命，每场偷3次逃跑
 
         self._lifespan_alerted = False             # 本场战斗是否已弹框提醒宝宝无寿命
 
@@ -923,13 +931,34 @@ class AutoFightEngine:
 
         if self.client is None:
 
-            return adb_screencap(self.serial)
+            f = adb_screencap(self.serial)
 
-        with self._frame_lock:
+        else:
 
-            f = self.client.last_frame
+            with self._frame_lock:
 
-            return f.copy() if f is not None else None
+                f = self.client.last_frame
+
+                f = f.copy() if f is not None else None
+
+        # 统一归一化到 800x448 流坐标：20:9 设备（如 2400x1080）视频流是 800x360，
+        # 而引擎所有像素检测/模板匹配/坐标都按 800x448 语义（血量条、头像、四小人 ROI 等）。
+        # 不归一化的话 HP/MP 固定行扫不到 → 四小人预筛恒误判为 True。
+        if f is not None:
+
+            fh, fw = f.shape[:2]
+
+            if fh > fw:
+
+                f = cv2.rotate(f, cv2.ROTATE_90_CLOCKWISE)
+
+                fh, fw = f.shape[:2]
+
+            if (fw, fh) != (800, 448):
+
+                f = cv2.resize(f, (800, 448), interpolation=cv2.INTER_LINEAR)
+
+        return f
 
 
 
@@ -1545,9 +1574,10 @@ class AutoFightEngine:
 
                 dw, dh = int(m.group(1)), int(m.group(2))
 
-                self.scale_x = dw / self.stream_w
+                # get_frame 固定输出 800x448，流坐标换算基准即 800x448
+                self.scale_x = dw / 800
 
-                self.scale_y = dh / self.stream_h
+                self.scale_y = dh / 448
 
                 self._log(f"设备: {dw}x{dh}  缩放: {self.scale_x:.2f}x{self.scale_y:.2f}")
 
@@ -1557,9 +1587,9 @@ class AutoFightEngine:
 
             self._log(f"分辨率获取失败: {e}")
 
-        self.scale_x = 1920 / self.stream_w
+        self.scale_x = 1920 / 800
 
-        self.scale_y = 1080 / self.stream_h
+        self.scale_y = 1080 / 448
 
 
 
@@ -1587,9 +1617,7 @@ class AutoFightEngine:
 
                 if f is not None:
 
-                    self.stream_h, self.stream_w = f.shape[:2]
-
-                    self._log(f"✅ ADB 截图 ({self.stream_w}x{self.stream_h})")
+                    self._log(f"✅ ADB 截图 ({f.shape[1]}x{f.shape[0]})")
 
                 else:
 
@@ -1597,9 +1625,12 @@ class AutoFightEngine:
 
             else:
 
-                self.stream_h, self.stream_w = self.client.last_frame.shape[:2]
+                raw_h, raw_w = self.client.last_frame.shape[:2]
 
-                self._log(f"✅ 视频流 ({self.stream_w}x{self.stream_h})")
+                self._log(f"✅ 视频流 ({raw_w}x{raw_h})")
+
+            # 统一流坐标语义为 800x448（get_frame 归一化输出；20:9 设备原始流是 800x360）
+            self.stream_w, self.stream_h = 800, 448
 
             self.init_device_scale()
 
@@ -1615,9 +1646,9 @@ class AutoFightEngine:
 
             if f is not None:
 
-                self.stream_h, self.stream_w = f.shape[:2]
+                self._log(f"✅ ADB 截图 ({f.shape[1]}x{f.shape[0]})")
 
-                self._log(f"✅ ADB 截图 ({self.stream_w}x{self.stream_h})")
+                self.stream_w, self.stream_h = 800, 448
 
                 self.init_device_scale()
 
@@ -1765,12 +1796,14 @@ class AutoFightEngine:
 
 
 
-    def _tap_defend(self, log_label="", max_attempts=3, check_wait=0.5):
+    def _tap_defend(self, log_label="", timeout=3.0, check_wait=0.5, max_attempts=3):
 
-        """点完技能/怪物后调用：等 0.3 秒再找防御按钮，找到马上点；
-        点完再识别，按钮还在则再点（最多 max_attempts 次）。"""
+        """点完怪物后调用：在 timeout 秒内持续从实时流找防御按钮，找到马上点；
+        点完按钮消失即成功；超时仍未找到则跳过（如宝宝未参战/没寿命）。
+        返回 True=成功点防御，False=按钮始终点不中，'missing'=超时未找到。"""
 
-        time.sleep(0.3)  # 点完怪物等 0.3 秒，让防御按钮/面板出现
+        start = time.time()
+
         taps = 0
 
         while True:
@@ -1783,19 +1816,7 @@ class AutoFightEngine:
 
             defend = self.find(frame, "PK-防御") if frame is not None else None
 
-            if defend is None:
-
-                if taps == 0:
-
-                    self._log(f"  ⚠️ 未识别到{log_label}防御按钮，跳过")
-
-                    return "missing"
-
-                self._log(f"  ✅ {log_label}防御点击成功，按钮已消失")
-
-                return True
-
-            elif taps < max_attempts:
+            if defend is not None:
 
                 self.tap(defend[0], defend[1])
 
@@ -1803,13 +1824,41 @@ class AutoFightEngine:
 
                 self._log(f"  🎯 {log_label}点防御 ({defend[0]},{defend[1]}) 第{taps}次")
 
-            else:
+                time.sleep(check_wait)
 
-                self._log(f"  ⚠️ {log_label}防御按钮点击{max_attempts}次后仍存在，未确认成功")
+                # 点完验证：按钮已消失即认为点中成功
 
-                return False
+                frame2 = self.get_frame()
 
-            time.sleep(check_wait)
+                if frame2 is not None and self.find(frame2, "PK-防御") is None:
+
+                    self._log(f"  ✅ {log_label}防御点击成功，按钮已消失")
+
+                    return True
+
+                if taps >= max_attempts:
+
+                    self._log(f"  ⚠️ {log_label}防御按钮点击{max_attempts}次后仍存在，未确认成功")
+
+                    return False
+
+                continue
+
+            if taps > 0:
+
+                # 上一轮点过，此刻按钮已消失（last_frame 可能延迟一帧）→ 成功
+
+                self._log(f"  ✅ {log_label}防御点击成功，按钮已消失")
+
+                return True
+
+            if time.time() - start > timeout:
+
+                self._log(f"  ⚠️ {timeout:.0f}秒内未识别到{log_label}防御按钮，跳过")
+
+                return "missing"
+
+            time.sleep(0.05)  # 实时流高频轮询，直到面板出现
 
 
 
@@ -1848,12 +1897,28 @@ class AutoFightEngine:
 
 
     def _try_capture_bb(self, frame, matched_targets):
-        """对面宝宝文字检测 + 捕捉。do_combat 开头和第四回合攻击前各调用一次；
-        不滑动，直接在当前画面检测。返回 True=检测到宝宝并进入捕捉，False=未检测到。"""
+        """对面宝宝/变异召唤兽检测 + 捕捉。优先捕捉变异蛟龙/变异地狱战神；
+        do_combat 开头和第四回合攻击前各调用一次；不滑动。返回 True=进入捕捉，False=未检测到。"""
 
         if frame is None:
             return False
 
+        # 1) 优先：识别变异召唤兽（变异蛟龙/变异地狱战神），识别到直接作为捕捉目标
+        mutant_pts = []
+        for tmpl in ("PK-召唤兽-变异蛟龙", "PK-召唤兽-变异地狱战神"):
+            hits = self._find_all(frame, tmpl, threshold=0.70, roi=COMBAT_ROI)
+            mutant_pts.extend(hits)
+        dedup_m = []
+        for t in sorted(mutant_pts, key=lambda x: x[2], reverse=True):
+            if not any(abs(t[0]-d[0])**2+abs(t[1]-d[1])**2 < 625 for d in dedup_m):
+                dedup_m.append(t)
+        if self.cfg.get("capture_bb_enabled", False) and dedup_m:
+            self._log(f"  🎣 识别到变异召唤兽 {len(dedup_m)} 个，优先捕捉")
+            for t in dedup_m:
+                self._log(f"      变异位置 ({t[0]},{t[1]}) conf={t[2]:.2f}")
+            return self._run_capture_loop([(p[0], p[1]) for p in dedup_m])
+
+        # 2) 对面宝宝文字流程（原有）
         bb_markers = []
 
         # 先检测蓝色文字（直接可见的）
@@ -1916,6 +1981,13 @@ class AutoFightEngine:
             return False
 
         self._log(f"  🎣 捕捉模式已开启，目标 {len(capture_targets)} 个")
+        return self._run_capture_loop(capture_targets)
+
+
+
+    def _run_capture_loop(self, capture_targets):
+        """捕捉循环：每回合点捕捉按钮(539,403) + 点目标，最多 8 回合。
+        每回合重新检测变异/对面宝宝标记是否还在。"""
         MAX_CAPTURE_ROUNDS = 8
         for cap_round in range(MAX_CAPTURE_ROUNDS):
             if not self._check_in_combat():
@@ -1924,12 +1996,13 @@ class AutoFightEngine:
             if skill_pos is None:
                 self._log("  ⏳ 等待回合超时，停止捕捉")
                 break
-            # 每回合重新检测所有宝宝文字
+            # 每回合重新检测变异/对面宝宝标记
             frame_check = self.get_frame()
             current_bb = []
             if frame_check is not None:
-                for bb_name in ["PK-对面宝宝文字蓝色", "PK-对面宝宝文字红色"]:
-                    hits = self._find_all(frame_check, bb_name, threshold=0.80, roi=COMBAT_ROI)
+                for tmpl in ("PK-召唤兽-变异蛟龙", "PK-召唤兽-变异地狱战神",
+                             "PK-对面宝宝文字蓝色", "PK-对面宝宝文字红色"):
+                    hits = self._find_all(frame_check, tmpl, threshold=0.70, roi=COMBAT_ROI)
                     current_bb.extend(hits)
             still_there = []
             for ct in capture_targets:
@@ -1938,7 +2011,7 @@ class AutoFightEngine:
                         still_there.append(ct)
                         break
             if not still_there:
-                self._log(f"  🎣 第{cap_round+1}回合：宝宝已不在场，停止捕捉")
+                self._log(f"  🎣 第{cap_round+1}回合：目标已不在场，停止捕捉")
                 break
             for st in still_there:
                 self.tap(539, 403)
@@ -1958,6 +2031,8 @@ class AutoFightEngine:
         self.last_skill = None  # clear old cache
         self._lifespan_alerted = False             # 每场战斗重置：是否已弹框提醒宝宝无寿命
         self._defend_miss_streak = 0               # 每场战斗重置：连续识别不到防御按钮次数
+        self._battle_defend_attempted = False
+        self._battle_defend_ok = False
 
         map_name = self.last_map_name or self.cfg.get("map", "小西天")
 
@@ -2125,6 +2200,13 @@ class AutoFightEngine:
 
         if not steal_targets:
             if retry_failed:
+                # 保存调试截图：连续2次未识别到偷卡目标，定位是后排遮挡还是模板不匹配
+                try:
+                    _df = self.get_frame()
+                    if _df is not None:
+                        self._save_detection_debug(_df, "no_steal_target", matched_targets)
+                except Exception:
+                    pass
                 self._log("  🏃 第一回合连续2次未识别到偷窃目标，直接逃跑")
                 self._try_escape(force=True)
                 self._wait_combat_end()
@@ -2186,23 +2268,25 @@ class AutoFightEngine:
                     cx_ms, cy_ms, _ = ms
                     self.tap(cx_ms, cy_ms)
                     time.sleep(random.uniform(0.3, 0.5))
-                    self.tap(tx, ty)
-                    # 每次妙手空空点完怪物后：_tap_defend 内等 0.3 秒找防御，找到马上点；
-                    # 点完再识别，按钮还在则重新点（最多3次）
+                    self.tap(tx, ty)   # 点怪物
+                    # 游戏顺序：点妙手空空 -> 点怪物 -> 然后防御，操作完才开始偷窃。
+                    # 点完怪物等 0.3 秒先找防御，没找到等 0.3 秒继续找，最多找 3 次；
+                    # 找到马上点，点完还在则再点（最多3次）。
                     defend_status = self._tap_defend(log_label="宝宝")
                     if defend_status == "missing":
                         if self.has_no_bb:
                             # 画面判定未带宝宝，防御按钮不出现属正常，跳过
                             self._log("  ⚠️ 未识别到宝宝防御按钮（画面判定未带宝宝），跳过")
                         else:
-                            # 识别不到多为回合收尾/动画慢，不是忠诚度问题；
-                            # 记录本场缺失标记，连续 2 场战斗缺失才触发忠诚度恢复
                             self._defend_miss_streak += 1
-                            self._battle_defend_missed = True
                             self._log(f"  ⚠️ 未识别到宝宝防御按钮（第{self._defend_miss_streak}次，可能回合收尾面板未弹出），跳过")
+                        # 有偷卡但宝宝未参战（无宝宝/没寿命）都计入：连续2场后偷3次直接逃跑
+                        self._battle_defend_attempted = True
                     else:
-                        # 防御按钮正常识别到（点击成功），清除连续缺失标记
+                        # 防御按钮正常识别到（点击成功）：本场至少一次有效防御
                         self._defend_miss_streak = 0
+                        self._battle_defend_attempted = True
+                        self._battle_defend_ok = True
                     time.sleep(0.2)
                     self._log(f"  🎯 第{i+1}次 妙手空空 -> ({tx},{ty}) conf={conf:.2f}")
                     clicked.append((tx, ty))
@@ -2229,6 +2313,30 @@ class AutoFightEngine:
         mode_direct = self.cfg.get("direct_auto", False)
 
         mode_escape = self.cfg.get("escape_enabled", True)
+
+
+
+        # 本场偷卡后防御一次都没识别到（宝宝未参战/没寿命）：等待下回合直接逃跑
+        if self._battle_defend_attempted and not self._battle_defend_ok:
+            self._log("  🏃 本场偷卡后防御三次都没识别到（宝宝未参战），等待下回合点击逃跑")
+            # force=True：无视 escape_enabled 配置；_try_escape 内部会等待
+            # 妙手空空技能出现（轮到玩家操作）后再点逃跑
+            self._try_escape(force=True)
+            self._wait_combat_end()
+            if self._pet_no_lifespan:
+                # 已确认没寿命：之后每场都偷3次逃跑，不再恢复
+                pass
+            elif self._loyalty_recovery_done_since_miss:
+                # 已恢复过忠诚，仍然3次都没识别到 -> 判定没有寿命
+                self._pet_no_lifespan = True
+                self._log("  ❌ 恢复忠诚后宝宝仍未参战，可能没有寿命，之后每场偷3次后直接逃跑")
+            else:
+                # 逃跑后立即恢复忠诚（去掉50场判断）
+                self._loyalty_recovery_pending = True
+            return
+        elif self._battle_defend_attempted and self._battle_defend_ok:
+            # 宝宝正常参战：清除“已恢复”标记，若之后再出现3次全没识别到会重新走恢复流程
+            self._loyalty_recovery_done_since_miss = False
 
 
 
@@ -2972,11 +3080,21 @@ class AutoFightEngine:
 
                         if d_frame is not None:
 
+                            # 防御按钮固定在右下操作区 (708,402) 附近；
+                            # 0.50 低阈值会误匹配到怪物/场景元素（如日志中的
+                            # (114,146)、(154,280) 等坐标），点到错误位置，
+                            # 因此识别后用位置过滤掉远离右下操作区的误匹配。
                             defend = self.find(d_frame, "PK-防御", threshold=0.70)
 
                             if defend is None:
 
-                                defend = self.find(d_frame, "PK-防御", threshold=0.50)
+                                defend = self.find(d_frame, "PK-防御", threshold=0.60)
+
+                            if defend and not (defend[0] > 480 and defend[1] > 280):
+
+                                self._log(f"  ⚠️ 防御模板误匹配 ({defend[0]},{defend[1]})，忽略")
+
+                                defend = None
 
                             if defend:
 
@@ -3428,13 +3546,14 @@ class AutoFightEngine:
 
             h, w = f.shape[:2]
 
-            cx = max(0, int(OCR_CROP["x"] / self.scale_x))
+            # OCR_CROP 为 800x448 流坐标（get_frame 已归一化），无需再除以 scale
+            cx = max(0, int(OCR_CROP["x"]))
 
-            cy = max(0, int(OCR_CROP["y"] / self.scale_y))
+            cy = max(0, int(OCR_CROP["y"]))
 
-            cw = min(int(OCR_CROP["w"] / self.scale_x), w - cx)
+            cw = min(int(OCR_CROP["w"]), w - cx)
 
-            ch = min(int(OCR_CROP["h"] / self.scale_y), h - cy)
+            ch = min(int(OCR_CROP["h"]), h - cy)
 
             ann = f.copy()
 
@@ -3480,13 +3599,14 @@ class AutoFightEngine:
 
         h, w = f.shape[:2]
 
-        cx = max(0, int(OCR_CROP["x"] / self.scale_x))
+        # OCR_CROP 为 800x448 流坐标（get_frame 已归一化），无需再除以 scale
+        cx = max(0, int(OCR_CROP["x"]))
 
-        cy = max(0, int(OCR_CROP["y"] / self.scale_y))
+        cy = max(0, int(OCR_CROP["y"]))
 
-        cw = min(int(OCR_CROP["w"] / self.scale_x), w - cx)
+        cw = min(int(OCR_CROP["w"]), w - cx)
 
-        ch = min(int(OCR_CROP["h"] / self.scale_y), h - cy)
+        ch = min(int(OCR_CROP["h"]), h - cy)
 
         if cw <= 0 or ch <= 0:
 
@@ -3624,27 +3744,16 @@ class AutoFightEngine:
         #     time.sleep(0.5)
 
 
-        # ===== 战斗计数 + 诚度恢复检测 =====
+        # ===== 战斗计数 =====
         self.battle_count += 1
         self._log(f"  📊 战斗场次: {self.battle_count}")
 
-        # 连续 2 场战斗识别不到防御 → 可能忠诚度问题，战后执行忠诚度恢复
-        if self._battle_defend_missed:
-            self._consecutive_defend_miss_battles += 1
-        else:
-            self._consecutive_defend_miss_battles = 0
-        self._battle_defend_missed = False
-        if self._consecutive_defend_miss_battles >= 2:
-            self._consecutive_defend_miss_battles = 0
-            self._log("  🔔 连续2场战斗未识别到防御按钮，可能召唤兽忠诚度为0，执行忠诚度恢复")
+        # 3次防御都没识别到逃跑后：立即执行忠诚度恢复（不再按场次）
+        if self._loyalty_recovery_pending:
+            self._loyalty_recovery_pending = False
+            self._loyalty_recovery_done_since_miss = True
+            self._log("  🔔 宝宝未参战，逃跑后执行忠诚度恢复")
             self._do_loyalty_recovery()
-
-        # 检查是否需要执行诚度恢复（每55-60场执行一次，每个周期只触发一次）
-        if self.battle_count >= 55 and self.battle_count - self._last_loyalty_recovery >= 55:
-            self._last_loyalty_recovery = self.battle_count
-            self._log(f"  🔔 战斗场次达到 {self.battle_count}，开始执行诚度恢复...")
-            self._do_loyalty_recovery()
-            self._log("  ✅ 诚度恢复完成")
 
 
         # ===== 战斗后血量检测 + 酒肆恢复 =====

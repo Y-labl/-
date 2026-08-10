@@ -268,10 +268,10 @@ class AutoFightGUI:
         scene_card.columnconfigure(3, weight=1)
 
         ttk.Label(scene_card, text="选择项目：").grid(row=0, column=0, sticky="w", padx=(0, 8))
-        self.project_select = ttk.Combobox(scene_card, values=["点卡场景(2币/天)"],
+        self.project_select = ttk.Combobox(scene_card, values=["点卡场景"],
                                            state="readonly", width=22, bootstyle="primary")
         self.project_select.grid(row=0, column=1, sticky="w", padx=(0, 25))
-        self.project_select.set("点卡场景(2币/天)")
+        self.project_select.set("点卡场景")
 
         ttk.Label(scene_card, text="地图选择：").grid(row=0, column=2, sticky="w", padx=(0, 8))
         self.map_select = ttk.Combobox(scene_card, values=list(MAP_CONFIG),
@@ -881,8 +881,8 @@ class AutoFightGUI:
         self.dev_table.columnconfigure(9, weight=0)
         for ci, (txt, wd) in enumerate([
             ("选择", 0), ("设备序列号", 16), ("设备名称", 10),
-            ("状态", 6), ("HP", 5), ("MP", 5),
-            ("BB", 5), ("战斗", 4), ("时长", 6), ("操作", 0),
+            ("状态", 6), ("当前场景", 6), ("卡片(张)", 5),
+            ("环(个)", 5), ("战斗", 4), ("时长", 6), ("操作", 0),
         ]):
             tk.Label(self.dev_table, text=txt, font=("Microsoft YaHei", 9, "bold"),
                      width=wd if wd else None, anchor="center", bg="white",
@@ -947,18 +947,18 @@ class AutoFightGUI:
         status_lbl = self._table_cell(parent, row, 3, serial=serial, text=status_text,
                                       foreground=status_color, width=6, anchor="center")
 
-        hp_v, mp_v, bb_v = "--", "--", "--"
+        scene_v, card_v, huan_v = "--", "--", "--"
         if running:
-            hp_v = f"{engine.last_hp:.0f}%"
-            mp_v = f"{engine.last_mp:.0f}%"
-            bb_v = "--" if engine.has_no_bb else f"{engine.last_bb:.0f}%"
+            scene_v = getattr(engine, "last_map_name", None) or engine.cfg.get("map", "") or "--"
+            card_v = str(engine._card_count)
+            huan_v = str(engine._huan_count)
 
-        hp_lbl = self._table_cell(parent, row, 4, serial=serial, text=hp_v,
-                                  width=5, anchor="center")
-        mp_lbl = self._table_cell(parent, row, 5, serial=serial, text=mp_v,
-                                  width=5, anchor="center")
-        bb_lbl = self._table_cell(parent, row, 6, serial=serial, text=bb_v,
-                                  width=5, anchor="center")
+        scene_lbl = self._table_cell(parent, row, 4, serial=serial, text=scene_v,
+                                     width=6, anchor="center")
+        card_lbl = self._table_cell(parent, row, 5, serial=serial, text=card_v,
+                                    width=5, anchor="center")
+        huan_lbl = self._table_cell(parent, row, 6, serial=serial, text=huan_v,
+                                    width=5, anchor="center")
 
         bc_v = f"{engine.battle_count}" if running else "--"
         bc_lbl = self._table_cell(parent, row, 7, serial=serial, text=bc_v,
@@ -992,8 +992,8 @@ class AutoFightGUI:
                    command=lambda s=serial: self._device_screenshot(s)).pack(side=tk.LEFT)
 
         self._device_widgets[serial] = {
-            "status": status_lbl, "hp": hp_lbl, "mp": mp_lbl,
-            "bb": bb_lbl, "bc": bc_lbl, "dur": dur_lbl,
+            "status": status_lbl, "scene": scene_lbl, "card": card_lbl,
+            "huan": huan_lbl, "bc": bc_lbl, "dur": dur_lbl,
             "start": start_btn2, "stop": stop_btn2,
         }
         self._update_device_row_buttons(serial)
@@ -1013,9 +1013,9 @@ class AutoFightGUI:
             w["start"].configure(state=tk.NORMAL)
             w["stop"].configure(state=tk.DISABLED)
             w["status"].configure(text="空闲", foreground="gray")
-            w["hp"].configure(text="--")
-            w["mp"].configure(text="--")
-            w["bb"].configure(text="--")
+            w["scene"].configure(text="--")
+            w["card"].configure(text="--")
+            w["huan"].configure(text="--")
             w["bc"].configure(text="--")
             w["dur"].configure(text="--")
 
@@ -1442,9 +1442,10 @@ class AutoFightGUI:
                     for ser, eng in self.engines.items():
                         w = self._device_widgets.get(ser)
                         if w and eng and eng.running:
-                            w["hp"].configure(text=f"{eng.last_hp:.0f}%")
-                            w["mp"].configure(text=f"{eng.last_mp:.0f}%")
-                            w["bb"].configure(text="--" if eng.has_no_bb else f"{eng.last_bb:.0f}%")
+                            scene = getattr(eng, "last_map_name", None) or eng.cfg.get("map", "") or "--"
+                            w["scene"].configure(text=scene)
+                            w["card"].configure(text=str(eng._card_count))
+                            w["huan"].configure(text=str(eng._huan_count))
                             w["bc"].configure(text=str(eng.battle_count))
                             if getattr(eng, "start_time", 0):
                                 elapsed = int((getattr(eng, "total_runtime", 0) or 0)
@@ -1684,7 +1685,7 @@ class AutoFightGUI:
         self.real_scene_switch_enabled.set(cfg.get("use_real_scene_switch", True))
 
         self.map_select.set(cfg.get("map", "小西天"))
-        self.project_select.set("点卡场景(2币/天)")
+        self.project_select.set("点卡场景")
 
         if cfg.get("serial"):
             if cfg["serial"] in (self.device_combo["values"] or []):
