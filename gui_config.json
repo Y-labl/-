@@ -1,5 +1,5 @@
 {
-  "serial": "WEENU19314102545",
+  "serial": "WEENU18904103110",
   "map": "子母河底",
   "hp_enabled": false,
   "hp_threshold": 50,
@@ -36,30 +36,6 @@
   "auto_path_enabled": true,
   "scene_config": [
     {
-      "enabled": false,
-      "scene": "龙窟五层",
-      "rings": "得3个环",
-      "cards": "得2张卡片",
-      "time": "满180分钟",
-      "after": "后换场景"
-    },
-    {
-      "enabled": false,
-      "scene": "凤巢四层",
-      "rings": "得3个环",
-      "cards": "无要求",
-      "time": "满180分钟",
-      "after": "后换场景"
-    },
-    {
-      "enabled": true,
-      "scene": "子母河底",
-      "rings": "得3个环",
-      "cards": "无要求",
-      "time": "满180分钟",
-      "after": "后换场景"
-    },
-    {
       "enabled": true,
       "scene": "小西天",
       "rings": "得3个环",
@@ -68,7 +44,31 @@
       "after": "后换场景"
     },
     {
-      "enabled": false,
+      "enabled": true,
+      "scene": "子母河底",
+      "rings": "得3个环",
+      "cards": "得2张卡片",
+      "time": "满180分钟",
+      "after": "后换场景"
+    },
+    {
+      "enabled": true,
+      "scene": "凤巢四层",
+      "rings": "得3个环",
+      "cards": "得2张卡片",
+      "time": "满180分钟",
+      "after": "后换场景"
+    },
+    {
+      "enabled": true,
+      "scene": "龙窟五层",
+      "rings": "得3个环",
+      "cards": "得2张卡片",
+      "time": "满180分钟",
+      "after": "后换场景"
+    },
+    {
+      "enabled": true,
       "scene": "小雷音寺",
       "rings": "得3个环",
       "cards": "得2张卡片",
@@ -76,8 +76,16 @@
       "after": "后换场景"
     },
     {
-      "enabled": false,
+      "enabled": true,
       "scene": "女娲神迹",
+      "rings": "得3个环",
+      "cards": "得2张卡片",
+      "time": "满180分钟",
+      "after": "停止"
+    },
+    {
+      "enabled": false,
+      "scene": "小西天",
       "rings": "得3个环",
       "cards": "得2张卡片",
       "time": "满180分钟",
@@ -86,14 +94,6 @@
     {
       "enabled": false,
       "scene": "须弥东界",
-      "rings": "得3个环",
-      "cards": "得2张卡片",
-      "time": "满180分钟",
-      "after": "后换场景"
-    },
-    {
-      "enabled": false,
-      "scene": "小西天",
       "rings": "得3个环",
       "cards": "得2张卡片",
       "time": "满180分钟",
@@ -128,6 +128,10 @@
     "WEENU18806160281": "测试账号"
   },
   "capture_bb_enabled": true,
+  "capture_bb_blacklist": {
+    "小西天": ["夜罗刹", "金饶僧"],
+    "小雷音寺": ["大力金刚"]
+  },
   "device_order": [
     "WEENU18A18102828",
     "WEENU18A15102480",

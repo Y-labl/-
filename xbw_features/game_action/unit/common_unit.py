@@ -31,7 +31,8 @@ def clickOpenPkg(deviceId, preImgName="道具", middleImgNames=["道具-道具�
         if findPic(deviceId, nextImgName, similar=0.8):
             return True
         time.sleep(0.5)
-    return True
+    logger.warning(f"{deviceId} 点击道具后未找到{nextImgName}，背包未打开")
+    return False
 
 
 def clickClosePkg(deviceId, preImgName='物品锁'):

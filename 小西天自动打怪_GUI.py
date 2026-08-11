@@ -28,6 +28,51 @@ from mhxy_engine import (
 # 设备统计文件（按天记录，关闭程序后重启可恢复当日累计）
 STATS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs", "device_stats.txt")
 
+# 设备独立配置目录
+DEVICE_CONFIG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "configs")
+
+# 场景历史目录
+SCENE_HISTORY_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+
+
+def get_scene_history_file(serial, date=None):
+    """获取设备场景历史文件路径（按天记录）"""
+    if date is None:
+        date = datetime.now().strftime("%Y-%m-%d")
+    return os.path.join(SCENE_HISTORY_DIR, f"scene_history_{serial}_{date}.json")
+
+
+def load_scene_history_from_file(serial, days=7):
+    """从文件加载场景历史记录（支持多天合并）"""
+    from datetime import timedelta
+
+    history_by_date = {}
+    today = datetime.now()
+
+    for i in range(days):
+        date = today - timedelta(days=i)
+        date_str = date.strftime("%Y-%m-%d")
+        history_file = get_scene_history_file(serial, date_str)
+
+        if os.path.exists(history_file):
+            try:
+                with open(history_file, "r", encoding="utf-8") as f:
+                    day_history = json.load(f)
+                    if day_history:
+                        # 为每条记录添加日期信息
+                        for record in day_history:
+                            record["date"] = date_str
+                        history_by_date[date_str] = day_history
+            except Exception:
+                pass
+
+    # 按日期倒序合并历史记录
+    result = []
+    for date_str in sorted(history_by_date.keys(), reverse=True):
+        result.extend(history_by_date[date_str])
+
+    return result
+
 
 # ============== 扩展默认配置 ==============
 DEFAULT_CONFIG = {
@@ -82,6 +127,37 @@ DEFAULT_CONFIG = {
     # 四小人检测 ROI（流分辨率坐标）
     "four_person_roi": {"left": 540, "top": 170, "width": 880, "height": 380},
 }
+
+
+def get_device_config_file(serial):
+    """获取设备独立配置文件路径"""
+    os.makedirs(DEVICE_CONFIG_DIR, exist_ok=True)
+    return os.path.join(DEVICE_CONFIG_DIR, f"{serial}.json")
+
+
+def load_device_config(serial):
+    """加载设备独立配置，如果不存在则返回None"""
+    device_file = get_device_config_file(serial)
+    if os.path.exists(device_file):
+        try:
+            with open(device_file, "r", encoding="utf-8") as f:
+                return migrate_config(json.load(f))
+        except Exception:
+            return None
+    return None
+
+
+def save_device_config(serial, cfg):
+    """保存设备独立配置"""
+    device_file = get_device_config_file(serial)
+    try:
+        os.makedirs(os.path.dirname(device_file), exist_ok=True)
+        with open(device_file, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        print(f"保存设备配置失败: {e}")
+        return False
 
 
 def load_config():
@@ -147,10 +223,15 @@ class AutoFightGUI:
         self._device_widgets = {}     # serial -> {status, hp, mp, bb, bc}
         self._threshold_labels = {}
         self._selected_devices = set()  # 设备管理页勾选的设备
+        self._device_configs = {}     # serial -> 设备独立配置缓存
         self._device_order = list(self.cfg.get("device_order", []) or [])
         self._drag_serial = None        # 拖拽排序：当前拖动的设备
         self._drag_y0 = 0               # 拖拽起始 y
         self._drag_widget = None        # 拖拽起始控件
+
+        # 设备显示映射
+        self._serial_to_display = {}  # 序列号 -> 显示文本
+        self._display_to_serial = {}  # 显示文本 -> 序列号
 
         # GUI系统日志文件
         self.gui_log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
@@ -161,8 +242,14 @@ class AutoFightGUI:
         self._build_ui()
         self._refresh_devices()
         self._load_cfg_to_ui()
+
+        # 启动日志轮询（延迟到UI完全加载后）
+        self.root.after(100, self._start_log_polling)
+
+    def _start_log_polling(self):
+        """启动日志轮询"""
         # 初始化日志筛选选项
-        self.root.after(100, self._update_log_filter_options)
+        self._update_log_filter_options()
         self._poll_log()
 
         # 记录程序启动日志
@@ -170,6 +257,79 @@ class AutoFightGUI:
         self._log(f"程序启动 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         self._log(f"日志目录: {self.gui_log_dir}")
         self._log("=" * 60)
+
+    def _get_effective_config(self, serial):
+        """获取设备的有效配置（优先使用设备独立配置，否则使用全局配置）"""
+        # 优先从缓存获取
+        if serial not in self._device_configs:
+            device_cfg = load_device_config(serial)
+            if device_cfg:
+                self._device_configs[serial] = device_cfg
+            else:
+                self._device_configs[serial] = None
+
+        # 如果有设备独立配置，合并全局配置的公共部分
+        if self._device_configs[serial]:
+            result = dict(self._device_configs[serial])
+            # 确保全局的设备顺序和名称配置也被合并
+            result.setdefault("device_order", self.cfg.get("device_order", []))
+            result.setdefault("device_names", self.cfg.get("device_names", {}))
+            return result
+        else:
+            # 没有独立配置，使用全局配置
+            return self.cfg
+
+    def _save_device_config(self, serial):
+        """保存设备独立配置"""
+        current_ui_config = {}
+        self._sync_ui_to_config_obj(current_ui_config)
+
+        # 保存到文件和缓存
+        save_device_config(serial, current_ui_config)
+        self._device_configs[serial] = current_ui_config
+        self._log(f"[{serial}] 已保存设备独立配置")
+
+    def _sync_ui_to_config_obj(self, config_obj):
+        """将UI设置同步到配置对象"""
+        config_obj["hp_method"] = self.hp_method.get()
+        config_obj["mp_method"] = self.mp_method.get()
+        config_obj["hp_threshold"] = self.hp_threshold.get()
+        config_obj["mp_threshold"] = self.mp_threshold.get()
+
+        hp = config_obj["hp_method"]
+        mp = config_obj["mp_method"]
+
+        if "秘制" in (hp, mp):
+            config_obj["mizhi_enabled"] = True
+            config_obj["hp_enabled"] = False
+            config_obj["mp_enabled"] = False
+        else:
+            config_obj["mizhi_enabled"] = False
+            config_obj["hp_enabled"] = (hp != "酒肆")
+            config_obj["hp_item"] = hp if hp != "酒肆" else config_obj.get("hp_item", "红碗")
+            config_obj["mp_enabled"] = (mp != "酒肆")
+            config_obj["mp_item"] = mp if mp != "酒肆" else config_obj.get("mp_item", "蓝碗")
+
+        config_obj["jiusi_enabled"] = (hp == "酒肆" or mp == "酒肆")
+        config_obj["jiusi_hp_threshold"] = config_obj["hp_threshold"] if hp == "酒肆" else 0
+        config_obj["jiusi_mp_threshold"] = config_obj["mp_threshold"] if mp == "酒肆" else 0
+        config_obj["jiusi_bb_threshold"] = self.jiusi_bb_threshold.get()
+
+        config_obj["map"] = self.map_select.get()
+        config_obj["capture_bb_enabled"] = self.capture_bb_enabled.get()
+        config_obj["miaoshou_enabled"] = self.miaoshou_enabled.get()
+        _mode = self.combat_mode.get()
+        config_obj["skill_then_auto"] = (_mode == "skill_then_auto")
+        config_obj["normal_then_auto"] = (_mode == "normal_then_auto")
+        config_obj["defend_then_auto"] = (_mode == "defend_then_auto")
+        config_obj["direct_auto"] = (_mode == "direct_auto")
+        config_obj["escape_enabled"] = (_mode == "escape")
+        config_obj["auto_path_enabled"] = self.auto_path_enabled.get()
+        config_obj["coord_enabled"] = self.coord_enabled.get()
+        config_obj["use_local_four_person"] = self.local_four_person_enabled.get()
+        config_obj["check_pkg_counts"] = self.check_pkg_counts_enabled.get()
+        config_obj["use_real_scene_switch"] = self.real_scene_switch_enabled.get()
+        config_obj["scene_config"] = self.cfg.get("scene_config", [])
 
     # ---------- 变量 ----------
     def _init_vars(self):
@@ -203,6 +363,9 @@ class AutoFightGUI:
 
         # 日志相关
         self.all_logs = []  # 存储所有日志
+
+        # 功能测试页面设备映射
+        self._test_display_to_serial = {}  # 显示文本 -> 序列号
 
     # ---------- UI 构建 ----------
     def _build_ui(self):
@@ -281,8 +444,6 @@ class AutoFightGUI:
 
         ttk.Button(scene_card, text="妙手空空场景设置", command=self._open_scene_settings,
                    width=18, bootstyle="warning").grid(row=0, column=4, sticky="e", padx=(0, 6))
-        ttk.Button(scene_card, text="🧪 测试诚度恢复", command=self._test_loyalty_recovery,
-                   width=18, bootstyle="info").grid(row=0, column=5, sticky="e")
 
         # ---- 人物补给设置 ----
         supply_card = ttk.Labelframe(main, text=" 人物补给设置 ", padding=12)
@@ -322,8 +483,12 @@ class AutoFightGUI:
         left.grid(row=0, column=0, sticky="nsw")
 
         # 一、二 为独立勾选
-        ttk.Checkbutton(left, text="一、捕捉", variable=self.capture_bb_enabled,
-                        bootstyle="success-round-toggle").grid(row=0, column=0, sticky="w", pady=4)
+        capture_frame = ttk.Frame(left)
+        capture_frame.grid(row=0, column=0, sticky="w", pady=4)
+        ttk.Checkbutton(capture_frame, text="一、捕捉", variable=self.capture_bb_enabled,
+                        bootstyle="success-round-toggle").pack(side=tk.LEFT)
+        ttk.Button(capture_frame, text="配置", command=self._show_capture_blacklist_config,
+                  bootstyle="info-outline", width=6).pack(side=tk.LEFT, padx=(8, 0))
         ttk.Checkbutton(left, text="二、妙手空空", variable=self.miaoshou_enabled,
                         bootstyle="success-round-toggle").grid(row=1, column=0, sticky="w", pady=4)
         # 三、战斗模式 5选1 互斥
@@ -362,10 +527,10 @@ class AutoFightGUI:
         data_frame = ttk.Frame(log_card)
         data_frame.grid(row=0, column=0, sticky="w", pady=(0, 6))
 
-        self.hp_display = ttk.Label(data_frame, text="HP: --%",
+        self.hp_display = ttk.Label(data_frame, text="气血: --%",
                                     font=("Microsoft YaHei", 11, "bold"), foreground="#e83e8c")
         self.hp_display.pack(side=tk.LEFT, padx=(0, 20))
-        self.mp_display = ttk.Label(data_frame, text="MP: --%",
+        self.mp_display = ttk.Label(data_frame, text="魔法: --%",
                                     font=("Microsoft YaHei", 11, "bold"), foreground="#0d6efd")
         self.mp_display.pack(side=tk.LEFT, padx=(0, 20))
         self.bb_display = ttk.Label(data_frame, text="BB: --%",
@@ -512,6 +677,8 @@ class AutoFightGUI:
         top_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
         ttk.Button(top_frame, text="刷新设备", command=self._refresh_device_tab,
                    width=10, bootstyle="outline").pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(top_frame, text="配置模板", command=self._show_config_templates,
+                   width=10, bootstyle="info").pack(side=tk.LEFT, padx=(0, 10))
         ttk.Label(top_frame, text="列出所有 ADB 设备，可独立控制每台设备的启停",
                   foreground="gray", font=("Microsoft YaHei", 9)).pack(side=tk.LEFT)
         # 右侧批量操作按钮
@@ -601,6 +768,8 @@ class AutoFightGUI:
                    command=self._test_backpack).pack(side=tk.LEFT, padx=(0, 10))
         ttk.Button(btns, text="③ 测试切换地图", bootstyle="warning",
                    command=self._test_switch_map).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(btns, text="④ 测试忠诚度恢复", bootstyle="info",
+                   command=self._test_loyalty_recovery).pack(side=tk.LEFT, padx=(0, 10))
         ttk.Button(btns, text="⏹ 停止", bootstyle="danger",
                    command=self._test_stop).pack(side=tk.LEFT)
 
@@ -631,11 +800,27 @@ class AutoFightGUI:
         self._refresh_test_devices()
 
     def _refresh_test_devices(self):
+        """刷新功能测试页的设备下拉列表（显示设备名称）"""
         try:
             devs = list_adb_devices()
-            self.test_device_combo["values"] = devs
+            dev_names = self.cfg.get("device_names", {})
+
+            # 构建显示列表
+            display_list = []
+            self._test_display_to_serial = {}
+
+            for serial in devs:
+                name = dev_names.get(serial, "")
+                if name:
+                    display_text = f"{name} ({serial})"
+                else:
+                    display_text = serial
+                display_list.append(display_text)
+                self._test_display_to_serial[display_text] = serial
+
+            self.test_device_combo["values"] = display_list
             cur = self.test_device_combo.get()
-            self.test_device_combo.set(cur if cur in devs else (devs[0] if devs else ""))
+            self.test_device_combo.set(cur if cur in display_list else (display_list[0] if display_list else ""))
             self._log(f"功能测试：检测到 {len(devs)} 台设备")
         except Exception as e:
             self._log(f"功能测试：刷新设备失败 {e}")
@@ -753,6 +938,8 @@ class AutoFightGUI:
         if not serial:
             self._log("请先在功能测试页签选择设备")
             return
+        # 从显示文本中提取序列号
+        serial = self._test_display_to_serial.get(serial, serial)
         if not self._ensure_engine_stopped("背包测试"):
             return
         threading.Thread(target=self._run_backpack_test, args=(serial,), daemon=True).start()
@@ -771,6 +958,9 @@ class AutoFightGUI:
             result = check_backpack(serial, prev, stop_event=self._test_stop_event,
                                     scan_mode="all")
             self._test_pkg_snapshot = result["snapshot"]
+            if result["bag_frame"] is None:
+                log("背包未打开（未找到物品锁），本次背包测试已中止")
+                return
             log(f"背包占用槽位：{len(result['snapshot'])}/20")
             log(f"全量扫描结果：环 {result['add_huan']} 个 / 卡 {result['add_card']} 张"
                 + ("（已逐个点击全部占用槽位匹配“装备条件/怪物卡片”）"))
@@ -797,6 +987,8 @@ class AutoFightGUI:
         if not serial:
             self._log("请先在功能测试页签选择设备")
             return
+        # 从显示文本中提取序列号
+        serial = self._test_display_to_serial.get(serial, serial)
         target = self.test_map_combo.get().strip()
         if not target:
             self._log("请选择目标地图")
@@ -886,18 +1078,20 @@ class AutoFightGUI:
         ]):
             tk.Label(self.dev_table, text=txt, font=("Microsoft YaHei", 9, "bold"),
                      width=wd if wd else None, anchor="center", bg="white",
-                     bd=0, padx=4, pady=2).grid(row=0, column=ci, sticky="ew")
+                     bd=0, padx=4, pady=6).grid(row=0, column=ci, sticky="ew")
 
         self._device_row = 1
         for serial in ordered:
             self._add_device_row(serial)
+        self._total_widgets = None
+        self._add_total_row()
 
     def _table_cell(self, parent, row, col, serial=None, **kw):
         """在设备表格中创建一个单元格（与操作栏同风格：白底无边框）"""
         kw.setdefault("bg", "white")
         kw.setdefault("bd", 0)
         kw.setdefault("padx", 4)
-        kw.setdefault("pady", 2)
+        kw.setdefault("pady", 6)
         lbl = tk.Label(parent, **kw)
         lbl.grid(row=row, column=col, sticky="ew")
         if serial is not None:
@@ -914,7 +1108,7 @@ class AutoFightGUI:
         parent = self.dev_table
 
         # 多选复选框列
-        sel_frame = tk.Frame(parent, bg="white", bd=0)
+        sel_frame = tk.Frame(parent, bg="white", bd=0, pady=6)
         sel_frame.grid(row=row, column=0, sticky="ew")
         sel_var = tk.BooleanVar(value=serial in self._selected_devices)
 
@@ -977,7 +1171,7 @@ class AutoFightGUI:
         dur_lbl = self._table_cell(parent, row, 8, serial=serial, text=duration,
                                    width=6, anchor="center")
 
-        btn_frame = tk.Frame(parent, bg="white", bd=0, padx=4)
+        btn_frame = tk.Frame(parent, bg="white", bd=0, padx=4, pady=6)
         btn_frame.grid(row=row, column=9, sticky="ew")
         start_btn2 = ttk.Button(btn_frame, text="▶ 启动", width=7,
                                 style="SmallSuccess.TButton",
@@ -989,7 +1183,17 @@ class AutoFightGUI:
         stop_btn2.pack(side=tk.LEFT, padx=(0, 3))
         ttk.Button(btn_frame, text="📸 截图", width=7,
                    style="SmallOutline.TButton",
-                   command=lambda s=serial: self._device_screenshot(s)).pack(side=tk.LEFT)
+                   command=lambda s=serial: self._device_screenshot(s)).pack(side=tk.LEFT, padx=(0, 3))
+        ttk.Button(btn_frame, text="详情", width=6,
+                   style="SmallOutline.TButton",
+                   command=lambda s=serial: self._show_device_detail(s)).pack(side=tk.LEFT, padx=(0, 3))
+
+        # 显示是否有独立配置的标识
+        has_custom = self._device_configs.get(serial) is not None
+        if has_custom:
+            config_lbl = tk.Label(btn_frame, text="🔧", fg="#ff6b00",
+                                 font=("Microsoft YaHei", 8), bg="white")
+            config_lbl.pack(side=tk.LEFT, padx=(0, 3))
 
         self._device_widgets[serial] = {
             "status": status_lbl, "scene": scene_lbl, "card": card_lbl,
@@ -997,6 +1201,41 @@ class AutoFightGUI:
             "start": start_btn2, "stop": stop_btn2,
         }
         self._update_device_row_buttons(serial)
+
+    def _add_total_row(self):
+        """在设备表格最下面加一行"总计"：统计所有运行中设备的卡片/环总数"""
+        parent = self.dev_table
+        row = self._device_row
+
+        total_card, total_huan = self._compute_total_counts()
+
+        total_label = tk.Label(parent, text="总计", font=("Microsoft YaHei", 9, "bold"),
+                               bg="white", bd=0, padx=4, pady=2, anchor="center")
+        total_label.grid(row=row, column=1, sticky="ew")
+
+        card_lbl = tk.Label(parent, text=str(total_card), font=("Microsoft YaHei", 9, "bold"),
+                            bg="white", bd=0, padx=4, pady=2, anchor="center",
+                            foreground="#198754")
+        card_lbl.grid(row=row, column=5, sticky="ew")
+
+        huan_lbl = tk.Label(parent, text=str(total_huan), font=("Microsoft YaHei", 9, "bold"),
+                            bg="white", bd=0, padx=4, pady=2, anchor="center",
+                            foreground="#dc3545")
+        huan_lbl.grid(row=row, column=6, sticky="ew")
+
+        self._total_widgets = {"card": card_lbl, "huan": huan_lbl}
+
+    def _compute_total_counts(self):
+        """计算所有运行中设备的卡片/环总数"""
+        total_card = 0
+        total_huan = 0
+        for serial, eng in self.engines.items():
+            if eng is None:
+                continue
+            if getattr(eng, "running", False):
+                total_card += int(getattr(eng, "_card_count", 0) or 0)
+                total_huan += int(getattr(eng, "_huan_count", 0) or 0)
+        return total_card, total_huan
 
     def _update_device_row_buttons(self, serial):
         """根据设备运行状态更新设备行的按钮与状态（与场景控制页按钮逻辑一致）"""
@@ -1055,24 +1294,32 @@ class AutoFightGUI:
             self._log(f"⚠️ 统计保存失败: {e}")
 
     def _start_device(self, serial):
-        """启动指定设备的引擎（与场景控制页「启动」一致：同步配置→绑定→保存→启动）"""
+        """启动指定设备的引擎（使用设备独立配置或全局配置）"""
         if serial in self.engines and self.engines[serial].running:
             self._log(f"[{serial}] 已在运行中")
             return
-        self._sync_ui_to_cfg()
-        self.cfg["serial"] = serial
-        save_config(self.cfg)
+
+        # 获取设备的有效配置
+        device_cfg = self._get_effective_config(serial)
+        device_cfg["serial"] = serial
+
         self.device_combo.set(serial)
         self.dev_status.configure(text=f"设备: {serial}", foreground="green")
 
         self._draw_status("green")
         self.status_label.configure(text="运行中")
 
-        cfg = dict(self.cfg)
-        cfg["serial"] = serial
-        # 传递设备名称配置给引擎
-        cfg["device_names"] = self.cfg.get("device_names", {})
-        engine = AutoFightEngine(cfg, self.log_queue)
+        # 检查是否有独立配置
+        has_custom_config = self._device_configs.get(serial) is not None
+        if has_custom_config:
+            self._log(f"[{serial}] 使用设备独立配置")
+        else:
+            self._log(f"[{serial}] 使用全局配置")
+
+        # 传递全局的设备名称配置给引擎
+        device_cfg["device_names"] = self.cfg.get("device_names", {})
+
+        engine = AutoFightEngine(device_cfg, self.log_queue)
         # 统计恢复：优先用本次运行期间的旧引擎，否则读今日统计文件（按天重置）
         old_engine = self.engines.get(serial)
         if old_engine is not None:
@@ -1087,7 +1334,7 @@ class AutoFightGUI:
             engine.battle_count = stats.get("battle_count", 0)
             engine._last_loyalty_recovery = stats.get("last_loyalty", 0)
             engine.total_runtime = stats.get("total_runtime", 0) or 0
-        engine.coord_enabled = self.coord_enabled.get()
+        engine.coord_enabled = device_cfg.get("coord_enabled", True)
         self.engines[serial] = engine
         self.engine = engine
         t = threading.Thread(target=engine.run_loop, daemon=True)
@@ -1096,6 +1343,7 @@ class AutoFightGUI:
         self._update_device_row_buttons(serial)
         # 引擎启动后延迟更新按钮状态
         self.root.after(500, self._update_tab1_buttons)
+        self.root.after(500, lambda: self._update_device_row_buttons(serial))
         self._log(f"[{serial}] ▶ 引擎启动")
 
     def _stop_device(self, serial):
@@ -1107,6 +1355,7 @@ class AutoFightGUI:
                 engine._loyalty_stop_event.set()
         self._update_device_row_buttons(serial)
         self.root.after(500, self._update_tab1_buttons)
+        self.root.after(500, lambda: self._update_device_row_buttons(serial))
         self._log(f"[{serial}] ⏹ 正在停止...")
         self._save_device_stats()
 
@@ -1303,16 +1552,828 @@ class AutoFightGUI:
         ttk.Button(btn_f, text="确定", command=on_ok, bootstyle="primary", width=10).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_f, text="取消", command=dlg.destroy, width=10).pack(side=tk.LEFT, padx=5)
 
+        # 居中显示
+        dlg.update_idletasks()
+        self.root.update_idletasks()
+        pw = self.root.winfo_width()
+        ph = self.root.winfo_height()
+        px = self.root.winfo_x()
+        py = self.root.winfo_y()
+        ww = dlg.winfo_width()
+        wh = dlg.winfo_height()
+        x = px + (pw - ww) // 2
+        y = py + (ph - wh) // 2 - 30
+        if y < 0:
+            y = py + ph + 10
+        dlg.geometry(f"+{x}+{y}")
+
+    def _show_capture_blacklist_config(self):
+        """显示捕捉宝宝黑名单配置弹窗"""
+        # 获取当前黑名单配置
+        blacklist = self.cfg.get("capture_bb_blacklist", {})
+
+        # 创建弹窗
+        dlg = tk.Toplevel(self.root)
+        dlg.title("捕捉宝宝黑名单配置")
+        dlg.geometry("600x500")
+        dlg.resizable(True, True)
+        dlg.transient(self.root)
+        dlg.grab_set()
+
+        # 主容器
+        main = ttk.Frame(dlg, padding=20)
+        main.pack(fill=tk.BOTH, expand=True)
+        main.columnconfigure(0, weight=1)
+        main.rowconfigure(1, weight=1)
+
+        # 标题
+        title_frame = ttk.Frame(main)
+        title_frame.grid(row=0, column=0, sticky="ew", pady=(0, 15))
+        ttk.Label(title_frame, text="捕捉宝宝黑名单配置",
+                 font=("Microsoft YaHei", 12, "bold")).pack(side=tk.LEFT)
+        ttk.Label(title_frame, text="(指定哪些场景的哪些宝宝不捕捉)",
+                 foreground="gray", font=("Microsoft YaHei", 9)).pack(side=tk.LEFT, padx=(10, 0))
+
+        # 内容区域：左侧场景列表，右侧宝宝列表
+        content_frame = ttk.Frame(main)
+        content_frame.grid(row=1, column=0, sticky="nsew")
+        content_frame.columnconfigure(0, weight=1)
+        content_frame.columnconfigure(1, weight=2)
+
+        # 左侧场景列表
+        left_frame = ttk.Frame(content_frame)
+        left_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+
+        ttk.Label(left_frame, text="场景列表",
+                 font=("Microsoft YaHei", 10, "bold")).pack(pady=(0, 5))
+
+        scene_listbox = tk.Listbox(left_frame, font=("Microsoft YaHei", 10), height=15)
+        scene_scrollbar = ttk.Scrollbar(left_frame, orient=tk.VERTICAL, command=scene_listbox.yview)
+        scene_listbox.configure(yscrollcommand=scene_scrollbar.set)
+        scene_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scene_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # 右侧宝宝列表
+        right_frame = ttk.Frame(content_frame)
+        right_frame.grid(row=0, column=1, sticky="nsew")
+
+        ttk.Label(right_frame, text="黑名单宝宝 (双击删除)",
+                 font=("Microsoft YaHei", 10, "bold")).pack(pady=(0, 5))
+
+        bb_frame = ttk.Frame(right_frame)
+        bb_frame.pack(fill=tk.BOTH, expand=True)
+
+        bb_listbox = tk.Listbox(bb_frame, font=("Microsoft YaHei", 10), height=12)
+        bb_scrollbar = ttk.Scrollbar(bb_frame, orient=tk.VERTICAL, command=bb_listbox.yview)
+        bb_listbox.configure(yscrollcommand=bb_scrollbar.set)
+        bb_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        bb_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # 预定义场景列表
+        scenes = ["小西天", "小雷音寺", "龙窟五层", "凤巢四层", "凤巢五层", "子母河底", "女娲神迹", "须弥东界"]
+        for scene in scenes:
+            scene_listbox.insert(tk.END, scene)
+
+        # 存储当前选中的场景
+        current_scene = [None]
+
+        def on_scene_select(event):
+            """场景选中事件"""
+            selection = scene_listbox.curselection()
+            if not selection:
+                return
+            scene = scenes[selection[0]]
+            current_scene[0] = scene
+
+            # 显示该场景的黑名单宝宝
+            bb_listbox.delete(0, tk.END)
+            bb_list = blacklist.get(scene, [])
+            for bb in bb_list:
+                bb_listbox.insert(tk.END, bb)
+
+        def add_bb():
+            """添加宝宝到黑名单"""
+            scene = current_scene[0]
+            if not scene:
+                messagebox.showwarning("提示", "请先选择场景")
+                return
+            bb_name = bb_entry.get().strip()
+            if not bb_name:
+                messagebox.showwarning("提示", "请输入宝宝名称")
+                return
+
+            if scene not in blacklist:
+                blacklist[scene] = []
+            if bb_name not in blacklist[scene]:
+                blacklist[scene].append(bb_name)
+                bb_listbox.insert(tk.END, bb_name)
+                bb_entry.delete(0, tk.END)
+            else:
+                messagebox.showinfo("提示", "该宝宝已在黑名单中")
+
+        def remove_bb(event):
+            """双击删除宝宝"""
+            selection = bb_listbox.curselection()
+            if not selection:
+                return
+            scene = current_scene[0]
+            if not scene:
+                return
+
+            bb_name = bb_listbox.get(selection[0])
+            if scene in blacklist and bb_name in blacklist[scene]:
+                blacklist[scene].remove(bb_name)
+                bb_listbox.delete(selection[0])
+
+        def on_save():
+            """保存配置"""
+            self.cfg["capture_bb_blacklist"] = blacklist
+            save_config(self.cfg)
+            self._log("✅ 捕捉宝宝黑名单配置已保存")
+            dlg.destroy()
+
+        # 绑定事件
+        scene_listbox.bind("<<ListboxSelect>>", on_scene_select)
+        bb_listbox.bind("<Double-Button-1>", remove_bb)
+
+        # 添加宝宝按钮（在函数定义之后）
+        add_btn_frame = ttk.Frame(right_frame)
+        add_btn_frame.pack(fill=tk.X, pady=(10, 0))
+
+        bb_entry = ttk.Entry(add_btn_frame, width=20, font=("Microsoft YaHei", 9))
+        bb_entry.pack(side=tk.LEFT, padx=(0, 5))
+        add_bb_btn = ttk.Button(add_btn_frame, text="添加", width=8, bootstyle="success", command=add_bb)
+        add_bb_btn.pack(side=tk.LEFT)
+
+        # 底部按钮
+        btn_frame = ttk.Frame(main)
+        btn_frame.grid(row=2, column=0, pady=(15, 0))
+
+        ttk.Button(btn_frame, text="保存", command=on_save,
+                   bootstyle="success", width=12).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(btn_frame, text="取消", command=dlg.destroy,
+                   bootstyle="outline", width=12).pack(side=tk.LEFT)
+
+        # 居中显示
+        dlg.update_idletasks()
+        self.root.update_idletasks()
+        pw = self.root.winfo_width()
+        ph = self.root.winfo_height()
+        px = self.root.winfo_x()
+        py = self.root.winfo_y()
+        ww = dlg.winfo_width()
+        wh = dlg.winfo_height()
+        x = px + (pw - ww) // 2
+        y = py + (ph - wh) // 2 - 30
+        if y < 0:
+            y = py + ph + 10
+        dlg.geometry(f"+{x}+{y}")
+
+    def _show_device_detail(self, serial):
+        """显示设备配置详情弹窗（包含场景历史和配置信息）"""
+        engine = self.engines.get(serial)
+
+        # 创建弹窗
+        dlg = tk.Toplevel(self.root)
+        dlg.title(f"设备详情 - {serial}")
+        dlg.geometry("900x650")
+        dlg.resizable(True, True)
+        dlg.transient(self.root)
+        dlg.grab_set()
+
+        # 获取设备名称
+        dev_names = self.cfg.get("device_names", {})
+        dev_name = dev_names.get(serial, serial[:4])
+
+        # 使用 Notebook 分页显示场景历史和配置
+        notebook = ttk.Notebook(dlg)
+        notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        # ===== Tab 1: 场景历史 =====
+        history_frame = ttk.Frame(notebook, padding=15)
+        notebook.add(history_frame, text="场景历史")
+
+        # 标题
+        title_frame = ttk.Frame(history_frame)
+        title_frame.pack(fill=tk.X, pady=(0, 10))
+        ttk.Label(title_frame, text=f"设备：{dev_name} ({serial})",
+                  font=("Microsoft YaHei", 12, "bold")).pack(side=tk.LEFT)
+
+        # 表格容器
+        table_frame = ttk.Frame(history_frame)
+        table_frame.pack(fill=tk.BOTH, expand=True)
+
+        # 创建表格
+        columns = ("场景名称", "卡片(张)", "环(个)", "时长")
+        tree = ttk.Treeview(table_frame, columns=columns, show="headings", height=15)
+
+        # 设置列标题和宽度
+        tree.heading("场景名称", text="场景名称")
+        tree.heading("卡片(张)", text="卡片(张)")
+        tree.heading("环(个)", text="环(个)")
+        tree.heading("时长", text="时长")
+
+        tree.column("场景名称", width=200, anchor="center")
+        tree.column("卡片(张)", width=100, anchor="center")
+        tree.column("环(个)", width=100, anchor="center")
+        tree.column("时长", width=150, anchor="center")
+
+        # 添加滚动条
+        scrollbar = ttk.Scrollbar(table_frame, orient=tk.VERTICAL, command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # 填充数据
+        try:
+            # 如果引擎正在运行，从引擎获取实时数据
+            if engine:
+                history = engine.get_scene_history()
+            else:
+                # 设备未启动，从文件加载历史数据（支持多天）
+                history = load_scene_history_from_file(serial)
+
+            if not history:
+                tree.insert("", tk.END, values=("暂无场景记录", "--", "--", "--", "--"))
+            else:
+                # 按日期分组显示
+                current_date = None
+                for record in history:
+                    # 检查是否有日期字段（从文件加载的历史有日期）
+                    record_date = record.get("date", "")
+                    if record_date and record_date != current_date:
+                        current_date = record_date
+                        # 插入日期分隔行
+                        tree.insert("", tk.END, values=(f"📅 {record_date}", "---", "---", "---"),
+                                  tags=("date_row"))
+
+                    duration_seconds = int(record["duration"])
+                    if duration_seconds >= 60:
+                        minutes = duration_seconds // 60
+                        seconds = duration_seconds % 60
+                        duration_str = f"{minutes}分{seconds}秒"
+                    else:
+                        duration_str = f"{duration_seconds}秒"
+
+                    tree.insert("", tk.END, values=(
+                        record["name"],
+                        record["cards"],
+                        record["rings"],
+                        duration_str
+                    ))
+
+                # 设置日期行的样式
+                tree.tag_configure("date_row", background="#f0f0f0", foreground="#666")
+        except Exception as e:
+            tree.insert("", tk.END, values=(f"获取历史失败: {e}", "--", "--", "--", "--"))
+
+        # ===== Tab 2: 配置信息 =====
+        config_frame = ttk.Frame(notebook, padding=15)
+        notebook.add(config_frame, text="配置信息")
+
+        # 获取设备有效配置
+        device_cfg = self._get_effective_config(serial)
+        has_custom = self._device_configs.get(serial) is not None
+
+        # 配置来源提示
+        source_frame = ttk.Frame(config_frame)
+        source_frame.pack(fill=tk.X, pady=(0, 15))
+        if has_custom:
+            ttk.Label(source_frame, text="🔧 使用独立配置",
+                      foreground="#ff6b00", font=("Microsoft YaHei", 10, "bold")).pack(side=tk.LEFT)
+        else:
+            ttk.Label(source_frame, text="📋 使用全局配置",
+                      foreground="gray", font=("Microsoft YaHei", 10)).pack(side=tk.LEFT)
+
+        # 配置详情表格
+        config_table = ttk.Frame(config_frame)
+        config_table.pack(fill=tk.BOTH, expand=True)
+
+        # 关键配置项
+        key_configs = [
+            ("地图", device_cfg.get("map", "--")),
+            ("HP恢复方式", device_cfg.get("hp_method", "--")),
+            ("HP阈值", f"{device_cfg.get('hp_threshold', 0)}%"),
+            ("MP恢复方式", device_cfg.get("mp_method", "--")),
+            ("MP阈值", f"{device_cfg.get('mp_threshold', 0)}%"),
+            ("捕捉召唤兽", "是" if device_cfg.get("capture_bb_enabled") else "否"),
+            ("妙手空空", "是" if device_cfg.get("miaoshou_enabled") else "否"),
+            ("战斗模式", self._get_combat_mode_text(device_cfg)),
+            ("自动寻路", "是" if device_cfg.get("auto_path_enabled") else "否"),
+            ("坐标检测", "是" if device_cfg.get("coord_enabled") else "否"),
+            ("本地四小人", "是" if device_cfg.get("use_local_four_person") else "否"),
+            ("背包计数", "是" if device_cfg.get("check_pkg_counts") else "否"),
+            ("真实切场", "是" if device_cfg.get("use_real_scene_switch") else "否"),
+        ]
+
+        for i, (key, value) in enumerate(key_configs):
+            row = i // 2
+            col = (i % 2) * 2
+
+            ttk.Label(config_table, text=f"{key}：",
+                     font=("Microsoft YaHei", 9)).grid(row=row, column=col, sticky="e", padx=(0, 5), pady=3)
+            ttk.Label(config_table, text=value,
+                     font=("Microsoft YaHei", 9, "bold")).grid(row=row, column=col+1, sticky="w", padx=(0, 20), pady=3)
+
+        # 底部操作按钮
+        btn_frame = ttk.Frame(config_frame)
+        btn_frame.pack(fill=tk.X, pady=(15, 0))
+
+        ttk.Button(btn_frame, text="对比配置", command=lambda: self._compare_config(serial),
+                   bootstyle="info", width=12).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(btn_frame, text="复制配置", command=lambda: self._copy_config_to_devices(serial),
+                   bootstyle="warning", width=12).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(btn_frame, text="保存为模板", command=lambda: self._save_config_template(serial),
+                   bootstyle="success", width=12).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(btn_frame, text="清除历史", command=lambda: self._clear_scene_history(serial, dlg),
+                   bootstyle="danger", width=12).pack(side=tk.LEFT)
+
+        # 关闭按钮
+        close_frame = ttk.Frame(dlg, padding=10)
+        close_frame.pack(fill=tk.X)
+        ttk.Button(close_frame, text="关闭", command=dlg.destroy,
+                   bootstyle="primary", width=10).pack()
+
+        # 居中显示
+        dlg.update_idletasks()
+        self.root.update_idletasks()
+        pw = self.root.winfo_width()
+        ph = self.root.winfo_height()
+        px = self.root.winfo_x()
+        py = self.root.winfo_y()
+        ww = dlg.winfo_width()
+        wh = dlg.winfo_height()
+        x = px + (pw - ww) // 2
+        y = py + (ph - wh) // 2 - 30
+        if y < 0:
+            y = py + ph + 10
+        dlg.geometry(f"+{x}+{y}")
+
+    def _clear_scene_history(self, serial, parent_dlg):
+        """清除设备场景历史"""
+        from datetime import timedelta
+
+        # 创建选择弹窗
+        clear_dlg = tk.Toplevel(parent_dlg)
+        clear_dlg.title("清除场景历史")
+        clear_dlg.geometry("400x300")
+        clear_dlg.resizable(False, False)
+        clear_dlg.transient(parent_dlg)
+        clear_dlg.grab_set()
+
+        ttk.Label(clear_dlg, text="选择要清除的历史",
+                  font=("Microsoft YaHei", 12, "bold")).pack(pady=(15, 10))
+
+        ttk.Label(clear_dlg, text=f"设备: {serial}",
+                  foreground="gray").pack(pady=(0, 15))
+
+        # 选项
+        options_frame = ttk.Frame(clear_dlg)
+        options_frame.pack(fill=tk.X, padx=40)
+
+        clear_var = tk.StringVar(value="today")
+
+        ttk.Radiobutton(options_frame, text="仅清除今日历史",
+                       variable=clear_var, value="today").pack(anchor="w", pady=5)
+        ttk.Radiobutton(options_frame, text="清除最近7天历史",
+                       variable=clear_var, value="week").pack(anchor="w", pady=5)
+        ttk.Radiobutton(options_frame, text="清除所有历史",
+                       variable=clear_var, value="all").pack(anchor="w", pady=5)
+
+        def on_confirm():
+            choice = clear_var.get()
+            if choice == "today":
+                # 只删除今天的历史文件
+                today = datetime.now().strftime("%Y-%m-%d")
+                files = [get_scene_history_file(serial, today)]
+                msg = f"确定要清除设备 [{serial}] 今日的场景历史吗？"
+            elif choice == "week":
+                # 删除最近7天的历史文件
+                from datetime import timedelta
+                files = []
+                today = datetime.now()
+                for i in range(7):
+                    date = today - timedelta(days=i)
+                    date_str = date.strftime("%Y-%m-%d")
+                    files.append(get_scene_history_file(serial, date_str))
+                msg = f"确定要清除设备 [{serial}] 最近7天的场景历史吗？"
+            else:
+                # 删除所有历史文件
+                import glob
+                pattern = os.path.join(SCENE_HISTORY_DIR, f"scene_history_{serial}_*.json")
+                files = glob.glob(pattern)
+                msg = f"确定要清除设备 [{serial}] 所有的场景历史吗？"
+
+            clear_dlg.destroy()
+
+            if messagebox.askyesno("确认清除", f"{msg}\n\n此操作不可撤销。"):
+                cleared_count = 0
+                for history_file in files:
+                    try:
+                        if os.path.exists(history_file):
+                            os.remove(history_file)
+                            cleared_count += 1
+                    except Exception as e:
+                        self._log(f"⚠️ 清除历史文件失败 {history_file}: {e}")
+
+                # 如果设备正在运行，也清除内存中的历史
+                engine = self.engines.get(serial)
+                if engine and clear_var.get() == "today":
+                    engine._scene_history = []
+                    engine._save_scene_history()
+
+                self._log(f"[{serial}] 已清除 {cleared_count} 个历史文件")
+                messagebox.showinfo("完成", f"已清除 {cleeled_count} 个历史文件")
+
+                # 刷新详情弹窗
+                parent_dlg.destroy()
+                self._show_device_detail(serial)
+
+        btn_frame = ttk.Frame(clear_dlg)
+        btn_frame.pack(pady=15)
+
+        ttk.Button(btn_frame, text="确定清除", command=on_confirm,
+                   bootstyle="danger", width=12).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(btn_frame, text="取消", command=clear_dlg.destroy,
+                   bootstyle="outline", width=12).pack(side=tk.LEFT)
+
+        # 居中显示
+        clear_dlg.update_idletasks()
+        parent_dlg.update_idletasks()
+        pw = parent_dlg.winfo_width()
+        ph = parent_dlg.winfo_height()
+        px = parent_dlg.winfo_x()
+        py = parent_dlg.winfo_y()
+        ww = clear_dlg.winfo_width()
+        wh = clear_dlg.winfo_height()
+        x = px + (pw - ww) // 2
+        y = py + (ph - wh) // 2 - 30
+        if y < 0:
+            y = py + ph + 10
+        clear_dlg.geometry(f"+{x}+{y}")
+
+    def _get_combat_mode_text(self, cfg):
+        """获取战斗模式文本"""
+        if cfg.get("skill_then_auto"):
+            return "技能后自动"
+        elif cfg.get("normal_then_auto"):
+            return "普攻后自动"
+        elif cfg.get("defend_then_auto"):
+            return "防御后自动"
+        elif cfg.get("direct_auto"):
+            return "直接自动"
+        elif cfg.get("escape_enabled"):
+            return "逃跑"
+        else:
+            return "未设置"
+
+    def _compare_config(self, serial):
+        """对比设备配置与全局配置的差异"""
+        device_cfg = self._get_effective_config(serial)
+        has_custom = self._device_configs.get(serial) is not None
+
+        if not has_custom:
+            messagebox.showinfo("配置对比", f"设备 [{serial}] 使用的是全局配置，无差异。")
+            return
+
+        # 创建对比弹窗
+        dlg = tk.Toplevel(self.root)
+        dlg.title(f"配置对比 - {serial}")
+        dlg.geometry("900x600")
+        dlg.resizable(True, True)
+        dlg.transient(self.root)
+        dlg.grab_set()
+
+        # 标题
+        title_frame = ttk.Frame(dlg, padding=10)
+        title_frame.pack(fill=tk.X)
+        ttk.Label(title_frame, text="配置差异对比",
+                  font=("Microsoft YaHei", 14, "bold")).pack(side=tk.LEFT)
+
+        # 表头
+        header_frame = ttk.Frame(dlg, padding=(10, 0))
+        header_frame.pack(fill=tk.X)
+        ttk.Label(header_frame, text="配置项", width=20, font=("Microsoft YaHei", 9, "bold"),
+                 anchor="center").grid(row=0, column=0, padx=1)
+        ttk.Label(header_frame, text="全局配置", width=25, font=("Microsoft YaHei", 9, "bold"),
+                 foreground="#666", anchor="center").grid(row=0, column=1, padx=1)
+        ttk.Label(header_frame, text="设备配置", width=25, font=("Microsoft YaHei", 9, "bold"),
+                 foreground="#ff6b00", anchor="center").grid(row=0, column=2, padx=1)
+
+        # 对比容器
+        canvas = tk.Canvas(dlg, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(dlg, orient=tk.VERTICAL, command=canvas.yview)
+        compare_frame = ttk.Frame(canvas)
+
+        compare_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=compare_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(10, 0), pady=10)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y, pady=10)
+
+        # 配置项对比
+        config_keys = [
+            ("地图", "map"),
+            ("HP恢复", "hp_method"),
+            ("HP阈值", "hp_threshold"),
+            ("MP恢复", "mp_method"),
+            ("MP阈值", "mp_threshold"),
+            ("捕捉", "capture_bb_enabled"),
+            ("妙手", "miaoshou_enabled"),
+            ("战斗模式", "combat_mode"),
+            ("自动寻路", "auto_path_enabled"),
+            ("坐标检测", "coord_enabled"),
+            ("本地四小人", "use_local_four_person"),
+            ("背包计数", "check_pkg_counts"),
+            ("真实切场", "use_real_scene_switch"),
+        ]
+
+        for i, (label, key) in enumerate(config_keys):
+            # 获取全局配置值
+            global_val = self._format_config_value(key, self.cfg)
+
+            # 获取设备配置值
+            device_val = self._format_config_value(key, device_cfg)
+
+            # 判断是否相同
+            is_different = global_val != device_val
+            bg_color = "#fff3cd" if is_different else "white"
+            fg_color = "#ff6b00" if is_different else "#333"
+
+            # 配置项名
+            ttk.Label(compare_frame, text=label, width=18, anchor="e",
+                     font=("Microsoft YaHei", 9)).grid(row=i, column=0, padx=5, pady=3, sticky="e")
+
+            # 全局配置值
+            ttk.Label(compare_frame, text=global_val, width=23, anchor="center",
+                     foreground="#666", font=("Microsoft YaHei", 9)).grid(
+                row=i, column=1, padx=5, pady=3)
+
+            # 设备配置值
+            ttk.Label(compare_frame, text=device_val, width=23, anchor="center",
+                     foreground=fg_color, font=("Microsoft YaHei", 9, "bold" if is_different else "")).grid(
+                row=i, column=2, padx=5, pady=3)
+
+        # 底部按钮
+        btn_frame = ttk.Frame(dlg, padding=10)
+        btn_frame.pack(fill=tk.X)
+        ttk.Button(btn_frame, text="关闭", command=dlg.destroy,
+                   bootstyle="primary", width=10).pack(side=tk.RIGHT, padx=(0, 10))
+        ttk.Button(btn_frame, text="应用全局配置",
+                   command=lambda: self._apply_global_config(serial, dlg),
+                   bootstyle="warning", width=15).pack(side=tk.RIGHT)
+
+    def _format_config_value(self, key, cfg):
+        """格式化配置值用于显示"""
+        value = cfg.get(key, "")
+        if key == "combat_mode":
+            return self._get_combat_mode_text(cfg)
+        elif key in ["capture_bb_enabled", "miaoshou_enabled", "auto_path_enabled",
+                     "coord_enabled", "use_local_four_person", "check_pkg_counts",
+                     "use_real_scene_switch"]:
+            return "是" if value else "否"
+        elif key in ["hp_threshold", "mp_threshold"]:
+            return f"{value}%"
+        else:
+            return str(value) if value != "" else "--"
+
+    def _apply_global_config(self, serial, dialog):
+        """将全局配置应用到设备（清除设备独立配置）"""
+        if messagebox.askyesno("确认",
+            f"确定要将全局配置应用到设备 [{serial}] 吗？\n\n"
+            "这将清除该设备的独立配置，之后将使用全局配置。"):
+            device_file = get_device_config_file(serial)
+            try:
+                if os.path.exists(device_file):
+                    os.remove(device_file)
+                self._device_configs[serial] = None
+                self._log(f"[{serial}] 已清除独立配置，将使用全局配置")
+                dialog.destroy()
+                self._refresh_device_tab()
+            except Exception as e:
+                messagebox.showerror("错误", f"应用配置失败：{e}")
+
+    def _copy_config_to_devices(self, source_serial):
+        """复制配置到其他设备"""
+        # 获取源设备配置
+        source_cfg = self._get_effective_config(source_serial)
+        dev_names = self.cfg.get("device_names", {})
+        source_name = dev_names.get(source_serial, source_serial[:4])
+
+        # 创建选择弹窗
+        dlg = tk.Toplevel(self.root)
+        dlg.title("复制配置")
+        dlg.geometry("450x500")
+        dlg.resizable(False, False)
+        dlg.transient(self.root)
+        dlg.grab_set()
+
+        # 标题
+        title_frame = ttk.Frame(dlg, padding=15)
+        title_frame.pack(fill=tk.X)
+        ttk.Label(title_frame,
+                 text=f"从 [{source_name}] 复制配置到：",
+                 font=("Microsoft YaHei", 11)).pack(side=tk.LEFT)
+
+        # 设备列表
+        list_frame = ttk.Frame(dlg)
+        list_frame.pack(fill=tk.BOTH, expand=True, padx=15)
+
+        # 获取所有设备（排除源设备）
+        all_devices = list_adb_devices()
+        target_devices = [d for d in all_devices if d != source_serial]
+
+        if not target_devices:
+            ttk.Label(list_frame, text="没有其他设备可供复制",
+                     foreground="gray").pack(pady=20)
+        else:
+            # 创建滚动区域
+            canvas = tk.Canvas(list_frame, highlightthickness=0)
+            scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=canvas.yview)
+            check_frame = ttk.Frame(canvas)
+
+            check_frame.bind(
+                "<Configure>",
+                lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+            )
+
+            canvas.create_window((0, 0), window=check_frame, anchor="nw")
+            canvas.configure(yscrollcommand=scrollbar.set)
+
+            canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+            # 设备复选框
+            check_vars = {}
+            for i, serial in enumerate(target_devices):
+                var = tk.BooleanVar(value=False)
+                check_vars[serial] = var
+                name = dev_names.get(serial, serial[:4])
+                cb = ttk.Checkbutton(check_frame, text=f"{name} ({serial})",
+                                    variable=var, bootstyle="primary")
+                cb.pack(anchor="w", pady=2, padx=5)
+
+        # 按钮区域
+        btn_frame = ttk.Frame(dlg, padding=15)
+        btn_frame.pack(fill=tk.X)
+
+        def on_copy():
+            selected = [s for s, v in check_vars.items() if v.get()]
+            if not selected:
+                messagebox.showwarning("提示", "请选择要复制到的设备")
+                return
+
+            if messagebox.askyesno("确认",
+                f"确定要将配置复制到 {len(selected)} 台设备吗？\n\n"
+                "这将会覆盖这些设备的现有独立配置。"):
+                for serial in selected:
+                    save_device_config(serial, source_cfg)
+                    self._device_configs[serial] = source_cfg
+                    self._log(f"[{serial}] 已复制配置")
+                self._log(f"✅ 配置已复制到 {len(selected)} 台设备")
+                dlg.destroy()
+                self._refresh_device_tab()
+
+        ttk.Button(btn_frame, text="复制", command=on_copy,
+                   bootstyle="success", width=12).pack(side=tk.RIGHT, padx=(0, 10))
+        ttk.Button(btn_frame, text="取消", command=dlg.destroy,
+                   bootstyle="outline", width=12).pack(side=tk.RIGHT)
+
+        # 居中显示
+        dlg.update_idletasks()
+        self.root.update_idletasks()
+        pw = self.root.winfo_width()
+        ph = self.root.winfo_height()
+        px = self.root.winfo_x()
+        py = self.root.winfo_y()
+        ww = dlg.winfo_width()
+        wh = dlg.winfo_height()
+        x = px + (pw - ww) // 2
+        y = py + (ph - wh) // 2 - 30
+        if y < 0:
+            y = py + ph + 10
+        dlg.geometry(f"+{x}+{y}")
+
+    def _save_config_template(self, serial):
+        """将设备配置保存为模板"""
+        device_cfg = self._get_effective_config(serial)
+        dev_names = self.cfg.get("device_names", {})
+        dev_name = dev_names.get(serial, serial[:4])
+
+        # 创建保存模板弹窗
+        dlg = tk.Toplevel(self.root)
+        dlg.title("保存配置模板")
+        dlg.geometry("400x250")
+        dlg.resizable(False, False)
+        dlg.transient(self.root)
+        dlg.grab_set()
+
+        # 标题
+        ttk.Label(dlg, text="保存配置模板",
+                 font=("Microsoft YaHei", 12, "bold")).pack(pady=(15, 10))
+
+        ttk.Label(dlg, text=f"从设备 [{dev_name}] 保存模板",
+                 foreground="gray").pack(pady=(0, 15))
+
+        # 模板名称输入
+        input_frame = ttk.Frame(dlg)
+        input_frame.pack(fill=tk.X, padx=40, pady=(0, 20))
+
+        ttk.Label(input_frame, text="模板名称：").pack(anchor="w")
+        entry = ttk.Entry(input_frame, width=30, font=("Microsoft YaHei", 11))
+        entry.pack(fill=tk.X, pady=(5, 0))
+        entry.insert(0, f"{dev_name}配置")
+        entry.selection_range(0, tk.END)
+        entry.focus_set()
+
+        # 备注
+        ttk.Label(input_frame, text="备注（可选）：").pack(anchor="w", pady=(10, 0))
+        note_entry = ttk.Entry(input_frame, width=30, font=("Microsoft YaHei", 10))
+        note_entry.pack(fill=tk.X, pady=(5, 0))
+
+        # 按钮
+        btn_frame = ttk.Frame(dlg)
+        btn_frame.pack(pady=10)
+
+        def on_save():
+            name = entry.get().strip()
+            if not name:
+                messagebox.showwarning("提示", "请输入模板名称")
+                return
+
+            # 保存模板
+            template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config_templates")
+            os.makedirs(template_dir, exist_ok=True)
+
+            template_file = os.path.join(template_dir, f"{name}.json")
+            template_data = {
+                "name": name,
+                "note": note_entry.get().strip(),
+                "config": device_cfg,
+                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+
+            try:
+                with open(template_file, "w", encoding="utf-8") as f:
+                    json.dump(template_data, f, ensure_ascii=False, indent=2)
+                self._log(f"✅ 配置模板已保存: {name}")
+                dlg.destroy()
+            except Exception as e:
+                messagebox.showerror("错误", f"保存模板失败：{e}")
+
+        ttk.Button(btn_frame, text="保存", command=on_save,
+                   bootstyle="success", width=12).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(btn_frame, text="取消", command=dlg.destroy,
+                   bootstyle="outline", width=12).pack(side=tk.LEFT)
+
+        # 居中显示
+        dlg.update_idletasks()
+        self.root.update_idletasks()
+        pw = self.root.winfo_width()
+        ph = self.root.winfo_height()
+        px = self.root.winfo_x()
+        py = self.root.winfo_y()
+        ww = dlg.winfo_width()
+        wh = dlg.winfo_height()
+        x = px + (pw - ww) // 2
+        y = py + (ph - wh) // 2 - 30
+        if y < 0:
+            y = py + ph + 10
+        dlg.geometry(f"+{x}+{y}")
+
     # ---------- 设备 ----------
     def _refresh_devices(self):
-        """刷新设备下拉列表"""
+        """刷新设备下拉列表（显示设备名称）"""
         devices = list_adb_devices()
-        self.device_combo["values"] = devices
-        if devices:
-            if self.cfg.get("serial") in devices:
-                self.device_combo.set(self.cfg["serial"])
+        dev_names = self.cfg.get("device_names", {})
+
+        # 构建显示列表：设备名称 (序列号)
+        display_list = []
+        self._serial_to_display = {}  # 序列号 -> 显示文本
+        self._display_to_serial = {}  # 显示文本 -> 序列号
+
+        for serial in devices:
+            name = dev_names.get(serial, "")
+            if name:
+                display_text = f"{name} ({serial})"
             else:
-                self.device_combo.set(devices[0])
+                display_text = serial
+            display_list.append(display_text)
+            self._serial_to_display[serial] = display_text
+            self._display_to_serial[display_text] = serial
+
+        self.device_combo["values"] = display_list
+        if devices:
+            current_serial = self.cfg.get("serial", "")
+            if current_serial in self._serial_to_display:
+                self.device_combo.set(self._serial_to_display[current_serial])
+            else:
+                self.device_combo.set(display_list[0])
                 self.cfg["serial"] = devices[0]
             self.dev_status.configure(text=f"设备: {self.cfg['serial']}", foreground="green")
             self._update_tab1_buttons()
@@ -1326,8 +2387,10 @@ class AutoFightGUI:
         """下拉选择设备时更新按钮状态"""
         sel = self.device_combo.get()
         if sel:
-            self.cfg["serial"] = sel
-            self.dev_status.configure(text=f"设备: {sel}", foreground="green")
+            # 从显示文本中提取序列号
+            serial = self._display_to_serial.get(sel, sel)
+            self.cfg["serial"] = serial
+            self.dev_status.configure(text=f"设备: {serial}", foreground="green")
             self._update_tab1_buttons()
 
     def _update_tab1_buttons(self):
@@ -1349,6 +2412,20 @@ class AutoFightGUI:
             return
         self._sync_ui_to_cfg()
         save_config(self.cfg)
+
+        # 检查是否要为当前设备创建独立配置
+        if self._device_configs.get(serial) is None:
+            # 设备没有独立配置，询问用户是否要创建
+            result = messagebox.askyesno(
+                "设备配置",
+                f"当前设备 [{serial}] 没有独立配置，将使用全局配置启动。\n\n"
+                "是否要为此设备创建独立配置？\n"
+                "（选择「是」将保存当前设置为该设备的独立配置，"
+                "之后修改此设备的配置不会影响其他设备）"
+            )
+            if result:
+                self._save_device_config(serial)
+
         self._start_device(serial)
 
     def stop_engine(self):
@@ -1369,6 +2446,8 @@ class AutoFightGUI:
         if not serial:
             messagebox.showwarning("提示", "请先选择一个设备")
             return
+        # 从显示文本中提取序列号
+        serial = self._display_to_serial.get(serial, serial)
         self.cfg["serial"] = serial
         save_config(self.cfg)
         self.dev_status.configure(text=f"设备: {serial}", foreground="#0d6efd")
@@ -1383,8 +2462,8 @@ class AutoFightGUI:
         self.root.after(100, self._update_tab1_buttons)
         self.root.after(150, self._refresh_devices)
         self.root.after(200, self._refresh_device_tab)
-        self.hp_display.configure(text="HP: --%")
-        self.mp_display.configure(text="MP: --%")
+        self.hp_display.configure(text="气血: --%")
+        self.mp_display.configure(text="魔法: --%")
         self.bb_display.configure(text="BB: --%")
         self.coord_display.configure(text="--")
         self.battle_display.configure(text="⚔ -- 场")
@@ -1419,8 +2498,8 @@ class AutoFightGUI:
                     mp = self.engine.last_mp
                     bb = self.engine.last_bb
                     no_bb = self.engine.has_no_bb
-                    self.hp_display.configure(text=f"HP: {hp:.0f}%")
-                    self.mp_display.configure(text=f"MP: {mp:.0f}%")
+                    self.hp_display.configure(text=f"气血: {hp:.0f}%")
+                    self.mp_display.configure(text=f"魔法: {mp:.0f}%")
                     self.bb_display.configure(text=f"BB: {'--' if no_bb else f'{bb:.0f}%'}")
                     # 坐标显示
                     coord = self.engine.last_coord
@@ -1452,6 +2531,11 @@ class AutoFightGUI:
                                               + (time.time() - eng.start_time))
                                 w["dur"].configure(text=f"{elapsed // 60:02d}:{elapsed % 60:02d}")
                             w["status"].configure(text="运行中", foreground="green")
+                    # 同步更新总计行（所有运行中设备的卡片/环总数）
+                    if getattr(self, "_total_widgets", None):
+                        tc, th = self._compute_total_counts()
+                        self._total_widgets["card"].configure(text=str(tc))
+                        self._total_widgets["huan"].configure(text=str(th))
         except queue.Empty:
             pass
         self.root.after(300, self._poll_log)
@@ -1743,9 +2827,31 @@ class AutoFightGUI:
         pass
 
     def _save_cfg(self):
+        serial = self.cfg.get("serial", "")
         self._sync_ui_to_cfg()
+
+        # 如果有选中的设备，询问保存为全局配置还是设备独立配置
+        if serial:
+            result = messagebox.askyesnocancel(
+                "保存配置",
+                f"当前选中设备：[{serial}]\n\n"
+                "「是」：保存为该设备的独立配置\n"
+                "「否」：保存为全局配置（影响所有使用全局配置的设备）\n"
+                "「取消」：不保存"
+            )
+            if result is True:  # 是 - 保存为设备独立配置
+                self._save_device_config(serial)
+                return
+            elif result is False:  # 否 - 保存为全局配置
+                save_config(self.cfg)
+                self._log("✅ 全局配置已保存")
+                return
+            else:  # 取消
+                return
+
+        # 没有选中设备，直接保存为全局配置
         save_config(self.cfg)
-        self._log("✅ 配置已保存")
+        self._log("✅ 全局配置已保存")
 
 
     def _test_loyalty_recovery(self):
@@ -1822,6 +2928,296 @@ class AutoFightGUI:
         else:
             self.root.destroy()
 
+    def _show_config_templates(self):
+        """显示配置模板管理弹窗"""
+        # 创建模板管理弹窗
+        dlg = tk.Toplevel(self.root)
+        dlg.title("配置模板管理")
+        dlg.geometry("700x550")
+        dlg.resizable(True, True)
+        dlg.transient(self.root)
+        dlg.grab_set()
+
+        # 主容器
+        main = ttk.Frame(dlg, padding=20)
+        main.pack(fill=tk.BOTH, expand=True)
+        main.columnconfigure(0, weight=1)
+        main.rowconfigure(1, weight=1)
+
+        # 标题区域
+        title_frame = ttk.Frame(main)
+        title_frame.grid(row=0, column=0, sticky="ew", pady=(0, 15))
+
+        ttk.Label(title_frame, text="配置模板",
+                 font=("Microsoft YaHei", 14, "bold")).pack(side=tk.LEFT)
+
+        ttk.Button(title_frame, text="从当前配置创建",
+                  command=lambda: self._create_template_from_current(dlg),
+                  bootstyle="success", width=15).pack(side=tk.RIGHT)
+
+        # 居中显示
+        dlg.update_idletasks()
+        self.root.update_idletasks()
+        pw = self.root.winfo_width()
+        ph = self.root.winfo_height()
+        px = self.root.winfo_x()
+        py = self.root.winfo_y()
+        ww = dlg.winfo_width()
+        wh = dlg.winfo_height()
+        x = px + (pw - ww) // 2
+        y = py + (ph - wh) // 2 - 30
+        if y < 0:
+            y = py + ph + 10
+        dlg.geometry(f"+{x}+{y}")
+
+        # 模板列表区域
+        list_frame = ttk.Frame(main)
+        list_frame.grid(row=1, column=0, sticky="nsew")
+        list_frame.columnconfigure(0, weight=1)
+        list_frame.rowconfigure(0, weight=1)
+
+        # 创建表格
+        columns = ("模板名称", "备注", "创建时间", "操作")
+        tree = ttk.Treeview(list_frame, columns=columns, show="headings", height=10)
+
+        # 设置列标题和宽度
+        tree.heading("模板名称", text="模板名称")
+        tree.heading("备注", text="备注")
+        tree.heading("创建时间", text="创建时间")
+        tree.heading("操作", text="操作")
+
+        tree.column("模板名称", width=180, anchor="w")
+        tree.column("备注", width=200, anchor="w")
+        tree.column("创建时间", width=150, anchor="center")
+        tree.column("操作", width=120, anchor="center")
+
+        # 添加滚动条
+        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # 存储树控件
+        self._template_tree = tree
+
+        # 加载模板列表
+        def load_templates():
+            tree.delete(*tree.get_children())
+            template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config_templates")
+            if not os.path.exists(template_dir):
+                return
+
+            for filename in os.listdir(template_dir):
+                if filename.endswith(".json"):
+                    filepath = os.path.join(template_dir, filename)
+                    try:
+                        with open(filepath, "r", encoding="utf-8") as f:
+                            template = json.load(f)
+
+                        name = template.get("name", filename[:-5])
+                        note = template.get("note", "")
+                        created = template.get("created_at", "")
+
+                        tree.insert("", tk.END, values=(
+                            name,
+                            note,
+                            created,
+                            "应用 | 删除"
+                        ), tags=(filepath,))
+
+                    except Exception as e:
+                        self._log(f"⚠️ 加载模板失败 {filename}: {e}")
+
+        # 绑定双击事件
+        def on_double_click(event):
+            item = tree.selection()
+            if item:
+                values = tree.item(item, "values")
+                filepath = tree.item(item, "tags")[0] if tree.item(item, "tags") else ""
+                # 获取点击位置判断操作
+                region = tree.identify_region(event.x, event.y)
+                if region == "cell":
+                    column = tree.identify_column(event.x)
+                    if column == "#4":  # 操作列
+                        # 显示操作菜单
+                        self._show_template_menu(event, filepath, item, dlg)
+
+        tree.bind("<Double-1>", on_double_click)
+
+        load_templates()
+
+        # 底部按钮
+        btn_frame = ttk.Frame(main)
+        btn_frame.grid(row=2, column=0, sticky="ew", pady=(15, 0))
+
+        ttk.Button(btn_frame, text="刷新列表",
+                  command=load_templates, bootstyle="outline", width=12).pack(side=tk.LEFT)
+        ttk.Button(btn_frame, text="关闭", command=dlg.destroy,
+                  bootstyle="primary", width=12).pack(side=tk.RIGHT)
+
+    def _show_template_menu(self, event, filepath, item, parent_dlg):
+        """显示模板操作菜单"""
+        menu = tk.Menu(parent_dlg, tearoff=0)
+        menu.add_command(label="应用到当前设备",
+                        command=lambda: self._apply_template(filepath, parent_dlg))
+        menu.add_command(label="应用到选中设备",
+                        command=lambda: self._apply_template_to_selected(filepath, parent_dlg))
+        menu.add_separator()
+        menu.add_command(label="删除模板",
+                        command=lambda: self._delete_template(filepath, item, parent_dlg))
+
+        menu.post(event.x_root, event.y_root)
+
+    def _apply_template(self, filepath, parent_dlg):
+        """应用模板到当前设备"""
+        serial = self.cfg.get("serial", "")
+        if not serial:
+            messagebox.showwarning("提示", "请先在场景控制页选择设备")
+            return
+
+        if not self._apply_template_to_device(filepath, serial):
+            return
+
+        messagebox.showinfo("成功", f"模板已应用到设备 [{serial}]")
+        parent_dlg.destroy()
+        self._refresh_device_tab()
+
+    def _apply_template_to_selected(self, filepath, parent_dlg):
+        """应用模板到选中的设备"""
+        selected = self._selected_serials()
+        if not selected:
+            messagebox.showwarning("提示", "请先在设备管理页勾选设备")
+            return
+
+        if messagebox.askyesno("确认",
+            f"确定要将模板应用到 {len(selected)} 台设备吗？\n\n"
+            "这将会覆盖这些设备的现有独立配置。"):
+            for serial in selected:
+                self._apply_template_to_device(filepath, serial)
+            messagebox.showinfo("成功", f"模板已应用到 {len(selected)} 台设备")
+            parent_dlg.destroy()
+            self._refresh_device_tab()
+
+    def _apply_template_to_device(self, filepath, serial):
+        """应用模板到指定设备"""
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                template = json.load(f)
+
+            config = template.get("config", {})
+            save_device_config(serial, config)
+            self._device_configs[serial] = config
+            self._log(f"[{serial}] 已应用模板: {template.get('name', '未知')}")
+            return True
+
+        except Exception as e:
+            messagebox.showerror("错误", f"应用模板失败：{e}")
+            return False
+
+    def _delete_template(self, filepath, item, parent_dlg):
+        """删除模板"""
+        if messagebox.askyesno("确认删除", "确定要删除此模板吗？"):
+            try:
+                os.remove(filepath)
+                if hasattr(self, "_template_tree"):
+                    self._template_tree.delete(item)
+                self._log("✅ 模板已删除")
+            except Exception as e:
+                messagebox.showerror("错误", f"删除模板失败：{e}")
+
+    def _create_template_from_current(self, parent_dlg):
+        """从当前UI配置创建模板"""
+        serial = self.cfg.get("serial", "")
+
+        # 创建保存模板弹窗
+        dlg = tk.Toplevel(parent_dlg)
+        dlg.title("保存配置模板")
+        dlg.geometry("400x250")
+        dlg.resizable(False, False)
+        dlg.transient(parent_dlg)
+        dlg.grab_set()
+
+        # 标题
+        ttk.Label(dlg, text="保存配置模板",
+                 font=("Microsoft YaHei", 12, "bold")).pack(pady=(15, 10))
+
+        source_text = f"从当前配置保存" if not serial else f"从设备 [{serial}] 配置保存"
+        ttk.Label(dlg, text=source_text,
+                 foreground="gray").pack(pady=(0, 15))
+
+        # 模板名称输入
+        input_frame = ttk.Frame(dlg)
+        input_frame.pack(fill=tk.X, padx=40, pady=(0, 20))
+
+        ttk.Label(input_frame, text="模板名称：").pack(anchor="w")
+        entry = ttk.Entry(input_frame, width=30, font=("Microsoft YaHei", 11))
+        entry.pack(fill=tk.X, pady=(5, 0))
+        default_name = f"配置模板_{datetime.now().strftime('%m%d_%H%M')}"
+        entry.insert(0, default_name)
+        entry.selection_range(0, tk.END)
+        entry.focus_set()
+
+        # 备注
+        ttk.Label(input_frame, text="备注（可选）：").pack(anchor="w", pady=(10, 0))
+        note_entry = ttk.Entry(input_frame, width=30, font=("Microsoft YaHei", 10))
+        note_entry.pack(fill=tk.X, pady=(5, 0))
+
+        # 按钮
+        btn_frame = ttk.Frame(dlg)
+        btn_frame.pack(pady=10)
+
+        def on_save():
+            name = entry.get().strip()
+            if not name:
+                messagebox.showwarning("提示", "请输入模板名称")
+                return
+
+            # 同步UI到配置
+            self._sync_ui_to_cfg()
+
+            # 保存模板
+            template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config_templates")
+            os.makedirs(template_dir, exist_ok=True)
+
+            template_file = os.path.join(template_dir, f"{name}.json")
+            template_data = {
+                "name": name,
+                "note": note_entry.get().strip(),
+                "config": self.cfg,
+                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+
+            try:
+                with open(template_file, "w", encoding="utf-8") as f:
+                    json.dump(template_data, f, ensure_ascii=False, indent=2)
+                self._log(f"✅ 配置模板已保存: {name}")
+                dlg.destroy()
+                parent_dlg.destroy()
+                # 重新打开模板管理窗口
+                self._show_config_templates()
+            except Exception as e:
+                messagebox.showerror("错误", f"保存模板失败：{e}")
+
+        ttk.Button(btn_frame, text="保存", command=on_save,
+                   bootstyle="success", width=12).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(btn_frame, text="取消", command=dlg.destroy,
+                   bootstyle="outline", width=12).pack(side=tk.LEFT)
+
+        # 居中显示（相对于父窗口）
+        dlg.update_idletasks()
+        parent_dlg.update_idletasks()
+        px = parent_dlg.winfo_x()
+        py = parent_dlg.winfo_y()
+        pw = parent_dlg.winfo_width()
+        ph = parent_dlg.winfo_height()
+        ww = dlg.winfo_width()
+        wh = dlg.winfo_height()
+        x = px + (pw - ww) // 2
+        y = py + (ph - wh) // 2 - 30
+        if y < 0:
+            y = py + ph + 10
+        dlg.geometry(f"+{x}+{y}")
+
     def run(self):
         self.root.mainloop()
 
@@ -1840,6 +3236,9 @@ class SceneSettingsDialog:
         self.cfg_list = cfg_list or []
         self.result = None
         self.row_widgets = []
+        self.row_frames = []  # 存储行框架用于拖动排序
+        self.drag_row = None  # 当前拖动的行
+        self.drag_start_y = 0  # 拖动起始Y坐标
 
         self.win = tk.Toplevel(parent)
         self.win.title("场景之妙手空空")
@@ -1869,48 +3268,47 @@ class SceneSettingsDialog:
         self.win.geometry(f"+{x}+{y}")
 
     def _build_ui(self):
-        main = ttk.Frame(self.win, padding=15)
+        main = ttk.Frame(self.win, padding=20)
         main.pack(fill=tk.BOTH, expand=True)
         main.columnconfigure(0, weight=1)
 
+        # 标题区域
         ttk.Label(main, text="场景之妙手空空", font=("Microsoft YaHei", 16, "bold")).grid(
-            row=0, column=0, sticky="w", pady=(0, 6))
-        ttk.Label(main, text="不支持自动换场景到：丝绸之路、无名鬼域", foreground="gray").grid(
-            row=1, column=0, sticky="w", pady=(0, 10))
+            row=0, column=0, sticky="w", pady=(0, 8))
+        ttk.Label(main, text="不支持自动换场景到：丝绸之路、无名鬼域",
+                 foreground="gray", font=("Microsoft YaHei", 9)).grid(
+            row=1, column=0, sticky="w", pady=(0, 15))
 
-        # 表头
-        header = ttk.Frame(main)
-        header.grid(row=2, column=0, sticky="ew", pady=(0, 6))
-        header.columnconfigure(1, weight=1)
-        header.columnconfigure(2, weight=1)
-        header.columnconfigure(3, weight=1)
-        header.columnconfigure(4, weight=1)
-        header.columnconfigure(5, weight=1)
+        # 统一的表格容器 - 表头和所有行在同一个grid中
+        table_container = ttk.Frame(main)
+        table_container.grid(row=2, column=0, sticky="nsew", pady=(0, 15))
+        table_container.columnconfigure(0, weight=0, minsize=40)   # 拖动把手
+        table_container.columnconfigure(1, weight=0, minsize=70)   # 启用
+        table_container.columnconfigure(2, weight=1, minsize=160)   # 场景
+        table_container.columnconfigure(3, weight=1, minsize=140)   # 环数要求
+        table_container.columnconfigure(4, weight=1, minsize=140)   # 卡片要求
+        table_container.columnconfigure(5, weight=1, minsize=140)   # 时间要求
+        table_container.columnconfigure(6, weight=1, minsize=120)   # 后续操作
 
-        ttk.Label(header, text="启用", font=("Microsoft YaHei", 9, "bold")).grid(row=0, column=0, padx=(0, 10))
-        ttk.Label(header, text="场景", font=("Microsoft YaHei", 9, "bold")).grid(row=0, column=1)
-        ttk.Label(header, text="环数要求", font=("Microsoft YaHei", 9, "bold")).grid(row=0, column=2)
-        ttk.Label(header, text="卡片要求", font=("Microsoft YaHei", 9, "bold")).grid(row=0, column=3)
-        ttk.Label(header, text="时间要求", font=("Microsoft YaHei", 9, "bold")).grid(row=0, column=4)
-        ttk.Label(header, text="后续操作", font=("Microsoft YaHei", 9, "bold")).grid(row=0, column=5)
+        # 表头行 (row=0)
+        tk.Label(table_container, text="⋮⋮", font=("Microsoft YaHei", 9, "bold"),
+                width=4, bg="#f0f0f0", fg="#999").grid(row=0, column=0, padx=2, pady=8)
+        tk.Label(table_container, text="启用", font=("Microsoft YaHei", 9, "bold"),
+                width=8, anchor="w", bg="#f0f0f0").grid(row=0, column=1, padx=2, pady=8)
+        tk.Label(table_container, text="场景", font=("Microsoft YaHei", 9, "bold"),
+                width=18, anchor="center", bg="#f0f0f0").grid(row=0, column=2, padx=2, pady=8)
+        tk.Label(table_container, text="环数要求", font=("Microsoft YaHei", 9, "bold"),
+                width=16, anchor="center", bg="#f0f0f0").grid(row=0, column=3, padx=2, pady=8)
+        tk.Label(table_container, text="卡片要求", font=("Microsoft YaHei", 9, "bold"),
+                width=16, anchor="center", bg="#f0f0f0").grid(row=0, column=4, padx=2, pady=8)
+        tk.Label(table_container, text="时间要求", font=("Microsoft YaHei", 9, "bold"),
+                width=16, anchor="center", bg="#f0f0f0").grid(row=0, column=5, padx=2, pady=8)
+        tk.Label(table_container, text="后续操作", font=("Microsoft YaHei", 9, "bold"),
+                width=14, anchor="center", bg="#f0f0f0").grid(row=0, column=6, padx=2, pady=8)
 
-        # 场景行容器
-        rows_frame = ttk.Frame(main)
-        rows_frame.grid(row=3, column=0, sticky="nsew", pady=(0, 12))
-        rows_frame.columnconfigure(1, weight=1)
-        rows_frame.columnconfigure(2, weight=1)
-        rows_frame.columnconfigure(3, weight=1)
-        rows_frame.columnconfigure(4, weight=1)
-        rows_frame.columnconfigure(5, weight=1)
-
+        # 数据行 (row=1 到 8)
         for i in range(8):
-            row = ttk.Frame(rows_frame)
-            row.grid(row=i, column=0, sticky="ew", pady=3)
-            row.columnconfigure(1, weight=1)
-            row.columnconfigure(2, weight=1)
-            row.columnconfigure(3, weight=1)
-            row.columnconfigure(4, weight=1)
-            row.columnconfigure(5, weight=1)
+            row_idx = i + 1  # 数据行从1开始
 
             enabled_var = tk.BooleanVar(value=False)
             scene_var = tk.StringVar(value="小西天")
@@ -1919,28 +3317,50 @@ class SceneSettingsDialog:
             time_var = tk.StringVar(value="无要求")
             after_var = tk.StringVar(value="后换场景")
 
-            cb = ttk.Checkbutton(row, text=f"场景{i+1}", variable=enabled_var, bootstyle="success-round-toggle")
-            cb.grid(row=0, column=0, sticky="w", padx=(0, 10))
+            # 拖动把手
+            drag_handle = tk.Label(table_container, text="⋮⋮", bg="white", fg="#666",
+                                   cursor="sb_v_double_arrow", width=4)
+            drag_handle.grid(row=row_idx, column=0, padx=2, pady=8)
 
-            scene_cb = ttk.Combobox(row, textvariable=scene_var, values=self.SCENE_NAMES,
-                                    state="readonly", width=12, bootstyle="primary")
-            scene_cb.grid(row=0, column=1, padx=(0, 10))
+            # 添加拖动事件
+            drag_handle.bind("<Button-1>", lambda e, idx=i: self._on_drag_start(e, idx))
+            drag_handle.bind("<B1-Motion>", lambda e, idx=i: self._on_drag_motion(e, idx))
+            drag_handle.bind("<ButtonRelease-1>", lambda e: self._on_drag_end(e))
 
-            rings_cb = ttk.Combobox(row, textvariable=rings_var, values=self.RING_OPTIONS,
-                                    state="readonly", width=10, bootstyle="info")
-            rings_cb.grid(row=0, column=2, padx=(0, 10))
+            # 启用复选框
+            cb = ttk.Checkbutton(table_container, text="", variable=enabled_var,
+                               bootstyle="success-round-toggle")
+            cb.grid(row=row_idx, column=1, padx=2, pady=8, sticky="w")
 
-            cards_cb = ttk.Combobox(row, textvariable=cards_var, values=self.CARD_OPTIONS,
-                                    state="readonly", width=10, bootstyle="info")
-            cards_cb.grid(row=0, column=3, padx=(0, 10))
+            # 场景下拉框
+            scene_cb = ttk.Combobox(table_container, textvariable=scene_var,
+                                   values=self.SCENE_NAMES, state="readonly",
+                                   width=18, bootstyle="primary")
+            scene_cb.grid(row=row_idx, column=2, padx=2, pady=8)
 
-            time_cb = ttk.Combobox(row, textvariable=time_var, values=self.TIME_OPTIONS,
-                                   state="readonly", width=10, bootstyle="info")
-            time_cb.grid(row=0, column=4, padx=(0, 10))
+            # 环数要求
+            rings_cb = ttk.Combobox(table_container, textvariable=rings_var,
+                                    values=self.RING_OPTIONS, state="readonly",
+                                    width=16, bootstyle="info")
+            rings_cb.grid(row=row_idx, column=3, padx=2, pady=8)
 
-            after_cb = ttk.Combobox(row, textvariable=after_var, values=self.AFTER_OPTIONS,
-                                    state="readonly", width=10, bootstyle="warning")
-            after_cb.grid(row=0, column=5, padx=(0, 10))
+            # 卡片要求
+            cards_cb = ttk.Combobox(table_container, textvariable=cards_var,
+                                    values=self.CARD_OPTIONS, state="readonly",
+                                    width=16, bootstyle="info")
+            cards_cb.grid(row=row_idx, column=4, padx=2, pady=8)
+
+            # 时间要求
+            time_cb = ttk.Combobox(table_container, textvariable=time_var,
+                                   values=self.TIME_OPTIONS, state="readonly",
+                                   width=16, bootstyle="info")
+            time_cb.grid(row=row_idx, column=5, padx=2, pady=8)
+
+            # 后续操作
+            after_cb = ttk.Combobox(table_container, textvariable=after_var,
+                                    values=self.AFTER_OPTIONS, state="readonly",
+                                    width=14, bootstyle="warning")
+            after_cb.grid(row=row_idx, column=6, padx=2, pady=8)
 
             self.row_widgets.append({
                 "enabled": enabled_var,
@@ -1949,21 +3369,31 @@ class SceneSettingsDialog:
                 "cards": cards_var,
                 "time": time_var,
                 "after": after_var,
+                "handle": drag_handle,  # 保存拖动把手引用
             })
 
-        # 底部提示 + 按钮
-        ttk.Label(main, text="💡 当前仅小西天逻辑已完善，其他场景已预留配置，运行时会提示跳过", foreground="gray").grid(
-            row=4, column=0, sticky="w", pady=(0, 10))
+        # 保存统一的表格容器用于拖动检测
+        self.table_container = table_container
 
+        # 底部提示区域
+        tip_frame = ttk.Frame(main)
+        tip_frame.grid(row=3, column=0, sticky="ew", pady=(0, 20))
+        tip_frame.columnconfigure(0, weight=1)
+        ttk.Label(tip_frame, text="💡 当前仅小西天逻辑已完善，其他场景已预留配置，运行时会提示跳过",
+                 foreground="gray", font=("Microsoft YaHei", 9)).grid(row=0, column=0, sticky="w")
+
+        # 按钮区域 - 居中对齐
         btn_frame = ttk.Frame(main)
-        btn_frame.grid(row=5, column=0, sticky="ew")
+        btn_frame.grid(row=4, column=0, sticky="ew")
         btn_frame.columnconfigure(0, weight=1)
-        btn_frame.columnconfigure(1, weight=1)
 
-        ttk.Button(btn_frame, text="确认", command=self._on_ok, width=20, bootstyle="primary").grid(
-            row=0, column=0, sticky="e", padx=(0, 10))
-        ttk.Button(btn_frame, text="取消", command=self._on_cancel, width=20, bootstyle="outline").grid(
-            row=0, column=1, sticky="w", padx=(10, 0))
+        btn_inner = ttk.Frame(btn_frame)
+        btn_inner.grid(row=0, column=0)
+
+        ttk.Button(btn_inner, text="确认", command=self._on_ok, width=15,
+                  bootstyle="primary").pack(side=tk.LEFT, padx=(0, 15))
+        ttk.Button(btn_inner, text="取消", command=self._on_cancel, width=15,
+                  bootstyle="outline").pack(side=tk.LEFT)
 
     def _load_cfg(self):
         for i, widgets in enumerate(self.row_widgets):
@@ -1986,7 +3416,6 @@ class SceneSettingsDialog:
                     ("小雷音寺", "得3个环", "得2张卡片"),
                     ("女娲神迹", "得3个环", "得2张卡片"),
                     ("须弥东界", "得3个环", "得2张卡片"),
-                    ("小西天", "得3个环", "得2张卡片"),
                 ]
                 scene, rings, cards = defaults[i] if i < len(defaults) else ("小西天", "无要求", "无要求")
                 widgets["scene"].set(scene)
@@ -1998,7 +3427,7 @@ class SceneSettingsDialog:
 
     def _on_ok(self):
         self.result = []
-        for widgets in self.row_widgets:
+        for i, widgets in enumerate(self.row_widgets):
             self.result.append({
                 "enabled": widgets["enabled"].get(),
                 "scene": widgets["scene"].get(),
@@ -2008,6 +3437,52 @@ class SceneSettingsDialog:
                 "after": widgets["after"].get(),
             })
         self.win.destroy()
+
+    def _on_drag_start(self, event, row_idx):
+        """开始拖动行"""
+        self.drag_row = row_idx
+        self.drag_start_y = event.y_root
+        # 保存原始数据
+        self._original_widgets = {k: v.get() for k, v in self.row_widgets[row_idx].items()
+                                 if hasattr(v, 'get')}
+
+    def _on_drag_motion(self, event, row_idx):
+        """拖动中 - 检测是否需要交换行"""
+        if self.drag_row is None:
+            return
+
+        # 计算移动距离
+        dy = event.y_root - self.drag_start_y
+
+        # 判断移动方向
+        if abs(dy) > 25:  # 移动超过25像素才触发交换
+            direction = 1 if dy > 0 else -1
+            new_row = self.drag_row + direction
+
+            if 0 <= new_row < len(self.row_widgets):
+                self._swap_rows(self.drag_row, new_row)
+                self.drag_row = new_row
+                self.drag_start_y = event.y_root
+
+    def _on_drag_end(self, event):
+        """结束拖动"""
+        self.drag_row = None
+        self.drag_start_y = 0
+
+    def _swap_rows(self, row1_idx, row2_idx):
+        """交换两行的数据"""
+        widgets1 = self.row_widgets[row1_idx]
+        widgets2 = self.row_widgets[row2_idx]
+
+        # 保存数据
+        data1 = {k: v.get() for k, v in widgets1.items() if hasattr(v, 'get') and k != "handle"}
+        data2 = {k: v.get() for k, v in widgets2.items() if hasattr(v, 'get') and k != "handle"}
+
+        # 交换数据
+        for key in data1:
+            if key in data2:
+                widgets1[key].set(data2[key])
+                widgets2[key].set(data1[key])
 
     def _on_cancel(self):
         self.result = None

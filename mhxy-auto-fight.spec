@@ -4,7 +4,7 @@ from PyInstaller.utils.hooks import collect_all
 datas = [('image', 'image'), ('images', 'images'), ('gui_config.json', '.'),
          ('xbw_features/_internal', 'xbw_features/_internal')]
 binaries = []
-hiddenimports = []
+hiddenimports = ['工具', '场景切换', 'mhxy_engine', 'target_mapping', 'scene_detector']
 tmp_ret = collect_all('rapidocr_onnxruntime')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('adbutils')

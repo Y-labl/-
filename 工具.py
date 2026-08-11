@@ -189,6 +189,59 @@ SCENE_RECOVERY = {
     },
 }
 
+def _build_floor_recovery(floor_name, legs_down, legs_up, third_scene):
+    """构建五层忠诚恢复完整流程 steps（复用场景切换引擎的层间传送 + 三层输入坐标恢复）：
+    层间传送下行到三层 → 打开地图输入三层恢复点坐标 → 洞冥草恢复 →
+    层间传送上行回五层 → 吃摄妖香。"""
+    third = SCENE_RECOVERY[third_scene]
+    steps = []
+    # 1) 层间传送下行：五层→四层→三层（场景切换引擎小地图点击+OCR验证）
+    steps.append({"action": "layer_teleport", "legs": legs_down, "wait": 0.5})
+    # 2) 打开地图 → 输入三层恢复点坐标
+    steps.append({"action": "click_template", "name": "打开地图", "wait": 0.5})
+    steps.extend(third.get("coord_input", []))
+    steps.append({"action": "debug_shot", "tag": "after_coord_input", "wait": 0.3})
+    steps.extend(_BASE_PART2)
+    # 3) 等待到达三层恢复点 → 点击
+    if third.get("wait_target"):
+        wait_step = dict(third["wait_target"])
+        retry_inputs = list(third.get("coord_input", []))
+        if retry_inputs:
+            wait_step["retry_inputs"] = [
+                {"action": "click_template", "name": "打开地图", "threshold": 0.6, "wait": 0.5},
+            ] + retry_inputs
+            wait_step["retry_inputs"].append(
+                {"action": "click_template", "name": "关闭弹窗", "threshold": 0.5, "wait": 0.5})
+        steps.append(wait_step)
+    # 4) 洞冥草恢复
+    steps.extend(_BASE_PART3)
+    # 5) 层间传送上行：三层→四层→五层
+    steps.append({"action": "layer_teleport", "legs": legs_up, "wait": 0.5})
+    # 6) 吃摄妖香（回五层打怪前）
+    steps.append({"action": "click_template", "name": "道具", "threshold": 0.6, "wait": 0.3})
+    steps.append({"action": "click_template", "name": "摄妖香", "threshold": 0.5, "wait": 0.3})
+    steps.append({"action": "click_position", "x": 268, "y": 260, "wait": 0.5})
+    steps.append({"action": "click_template", "name": "关闭弹窗", "wait": 0.3})
+    return steps
+
+# 五层恢复配置：层间传送下行到三层恢复 → 传送回五层 → 摄妖香
+SCENE_RECOVERY["龙窟五层"] = {
+    "steps": _build_floor_recovery(
+        "龙窟五层",
+        [["龙窟五层", "龙窟四层"], ["龙窟四层", "龙窟三层"]],
+        [["龙窟三层", "龙窟四层"], ["龙窟四层", "龙窟五层"]],
+        "龙窟三层",
+    ),
+}
+SCENE_RECOVERY["凤巢五层"] = {
+    "steps": _build_floor_recovery(
+        "凤巢五层",
+        [["凤巢五层", "凤巢四层"], ["凤巢四层", "凤巢三层"]],
+        [["凤巢三层", "凤巢四层"], ["凤巢四层", "凤巢五层"]],
+        "凤巢三层",
+    ),
+}
+
 def build_steps(config):
     """根据场景配置构建完整步骤列表"""
     if "steps" in config:
@@ -210,6 +263,8 @@ def build_steps(config):
                 {"action": "click_template", "name": "关闭弹窗", "threshold": 0.5, "wait": 0.5})
         steps.append(wait_step)
     steps.extend(_BASE_PART3)  # 步骤 10-13
+    # 恢复后的尾部步骤（如：层间传送回原打怪场景 + 摄妖香）
+    steps.extend(config.get("after_steps", []))
     return steps
 
 
@@ -841,6 +896,31 @@ class ToolEngine:
                 else:
                     self._log("[{}] 等待坐标超时，跳过".format(i))
                 time.sleep(wait)
+
+            elif action == "layer_teleport":
+                # 层间传送回上层场景（如龙窟三层→四层→五层），复用场景切换引擎的洞穴传送
+                legs = step.get("legs", [])
+                self._log("[{}] 层间传送: {}".format(i, " -> ".join("{}→{}".format(a, b) for a, b in legs)))
+                from 场景切换 import SceneSwitcher
+                switcher = SceneSwitcher(self.serial)
+                switcher.connect()
+                ok = True
+                for src, dst in legs:
+                    if self._stop_event and self._stop_event.is_set():
+                        self._log(f"[{i}] 收到停止信号，退出层间传送")
+                        return
+                    if not switcher._walk_leg(src, dst):
+                        self._log("[{}] 层间传送失败: {} -> {}".format(i, src, dst))
+                        ok = False
+                        break
+                if ok:
+                    self._log("[{}] 层间传送完成，回到 {}".format(i, legs[-1][1]))
+                time.sleep(wait)
+                frame = self.get_frame()
+                if frame is not None:
+                    m, _ = self._ocr_coord(frame, log=False)
+                    if m:
+                        self.last_map_name = m
 
             elif action == "detect_wuyi":
                 timeout = step.get("timeout", 120)

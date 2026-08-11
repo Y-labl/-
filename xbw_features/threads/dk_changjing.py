@@ -74,7 +74,16 @@ def check_backpack(deviceId, prev_snapshot=None, stop_event=None, scan_mode="new
         return stop_event is not None and stop_event.is_set()
 
     orderLog(deviceId, "偷偷检查背包")
-    clickOpenPkg(deviceId)
+    if not clickOpenPkg(deviceId):
+        orderLog(deviceId, "背包未打开（未找到物品锁），中止本次环/卡检查")
+        return {
+            "snapshot": prev_snapshot,
+            "add_huan": 0,
+            "add_card": 0,
+            "ring_points": [],
+            "card_points": [],
+            "bag_frame": None,
+        }
     bag_frame = None
     try:
         # 等背包渲染完成再截图，避免抓到打开动画帧导致 20 格全判占用
