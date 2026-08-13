@@ -10,6 +10,13 @@ node_modules/
 
 # IDE
 .idea/
+.zcode/
+
+# 反编译 / 分析产物
+_common_unit_decompiled.py
+_unpacked/
+_pyc_canon/
+_pyc_fixed/
 
 # 构建 / 打包产物
 build/

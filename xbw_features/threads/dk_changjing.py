@@ -83,6 +83,7 @@ def check_backpack(deviceId, prev_snapshot=None, stop_event=None, scan_mode="new
             "ring_points": [],
             "card_points": [],
             "bag_frame": None,
+            "ok": False,
         }
     bag_frame = None
     try:
@@ -126,6 +127,7 @@ def check_backpack(deviceId, prev_snapshot=None, stop_event=None, scan_mode="new
             "ring_points": ring_points,
             "card_points": card_points,
             "bag_frame": bag_frame,
+            "ok": True,
         }
     finally:
         if not stopped():
@@ -149,7 +151,7 @@ def check_backpack_and_maybe_switch(deviceId, rings_require, cards_require,
     """
     检查一次背包并累计环/卡计数；达标时返回 reason。
 
-    :return: (新快照, 累计环数, 累计卡数, reason 或 None)
+    :return: (新快照, 累计环数, 累计卡数, reason 或 None, 是否成功打开背包)
     """
     result = check_backpack(deviceId, prev_snapshot, stop_event=stop_event)
     huan_count += result["add_huan"]
@@ -157,7 +159,7 @@ def check_backpack_and_maybe_switch(deviceId, rings_require, cards_require,
     reason = None
     if should_switch_scene(rings_require, cards_require, huan_count, card_count):
         reason = "环/卡达标"
-    return result["snapshot"], huan_count, card_count, reason
+    return result["snapshot"], huan_count, card_count, reason, result.get("ok", True)
 
 
 def go_to_chang_jing(deviceId, target_area):

@@ -8,6 +8,7 @@ import json
 import os
 import queue
 import subprocess as sp
+import sys
 import threading
 import time
 from datetime import datetime
@@ -22,6 +23,8 @@ from mhxy_engine import (
     MAP_CONFIG,
     GUI_CONFIG_FILE,
     list_adb_devices,
+    stats_day,
+    short_dev_label,
 )
 
 
@@ -36,21 +39,21 @@ SCENE_HISTORY_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lo
 
 
 def get_scene_history_file(serial, date=None):
-    """获取设备场景历史文件路径（按天记录）"""
+    """获取设备场景历史文件路径（按统计日记录，每天5:00为界）"""
     if date is None:
-        date = datetime.now().strftime("%Y-%m-%d")
+        date = stats_day()
     return os.path.join(SCENE_HISTORY_DIR, f"scene_history_{serial}_{date}.json")
 
 
 def load_scene_history_from_file(serial, days=7):
-    """从文件加载场景历史记录（支持多天合并）"""
+    """从文件加载场景历史记录（支持多天合并，按统计日回溯）"""
     from datetime import timedelta
 
     history_by_date = {}
     today = datetime.now()
 
     for i in range(days):
-        date = today - timedelta(days=i)
+        date = today - timedelta(days=i, hours=5)
         date_str = date.strftime("%Y-%m-%d")
         history_file = get_scene_history_file(serial, date_str)
 
@@ -141,7 +144,9 @@ def load_device_config(serial):
     if os.path.exists(device_file):
         try:
             with open(device_file, "r", encoding="utf-8") as f:
-                return migrate_config(json.load(f))
+                # 只存真正要覆盖的键（局部覆盖）；不跑 migrate_config，
+                # 避免默认键被迁移补齐后意外覆盖全局设置
+                return json.load(f)
         except Exception:
             return None
     return None
@@ -210,9 +215,12 @@ class AutoFightGUI:
     def __init__(self):
         self.root = ttk.Window(themename="litera")
         self.root.title("场景之妙手空空")
-        self.root.geometry("1240x1240")
+        self.root.geometry("930x860")
         self.root.minsize(800, 700)
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+        # 立即显示"正在加载"覆盖层并渲染，贯穿整个构建期（UI 构建约需数秒）
+        self._splash_overlay = self._create_splash_overlay()
+        self.root.update()
 
         self.cfg = load_config()
         self.log_queue = queue.Queue()
@@ -225,9 +233,13 @@ class AutoFightGUI:
         self._selected_devices = set()  # 设备管理页勾选的设备
         self._device_configs = {}     # serial -> 设备独立配置缓存
         self._device_order = list(self.cfg.get("device_order", []) or [])
+        self._device_stats_cache = self._load_device_stats()  # 今日设备统计缓存（环/卡按天累计）
+        self._last_stats_save_t = time.time()   # 上次自动写盘时间（每60秒）
         self._drag_serial = None        # 拖拽排序：当前拖动的设备
         self._drag_y0 = 0               # 拖拽起始 y
         self._drag_widget = None        # 拖拽起始控件
+        self._highlight_serial = None   # 设备表格：当前高亮行
+        self._row_highlight_widgets = {}  # serial -> 行内可换背景的控件列表
 
         # 设备显示映射
         self._serial_to_display = {}  # 序列号 -> 显示文本
@@ -243,8 +255,39 @@ class AutoFightGUI:
         self._refresh_devices()
         self._load_cfg_to_ui()
 
+        # 构建完成：先渲染主界面一帧，再移除加载覆盖层（避免闪白）
+        try:
+            self.root.update_idletasks()
+            self.root.update()
+        except Exception:
+            pass
+        self._remove_splash_overlay()
+        self.root.update()
+
         # 启动日志轮询（延迟到UI完全加载后）
         self.root.after(100, self._start_log_polling)
+
+    def _create_splash_overlay(self):
+        """在窗口上方创建'正在加载'覆盖层（构建期间一直可见）"""
+        try:
+            frm = tk.Frame(self.root, bg="white")
+            frm.place(relx=0, rely=0, relwidth=1, relheight=1)
+            tk.Label(frm, text="⏳ 正在加载...", bg="white",
+                     font=("Microsoft YaHei", 14, "bold")).place(relx=0.5, rely=0.45, anchor="center")
+            tk.Label(frm, text="场景之妙手空空", bg="white",
+                     font=("Microsoft YaHei", 10), foreground="gray").place(relx=0.5, rely=0.55, anchor="center")
+            return frm
+        except Exception:
+            return None
+
+    def _remove_splash_overlay(self):
+        """移除加载覆盖层"""
+        try:
+            if self._splash_overlay is not None:
+                self._splash_overlay.destroy()
+                self._splash_overlay = None
+        except Exception:
+            pass
 
     def _start_log_polling(self):
         """启动日志轮询"""
@@ -259,7 +302,7 @@ class AutoFightGUI:
         self._log("=" * 60)
 
     def _get_effective_config(self, serial):
-        """获取设备的有效配置（优先使用设备独立配置，否则使用全局配置）"""
+        """获取设备的有效配置（全局为底，设备独立配置局部覆盖）"""
         # 优先从缓存获取
         if serial not in self._device_configs:
             device_cfg = load_device_config(serial)
@@ -268,16 +311,14 @@ class AutoFightGUI:
             else:
                 self._device_configs[serial] = None
 
-        # 如果有设备独立配置，合并全局配置的公共部分
+        # 全局配置为底，独立配置只覆盖其存储的键（缺的键自然跟随全局）
+        result = dict(self.cfg)
         if self._device_configs[serial]:
-            result = dict(self._device_configs[serial])
-            # 确保全局的设备顺序和名称配置也被合并
-            result.setdefault("device_order", self.cfg.get("device_order", []))
-            result.setdefault("device_names", self.cfg.get("device_names", {}))
-            return result
-        else:
-            # 没有独立配置，使用全局配置
-            return self.cfg
+            result.update(self._device_configs[serial])
+        # 确保全局的设备顺序和名称配置也被合并
+        result.setdefault("device_order", self.cfg.get("device_order", []))
+        result.setdefault("device_names", self.cfg.get("device_names", {}))
+        return result
 
     def _save_device_config(self, serial):
         """保存设备独立配置"""
@@ -376,7 +417,7 @@ class AutoFightGUI:
         main = ttk.Frame(self.notebook, padding=15)
         self.notebook.add(main, text="场景控制")
         main.columnconfigure(0, weight=1)
-        main.rowconfigure(5, weight=1)
+        main.rowconfigure(4, weight=1)
 
         # ---- 标题 / 控制 ----
         header = ttk.Labelframe(main, text=" 场景之妙手空空 ", padding=12)
@@ -517,70 +558,9 @@ class AutoFightGUI:
         ttk.Checkbutton(right, text="真实切场导航", variable=self.real_scene_switch_enabled,
                         bootstyle="success-round-toggle").grid(row=4, column=0, sticky="w", pady=(4,0))
 
-        # ---- 日志 & 实时数据 ----
-        log_card = ttk.Labelframe(main, text=" 运行日志 & 实时数据 ", padding=10)
-        log_card.grid(row=5, column=0, sticky="nsew", pady=(0, 12))
-        log_card.columnconfigure(0, weight=1)
-        log_card.rowconfigure(2, weight=1)
-
-        # 实时数据显示行
-        data_frame = ttk.Frame(log_card)
-        data_frame.grid(row=0, column=0, sticky="w", pady=(0, 6))
-
-        self.hp_display = ttk.Label(data_frame, text="气血: --%",
-                                    font=("Microsoft YaHei", 11, "bold"), foreground="#e83e8c")
-        self.hp_display.pack(side=tk.LEFT, padx=(0, 20))
-        self.mp_display = ttk.Label(data_frame, text="魔法: --%",
-                                    font=("Microsoft YaHei", 11, "bold"), foreground="#0d6efd")
-        self.mp_display.pack(side=tk.LEFT, padx=(0, 20))
-        self.bb_display = ttk.Label(data_frame, text="BB: --%",
-                                    font=("Microsoft YaHei", 11, "bold"), foreground="#6c757d")
-        self.bb_display.pack(side=tk.LEFT, padx=(0, 20))
-        self.coord_display = ttk.Label(data_frame, text="📍 --",
-                                       font=("Microsoft YaHei", 11, "bold"), foreground="#6f42c1")
-        self.coord_display.pack(side=tk.LEFT)
-
-
-        self.battle_display = ttk.Label(data_frame, text="⚔ -- 场",
-                                    font=("Microsoft YaHei", 11, "bold"), foreground="#fd7e14")
-        self.battle_display.pack(side=tk.LEFT, padx=(0, 20))
-
-        self.time_display = ttk.Label(data_frame, text="⏱ 00:00",
-                                    font=("Microsoft YaHei", 11, "bold"), foreground="#198754")
-        self.time_display.pack(side=tk.LEFT)
-
-        # 日志筛选栏
-        filter_frame = ttk.Frame(log_card)
-        filter_frame.grid(row=1, column=0, sticky="ew", pady=(6, 0))
-
-        ttk.Label(filter_frame, text="日志筛选：").pack(side=tk.LEFT, padx=(0, 6))
-
-        self.log_filter_var = tk.StringVar(value="全部设备")
-        self.log_filter_combo = ttk.Combobox(filter_frame, textvariable=self.log_filter_var,
-                                             state="readonly", width=15, bootstyle="info")
-        self.log_filter_combo.pack(side=tk.LEFT, padx=(0, 10))
-        self.log_filter_combo.bind("<<ComboboxSelected>>", self._on_log_filter_change)
-
-        ttk.Label(filter_frame, text="|", foreground="gray").pack(side=tk.LEFT, padx=5)
-
-        self.log_count_label = ttk.Label(filter_frame, text="共 0 条", foreground="gray", font=("Microsoft YaHei", 9))
-        self.log_count_label.pack(side=tk.LEFT, padx=(5, 0))
-
-        # 存储所有日志（用于筛选）
-        self.all_logs = []  # 格式: [(device_id, timestamp, message), ...]
-
-        # 日志文本框
-        self.log_text = ttk.ScrolledText(
-            log_card, height=10, font=("Microsoft YaHei", 9),
-            bg="#ffffff", fg="#333333", insertbackground="#333333")
-        self.log_text.grid(row=2, column=0, sticky="nsew")
-        self.log_text.configure(state=tk.DISABLED)
-
         # ---- 底部 ----
         bottom = ttk.Frame(main)
-        bottom.grid(row=7, column=0, sticky="ew")
-        ttk.Button(bottom, text="清空日志", command=self._clear_log,
-                   bootstyle="outline").pack(side=tk.LEFT, padx=(0, 10))
+        bottom.grid(row=6, column=0, sticky="ew")
         ttk.Button(bottom, text="保存配置", command=self._save_cfg,
                    bootstyle="primary").pack(side=tk.LEFT)
 
@@ -589,6 +569,14 @@ class AutoFightGUI:
 
         # ===== Tab 3: 功能测试 =====
         self._build_tab3()
+
+        # 调整 Tab 顺序：设备管理放最前，场景控制次之，功能测试最后
+        # （注意：add() 对已存在的组件不会移动，必须用 insert()）
+        self.notebook.insert(0, self._tab2_frame)   # 设备管理
+        self.notebook.insert(1, main)               # 场景控制
+        self.notebook.insert(2, self._tab3_frame)   # 功能测试
+        # insert 只改顺序、不改当前选中页，需显式选中设备管理（启动默认展示）
+        self.notebook.select(self._tab2_frame)
 
     # ---------- 辅助 UI ----------
     def _add_supply_row(self, parent, row, label, method_var, method_values,
@@ -669,8 +657,10 @@ class AutoFightGUI:
 
         tab2 = ttk.Frame(self.notebook, padding=15)
         self.notebook.add(tab2, text="设备管理")
+        self._tab2_frame = tab2   # 用于调整 Tab 顺序（设备管理放最前）
         tab2.columnconfigure(0, weight=1)
-        tab2.rowconfigure(1, weight=1)
+        tab2.rowconfigure(1, weight=3)   # 设备列表
+        tab2.rowconfigure(2, weight=2)   # 运行日志 & 实时数据
 
         # 顶部操作栏
         top_frame = ttk.Frame(tab2)
@@ -715,6 +705,74 @@ class AutoFightGUI:
 
         self._refresh_device_tab()
 
+        # ---- 运行日志 & 实时数据（设备列表下方） ----
+        log_card = ttk.Labelframe(tab2, text=" 运行日志 & 实时数据 ", padding=10)
+        log_card.grid(row=2, column=0, sticky="nsew", pady=(10, 0))
+        log_card.columnconfigure(0, weight=1)
+        log_card.rowconfigure(1, weight=1)
+
+        # 实时数据显示行（含日志筛选，位于气血/魔法等数据最前面）
+        data_frame = ttk.Frame(log_card)
+        data_frame.grid(row=0, column=0, sticky="ew", pady=(0, 6))
+
+        # 日志筛选
+        ttk.Label(data_frame, text="日志筛选：").pack(side=tk.LEFT, padx=(0, 6))
+
+        self.log_filter_var = tk.StringVar(value="全部设备")
+        self.log_filter_combo = ttk.Combobox(data_frame, textvariable=self.log_filter_var,
+                                             state="readonly", width=15, bootstyle="info")
+        self.log_filter_combo.pack(side=tk.LEFT, padx=(0, 10))
+        self.log_filter_combo.bind("<<ComboboxSelected>>", self._on_log_filter_change)
+
+        ttk.Label(data_frame, text="|", foreground="gray").pack(side=tk.LEFT, padx=5)
+
+        self.log_count_label = ttk.Label(data_frame, text="共 0 条", foreground="gray", font=("Microsoft YaHei", 9))
+        self.log_count_label.pack(side=tk.LEFT, padx=(5, 15))
+
+        self.hp_display = ttk.Label(data_frame, text="气血: --%",
+                                    font=("Microsoft YaHei", 11, "bold"), foreground="#e83e8c")
+        self.hp_display.pack(side=tk.LEFT, padx=(0, 20))
+        self.mp_display = ttk.Label(data_frame, text="魔法: --%",
+                                    font=("Microsoft YaHei", 11, "bold"), foreground="#0d6efd")
+        self.mp_display.pack(side=tk.LEFT, padx=(0, 20))
+        self.bb_display = ttk.Label(data_frame, text="BB: --%",
+                                    font=("Microsoft YaHei", 11, "bold"), foreground="#6c757d")
+        self.bb_display.pack(side=tk.LEFT, padx=(0, 20))
+        self.coord_display = ttk.Label(data_frame, text="📍 --",
+                                       font=("Microsoft YaHei", 11, "bold"), foreground="#6f42c1")
+        self.coord_display.pack(side=tk.LEFT)
+
+        self.battle_display = ttk.Label(data_frame, text="⚔ -- 场",
+                                    font=("Microsoft YaHei", 11, "bold"), foreground="#fd7e14")
+        self.battle_display.pack(side=tk.LEFT, padx=(0, 20))
+
+        self.time_display = ttk.Label(data_frame, text="⏱ 00:00",
+                                    font=("Microsoft YaHei", 11, "bold"), foreground="#198754")
+        self.time_display.pack(side=tk.LEFT)
+
+        # 存储所有日志（用于筛选）
+        self.all_logs = []  # 格式: [(device_id, timestamp, message), ...]
+
+        # 日志文本框
+        self.log_text = ttk.ScrolledText(
+            log_card, height=8, font=("Microsoft YaHei", 9),
+            bg="#ffffff", fg="#333333", insertbackground="#333333")
+        self.log_text.grid(row=1, column=0, sticky="nsew")
+        self.log_text.configure(state=tk.DISABLED)
+        # 滚轮翻看历史：向上滚暂停自动滚动，滚回底部自动恢复
+        self.log_text.bind("<MouseWheel>", self._on_log_scroll)
+        self.log_text.bind("<Button-4>", self._on_log_scroll)   # Linux 上滚
+        self.log_text.bind("<Button-5>", self._on_log_scroll)   # Linux 下滚
+
+        # 日志工具条（独立一行，避免被实时数据行挤压）
+        tool_bar = ttk.Frame(log_card)
+        tool_bar.grid(row=2, column=0, sticky="ew", pady=(6, 0))
+        self.log_follow = tk.BooleanVar(value=True)   # 自动滚动跟随最新日志
+        ttk.Checkbutton(tool_bar, text="自动滚动", variable=self.log_follow,
+                        bootstyle="success-round-toggle").pack(side=tk.LEFT)
+        ttk.Button(tool_bar, text="清空日志", command=self._clear_log,
+                   bootstyle="outline", width=8).pack(side=tk.RIGHT)
+
     def _on_dev_canvas_resize(self, event):
         """让内部框自适应画布宽度"""
         self.dev_canvas.itemconfig(self._dev_canvas_win, width=event.width)
@@ -734,6 +792,7 @@ class AutoFightGUI:
         """功能测试 Tab：本地四小人识别（上传图片）/ 背包环卡 / 切换地图"""
         tab3 = ttk.Frame(self.notebook, padding=15)
         self.notebook.add(tab3, text="功能测试")
+        self._tab3_frame = tab3   # 用于调整 Tab 顺序
         tab3.columnconfigure(0, weight=1)
         tab3.rowconfigure(2, weight=1)
 
@@ -755,6 +814,17 @@ class AutoFightGUI:
             self._test_maps = [p.area for p in mapParamsListDK]
         except Exception:
             self._test_maps = ["小西天", "女娲神迹", "龙窟五层", "凤巢四层"]
+        # 场景设置里配置的场景排最前（按配置顺序，去重），其余地图跟在后面
+        try:
+            scene_cfg = self.cfg.get("scene_config", []) or []
+            preferred = []
+            for r in scene_cfg:
+                s = r.get("scene")
+                if s and s not in preferred:
+                    preferred.append(s)
+            self._test_maps = preferred + [m for m in self._test_maps if m not in preferred]
+        except Exception:
+            pass
         self.test_map_combo["values"] = self._test_maps
         if self._test_maps:
             self.test_map_combo.current(0)
@@ -940,17 +1010,16 @@ class AutoFightGUI:
             return
         # 从显示文本中提取序列号
         serial = self._test_display_to_serial.get(serial, serial)
-        if not self._ensure_engine_stopped("背包测试"):
-            return
+        self._prepare_test_device(serial, "背包测试")
         threading.Thread(target=self._run_backpack_test, args=(serial,), daemon=True).start()
 
     def _run_backpack_test(self, serial):
         def log(msg):
             self.root.after(0, lambda m=msg: self._test_log(m))
         log(f"开始背包测试（全量扫描）：{serial}")
+        self._wait_test_engine_idle(serial, log)
         from xbw_features import backend as xbw_backend
         xbw_backend.set_stop_event(self._test_stop_event)
-        saved = self._xbw_backend_snapshot()
         self._xbw_backend_standalone(serial, log)
         try:
             from xbw_features.threads.dk_changjing import check_backpack
@@ -978,9 +1047,10 @@ class AutoFightGUI:
         except Exception as e:
             log(f"❌ 背包测试异常：{e}")
         finally:
-            self._xbw_backend_restore(saved)
+            self._xbw_backend_restore(serial)
             xbw_backend.clear_stop_event()
             self._test_stop_event.clear()
+            self._resume_test_devices()
 
     def _test_switch_map(self):
         serial = self.test_device_combo.get().strip()
@@ -993,63 +1063,128 @@ class AutoFightGUI:
         if not target:
             self._log("请选择目标地图")
             return
-        if not self._ensure_engine_stopped("切换地图测试"):
-            return
+        self._prepare_test_device(serial, "切换地图测试")
         threading.Thread(target=self._run_switch_map_test, args=(serial, target), daemon=True).start()
 
     def _run_switch_map_test(self, serial, target):
         def log(msg):
             self.root.after(0, lambda m=msg: self._test_log(m))
         log(f"开始切换地图测试：{serial} -> {target}")
+        self._wait_test_engine_idle(serial, log)
         from xbw_features import backend as xbw_backend
         xbw_backend.set_stop_event(self._test_stop_event)
-        saved = self._xbw_backend_snapshot()
         self._xbw_backend_standalone(serial, log)
         try:
-            from xbw_features import go_to_chang_jing
-            go_to_chang_jing(serial, target)
-            log(f"✅ 已执行切图流程（目标 {target}），请查看游戏画面确认")
+            # 优先用场景切换引擎 SceneSwitcher（每步 OCR 验证，失败明确返回）
+            arrived = False
+            try:
+                from 场景切换 import SceneSwitcher
+                log(f"🛫 场景切换引擎 -> {target} ...")
+                sw = SceneSwitcher(serial, log_fn=lambda m: log(m))
+                if sw.connect():
+                    arrived = sw.switch_scene(target)
+                    if arrived:
+                        log(f"✅ 已到达 {target}（场景切换引擎确认）")
+                else:
+                    log("⚠️ 场景切换引擎连接失败")
+            except Exception as e:
+                log(f"⚠️ 场景切换引擎异常：{e}")
+            if not arrived:
+                # 回退：小霸王 goToMapAction + detectPosition 到达验证
+                from xbw_features import go_to_chang_jing
+                from mhxy_engine import _match_scene_name
+                from xbw_features.common.util.detect_position_util import detectPosition
+                for _try in range(2):
+                    log(f"🛫 小霸王切图 {target}（第{_try+1}次）...")
+                    go_to_chang_jing(serial, target)
+                    time.sleep(1.5)
+                    detected = None
+                    try:
+                        _dp = detectPosition(serial)
+                        if _dp and _dp[0]:
+                            detected = _dp[0]
+                    except Exception:
+                        detected = None
+                    if detected and _match_scene_name(detected, target):
+                        log(f"✅ 已到达 {target}（检测到场景 {detected}）")
+                        arrived = True
+                        break
+                    log(f"⚠️ 切图后仍在 {detected or '未知场景'}，未到达 {target}"
+                        + ("，重试一次" if _try == 0 else ""))
+                if not arrived:
+                    log("❌ 两次切图后仍未到达目标场景，请检查游戏画面")
         except xbw_backend.StopTest:
             log("⏹ 切换地图测试已停止")
         except Exception as e:
             log(f"❌ 切换地图异常：{e}")
         finally:
-            self._xbw_backend_restore(saved)
+            self._xbw_backend_restore(serial)
             xbw_backend.clear_stop_event()
             self._test_stop_event.clear()
+            self._resume_test_devices()
 
-    def _ensure_engine_stopped(self, label):
-        running = [d for d, e in self.engines.items() if getattr(e, "running", False)]
-        if running:
-            self._log(f"⚠️ {label}需要独占 ADB 后端：请先停止引擎设备 {', '.join(running)} 再测试")
-            return False
+    def _prepare_test_device(self, serial, label):
+        """测试前准备：选中设备若在挂机则临时暂停其引擎（其他挂机设备不受影响）。
+        仅设置暂停标志并记录，不阻塞 GUI；等引擎脱离战斗放到测试线程里做。"""
+        eng = self.engines.get(serial)
+        if eng is not None and getattr(eng, "running", False):
+            if not getattr(eng, "_paused", False):
+                eng._paused = True
+            self._test_paused_engines = getattr(self, "_test_paused_engines", set())
+            self._test_paused_engines.add(serial)
+            self._log(f"⏸️ {label}: 已暂停设备 {serial} 的引擎（测试结束自动恢复）")
         return True
 
-    def _xbw_backend_snapshot(self):
-        from xbw_features import backend as xbw_backend
-        b = xbw_backend.backend
-        return (b.screencap_fn, b.tap_fn, b.log_fn, b.cache_seconds)
+    def _wait_test_engine_idle(self, serial, log):
+        """测试线程开头：等所选设备引擎脱离当前战斗、进入暂停，避免测试与战斗同时操作屏幕"""
+        eng = self.engines.get(serial)
+        if eng is None or not getattr(eng, "running", False):
+            return
+        if getattr(eng, "was_in_pk", False):
+            log(f"⏳ 设备 {serial} 正在战斗，等待战斗结束...")
+            for _ in range(120):
+                if not getattr(eng, "running", False):
+                    return
+                if not getattr(eng, "was_in_pk", False):
+                    break
+                time.sleep(0.5)
+            if getattr(eng, "was_in_pk", False):
+                log(f"⚠️ 设备 {serial} 战斗超时，测试可能与战斗重叠")
+        else:
+            time.sleep(0.5)   # 确保引擎主循环已进入暂停分支
+
+    def _resume_test_devices(self):
+        """测试结束：恢复临时暂停的引擎"""
+        for serial in getattr(self, "_test_paused_engines", set()):
+            eng = self.engines.get(serial)
+            if eng is not None and getattr(eng, "running", False):
+                eng._paused = False
+                self._log(f"▶️ 已恢复设备 {serial} 的引擎")
+        self._test_paused_engines = set()
 
     def _xbw_backend_standalone(self, serial, log):
-        """临时切到独立 ADB 后端（按所选设备取帧/点击），并把日志回灌 GUI。"""
+        """按所选设备注册独立后端槽位（仅 log_fn 回灌 GUI；screencap/tap 走 ADB 默认）。
+        per-device 槽位互不影响，其他挂机引擎继续用自己的取帧/点击函数。"""
         from xbw_features import backend as xbw_backend
         xbw_backend.backend.set(
-            screencap_fn=None,
-            tap_fn=None,
+            deviceId=serial,
             log_fn=lambda d, m: log(f"[{d}] {m}"),
-            cache_seconds=0.2)   # 与引擎一致：0.2s 帧缓存，明显减少 ADB 截图次数
+            cache_seconds=0.2)   # 与引擎一致：0.2s 帧缓存，减少 ADB 截图次数
 
-    def _xbw_backend_restore(self, saved):
+    def _xbw_backend_restore(self, serial):
+        """清除所选设备的测试槽位（不影响其他设备的注册）"""
         from xbw_features import backend as xbw_backend
-        xbw_backend.backend.set(
-            screencap_fn=saved[0], tap_fn=saved[1], log_fn=saved[2],
-            cache_seconds=saved[3] if saved[3] is not None else 0.2)
+        xbw_backend.backend.clear_cache(serial)
 
     def _refresh_device_tab(self):
         """刷新设备管理 Tab"""
         for w in self.dev_list_frame.winfo_children():
             w.destroy()
         self._device_widgets.clear()
+        self._device_sel_vars = {}      # serial -> 行勾选框变量（全选联动）
+        self._device_sel_all_var = tk.BooleanVar(value=False)  # 表头全选框
+        self._row_highlight_widgets = {}   # serial -> 行内可换背景的控件列表
+        self._highlight_serial = None      # 当前高亮行
 
         devices = list_adb_devices()
         if not devices:
@@ -1072,19 +1207,43 @@ class AutoFightGUI:
             self.dev_table.columnconfigure(ci, weight=1)
         self.dev_table.columnconfigure(9, weight=0)
         for ci, (txt, wd) in enumerate([
-            ("选择", 0), ("设备序列号", 16), ("设备名称", 10),
-            ("状态", 6), ("当前场景", 6), ("卡片(张)", 5),
-            ("环(个)", 5), ("战斗", 4), ("时长", 6), ("操作", 0),
+            ("选择", 0), ("设备名称", 10), ("设备序列号", 16),
+            ("状态", 6), ("当前场景", 6), ("当日卡", 5),
+            ("当日环", 5), ("战斗", 4), ("时长", 6), ("操作", 0),
         ]):
-            tk.Label(self.dev_table, text=txt, font=("Microsoft YaHei", 9, "bold"),
-                     width=wd if wd else None, anchor="center", bg="white",
-                     bd=0, padx=4, pady=6).grid(row=0, column=ci, sticky="ew")
+            if ci == 0:
+                # 第一列：全选/全不选复选框（表头即选择框）
+                head_frame = tk.Frame(self.dev_table, bg="white", bd=0, pady=4)
+                head_frame.grid(row=0, column=ci, sticky="ew")
+                ttk.Checkbutton(head_frame, variable=self._device_sel_all_var,
+                                command=self._toggle_all_devices,
+                                bootstyle="primary").pack(expand=True)
+            else:
+                tk.Label(self.dev_table, text=txt, font=("Microsoft YaHei", 9, "bold"),
+                         width=wd if wd else None, anchor="center", bg="white",
+                         bd=0, padx=4, pady=6).grid(row=0, column=ci, sticky="ew")
 
         self._device_row = 1
         for serial in ordered:
             self._add_device_row(serial)
+        self._update_sel_all()
         self._total_widgets = None
         self._add_total_row()
+
+    def _update_sel_all(self):
+        """行勾选变化时同步全选框状态：全部勾选才显示勾选"""
+        sel_all = bool(self._device_sel_vars) and all(v.get() for v in self._device_sel_vars.values())
+        self._device_sel_all_var.set(sel_all)
+
+    def _toggle_all_devices(self):
+        """表头全选框点击：全选/全不选所有设备行"""
+        select_all = self._device_sel_all_var.get()
+        if select_all:
+            self._selected_devices.update(self._device_sel_vars.keys())
+        else:
+            self._selected_devices.clear()
+        for v in self._device_sel_vars.values():
+            v.set(select_all)
 
     def _table_cell(self, parent, row, col, serial=None, **kw):
         """在设备表格中创建一个单元格（与操作栏同风格：白底无边框）"""
@@ -1096,7 +1255,32 @@ class AutoFightGUI:
         lbl.grid(row=row, column=col, sticky="ew")
         if serial is not None:
             self._bind_row_drag(lbl, serial)
+            self._row_highlight_widgets.setdefault(serial, []).append(lbl)
         return lbl
+
+    def _on_row_click(self, serial):
+        """点击设备行：整行高亮背景，便于区分当前选中的行"""
+        if self._highlight_serial == serial:
+            return
+        if self._highlight_serial is not None:
+            self._set_row_highlight(self._highlight_serial, False)
+        self._highlight_serial = serial
+        self._set_row_highlight(serial, True)
+
+    def _set_row_highlight(self, serial, highlight):
+        """设置整行背景色：高亮用浅黄色，否则还原白色"""
+        bg = "#fff3cd" if highlight else "white"
+        for w in self._row_highlight_widgets.get(serial, []):
+            try:
+                if hasattr(w, "configure"):
+                    w.configure(bg=bg)
+            except Exception:
+                pass
+
+    def _row_btn_cmd(self, serial, action):
+        """设备行按钮统一入口：点击先高亮整行，再执行按钮动作"""
+        self._on_row_click(serial)
+        return action(serial)
 
     def _add_device_row(self, serial):
         """在设备管理 Tab 中添加一行"""
@@ -1117,35 +1301,40 @@ class AutoFightGUI:
                 self._selected_devices.add(s)
             else:
                 self._selected_devices.discard(s)
+            self._on_row_click(s)
+            self._update_sel_all()
 
+        self._device_sel_vars[serial] = sel_var
         ttk.Checkbutton(sel_frame, variable=sel_var, command=on_check,
                         bootstyle="primary").pack(expand=True)
         self._bind_row_drag(sel_frame, serial)
+        self._row_highlight_widgets.setdefault(serial, []).append(sel_frame)
 
-        serial_lbl = self._table_cell(parent, row, 1, serial=serial, text=serial, width=16,
-                                      anchor="center", font=("Consolas", 9), cursor="hand2")
-        serial_lbl._is_serial_cell = True
-
-        # device_name
+        # device_name（列1）
         dev_names = self.cfg.get("device_names", {})
         dev_name = dev_names.get(serial, "")
         name_kw = {"text": dev_name or "点击设置", "width": 10, "anchor": "center",
                    "cursor": "hand2"}
         if not dev_name:
             name_kw["foreground"] = "gray"
-        name_lbl = self._table_cell(parent, row, 2, serial=serial, **name_kw)
+        name_lbl = self._table_cell(parent, row, 1, serial=serial, **name_kw)
         name_lbl._is_name_cell = True
+
+        # 设备序列号（列2）
+        serial_lbl = self._table_cell(parent, row, 2, serial=serial, text=serial, width=16,
+                                      anchor="center", font=("Consolas", 9), cursor="hand2")
+        serial_lbl._is_serial_cell = True
 
         status_text = "运行中" if running else "空闲"
         status_color = "green" if running else "gray"
         status_lbl = self._table_cell(parent, row, 3, serial=serial, text=status_text,
                                       foreground=status_color, width=6, anchor="center")
 
-        scene_v, card_v, huan_v = "--", "--", "--"
+        scene_v = "--"
+        card_v, huan_v = self._device_daily_counts(serial)
+        card_v, huan_v = str(card_v), str(huan_v)
         if running:
             scene_v = getattr(engine, "last_map_name", None) or engine.cfg.get("map", "") or "--"
-            card_v = str(engine._card_count)
-            huan_v = str(engine._huan_count)
 
         scene_lbl = self._table_cell(parent, row, 4, serial=serial, text=scene_v,
                                      width=6, anchor="center")
@@ -1154,17 +1343,24 @@ class AutoFightGUI:
         huan_lbl = self._table_cell(parent, row, 6, serial=serial, text=huan_v,
                                     width=5, anchor="center")
 
-        bc_v = f"{engine.battle_count}" if running else "--"
+        stats = self._today_stats().get(serial, {})
+        if running:
+            bc_v = f"{engine.battle_count}"
+        else:
+            bc_v = str(stats.get("battle_count", 0) or 0)
         bc_lbl = self._table_cell(parent, row, 7, serial=serial, text=bc_v,
                                   width=4, anchor="center")
 
-        # 当前场景时长
+        # 当前场景时长（空闲时显示当日累计运行时长）
         total_runtime = getattr(engine, "total_runtime", 0) or 0
         if running and getattr(engine, "start_time", 0):
             elapsed = int(total_runtime + (time.time() - engine.start_time))
             duration = f"{elapsed // 60:02d}:{elapsed % 60:02d}"
         elif total_runtime > 0:
             elapsed = int(total_runtime)
+            duration = f"{elapsed // 60:02d}:{elapsed % 60:02d}"
+        elif not running and stats.get("total_runtime"):
+            elapsed = int(stats.get("total_runtime", 0))
             duration = f"{elapsed // 60:02d}:{elapsed % 60:02d}"
         else:
             duration = "--"
@@ -1173,20 +1369,22 @@ class AutoFightGUI:
 
         btn_frame = tk.Frame(parent, bg="white", bd=0, padx=4, pady=6)
         btn_frame.grid(row=row, column=9, sticky="ew")
+        self._bind_row_drag(btn_frame, serial)
+        self._row_highlight_widgets.setdefault(serial, []).append(btn_frame)
         start_btn2 = ttk.Button(btn_frame, text="▶ 启动", width=7,
                                 style="SmallSuccess.TButton",
-                                command=lambda s=serial: self._start_device(s))
+                                command=lambda s=serial: self._row_btn_cmd(s, self._start_device))
         start_btn2.pack(side=tk.LEFT, padx=(0, 3))
         stop_btn2 = ttk.Button(btn_frame, text="⏹ 停止", width=7,
                                style="SmallDanger.TButton",
-                               command=lambda s=serial: self._stop_device(s))
+                               command=lambda s=serial: self._row_btn_cmd(s, self._stop_device))
         stop_btn2.pack(side=tk.LEFT, padx=(0, 3))
         ttk.Button(btn_frame, text="📸 截图", width=7,
                    style="SmallOutline.TButton",
-                   command=lambda s=serial: self._device_screenshot(s)).pack(side=tk.LEFT, padx=(0, 3))
+                   command=lambda s=serial: self._row_btn_cmd(s, self._device_screenshot)).pack(side=tk.LEFT, padx=(0, 3))
         ttk.Button(btn_frame, text="详情", width=6,
                    style="SmallOutline.TButton",
-                   command=lambda s=serial: self._show_device_detail(s)).pack(side=tk.LEFT, padx=(0, 3))
+                   command=lambda s=serial: self._row_btn_cmd(s, self._show_device_detail)).pack(side=tk.LEFT, padx=(0, 3))
 
         # 显示是否有独立配置的标识
         has_custom = self._device_configs.get(serial) is not None
@@ -1194,6 +1392,7 @@ class AutoFightGUI:
             config_lbl = tk.Label(btn_frame, text="🔧", fg="#ff6b00",
                                  font=("Microsoft YaHei", 8), bg="white")
             config_lbl.pack(side=tk.LEFT, padx=(0, 3))
+            self._row_highlight_widgets.setdefault(serial, []).append(config_lbl)
 
         self._device_widgets[serial] = {
             "status": status_lbl, "scene": scene_lbl, "card": card_lbl,
@@ -1203,7 +1402,7 @@ class AutoFightGUI:
         self._update_device_row_buttons(serial)
 
     def _add_total_row(self):
-        """在设备表格最下面加一行"总计"：统计所有运行中设备的卡片/环总数"""
+        """在设备表格最下面加一行"总计"：统计所有设备的当日累计卡片/环总数"""
         parent = self.dev_table
         row = self._device_row
 
@@ -1226,16 +1425,31 @@ class AutoFightGUI:
         self._total_widgets = {"card": card_lbl, "huan": huan_lbl}
 
     def _compute_total_counts(self):
-        """计算所有运行中设备的卡片/环总数"""
+        """计算所有设备的当日累计卡片/环总数（含空闲设备，跨重启保留）"""
         total_card = 0
         total_huan = 0
-        for serial, eng in self.engines.items():
-            if eng is None:
-                continue
-            if getattr(eng, "running", False):
-                total_card += int(getattr(eng, "_card_count", 0) or 0)
-                total_huan += int(getattr(eng, "_huan_count", 0) or 0)
+        serials = set(self.engines.keys()) | set(self._today_stats().keys())
+        for serial in serials:
+            card_v, huan_v = self._device_daily_counts(serial)
+            total_card += int(card_v or 0)
+            total_huan += int(huan_v or 0)
         return total_card, total_huan
+
+    def _device_daily_counts(self, serial):
+        """返回设备当日累计 (卡, 环)：运行中取引擎实时值，空闲/重启后取统计文件值"""
+        eng = self.engines.get(serial)
+        if eng is not None:
+            return (getattr(eng, "_daily_card_count", 0) or 0,
+                    getattr(eng, "_daily_huan_count", 0) or 0)
+        stats = self._today_stats().get(serial, {})
+        return (stats.get("cards", 0) or 0, stats.get("rings", 0) or 0)
+
+    def _today_stats(self):
+        """返回今日统计文件中的设备数据（每天5:00自动切换新统计日）"""
+        cache = self._device_stats_cache or {}
+        if cache.get("date") != stats_day():
+            return {}
+        return cache.get("devices", {})
 
     def _update_device_row_buttons(self, serial):
         """根据设备运行状态更新设备行的按钮与状态（与场景控制页按钮逻辑一致）"""
@@ -1253,43 +1467,58 @@ class AutoFightGUI:
             w["stop"].configure(state=tk.DISABLED)
             w["status"].configure(text="空闲", foreground="gray")
             w["scene"].configure(text="--")
-            w["card"].configure(text="--")
-            w["huan"].configure(text="--")
-            w["bc"].configure(text="--")
-            w["dur"].configure(text="--")
+            card_v, huan_v = self._device_daily_counts(serial)
+            w["card"].configure(text=str(card_v))
+            w["huan"].configure(text=str(huan_v))
+            stats = self._today_stats().get(serial, {})
+            w["bc"].configure(text=str(stats.get("battle_count", 0) or 0))
+            runtime = stats.get("total_runtime", 0) or 0
+            if runtime:
+                elapsed = int(runtime)
+                w["dur"].configure(text=f"{elapsed // 60:02d}:{elapsed % 60:02d}")
+            else:
+                w["dur"].configure(text="--")
 
     def _load_device_stats(self):
-        """读取今日设备统计（跨重启保留，按天重置）"""
+        """读取今日设备统计（跨重启保留，每天5:00切换新统计日）"""
         try:
             if os.path.exists(STATS_FILE):
                 with open(STATS_FILE, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                if data.get("date") == datetime.now().strftime("%Y-%m-%d"):
+                if data.get("date") == stats_day():
                     return data
         except Exception:
             pass
         return {"date": "", "devices": {}}
 
     def _save_device_stats(self):
-        """把当前各引擎统计写入今日文件"""
-        devices = {}
+        """把当前各引擎统计写入今日文件（合并保留环/卡当日累计）"""
+        devices = dict(self._today_stats())
+        today = stats_day()
         for serial, eng in self.engines.items():
             if eng is None:
+                continue
+            # 引擎统计日与当前不一致（跨 5:00 尚未在引擎主循环里重置）：
+            # 不把昨天的计数写入新统计日文件，避免"新日期存旧数据"
+            if getattr(eng, "_stats_day_key", today) != today:
+                devices.pop(serial, None)
                 continue
             runtime = getattr(eng, "total_runtime", 0) or 0
             if getattr(eng, "start_time", 0) > 0:
                 runtime += max(0.0, time.time() - eng.start_time)
             devices[serial] = {
                 "battle_count": getattr(eng, "battle_count", 0),
+                "cards": getattr(eng, "_daily_card_count", 0) or 0,
+                "rings": getattr(eng, "_daily_huan_count", 0) or 0,
                 "total_runtime": runtime,
                 "last_loyalty": getattr(eng, "_last_loyalty_recovery", 0),
             }
         try:
             os.makedirs(os.path.dirname(STATS_FILE), exist_ok=True)
             with open(STATS_FILE, "w", encoding="utf-8") as f:
-                json.dump(
-                    {"date": datetime.now().strftime("%Y-%m-%d"), "devices": devices},
-                    f, ensure_ascii=False, indent=2)
+                data = {"date": stats_day(), "devices": devices}
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            self._device_stats_cache = data
         except Exception as e:
             self._log(f"⚠️ 统计保存失败: {e}")
 
@@ -1324,14 +1553,18 @@ class AutoFightGUI:
         old_engine = self.engines.get(serial)
         if old_engine is not None:
             engine.battle_count = old_engine.battle_count
+            engine._daily_card_count = getattr(old_engine, "_daily_card_count", 0) or 0
+            engine._daily_huan_count = getattr(old_engine, "_daily_huan_count", 0) or 0
             engine._last_loyalty_recovery = getattr(old_engine, "_last_loyalty_recovery", 0)
             runtime = getattr(old_engine, "total_runtime", 0) or 0
             if getattr(old_engine, "start_time", 0) > 0:
                 runtime += max(0.0, time.time() - old_engine.start_time)
             engine.total_runtime = runtime
         else:
-            stats = self._load_device_stats().get("devices", {}).get(serial, {})
+            stats = self._today_stats().get(serial, {})
             engine.battle_count = stats.get("battle_count", 0)
+            engine._daily_card_count = stats.get("cards", 0) or 0
+            engine._daily_huan_count = stats.get("rings", 0) or 0
             engine._last_loyalty_recovery = stats.get("last_loyalty", 0)
             engine.total_runtime = stats.get("total_runtime", 0) or 0
         engine.coord_enabled = device_cfg.get("coord_enabled", True)
@@ -1400,8 +1633,9 @@ class AutoFightGUI:
         widget = self._drag_widget
         self._drag_serial = None
         self._drag_widget = None
-        # 移动距离很小视为单击：名称列触发重命名，序列号列复制到剪贴板
+        # 移动距离很小视为单击：整行高亮；名称列触发重命名，序列号列复制到剪贴板
         if abs(event.y_root - self._drag_y0) < 4:
+            self._on_row_click(serial)
             if widget is not None and getattr(widget, "_is_name_cell", False):
                 self._rename_device(serial, widget)
             elif widget is not None and getattr(widget, "_is_serial_cell", False):
@@ -1421,20 +1655,26 @@ class AutoFightGUI:
         self._refresh_device_tab()
 
     def _copy_serial(self, serial, lbl):
-        """点击设备序列号复制到剪贴板，并短暂显示"已复制"提示"""
+        """点击设备序列号复制到剪贴板，并短暂显示"已复制"提示（2秒后自动恢复）"""
         self.root.clipboard_clear()
         self.root.clipboard_append(serial)
-        old_text = lbl.cget("text")
-        old_fg = lbl.cget("foreground")
-
-        def restore():
-            try:
-                lbl.configure(text=old_text, foreground=old_fg)
-            except Exception:
-                pass
-
+        if getattr(lbl, "_copied", False):
+            # 已在提示状态（重复点击）：不重新捕获文本/颜色，只重新计时
+            self.root.after(2000, lambda: self._restore_serial(lbl, serial))
+            return
+        lbl._copied = True
+        lbl._orig_fg = lbl.cget("foreground")
         lbl.configure(text="已复制 ✓", foreground="green")
-        self.root.after(1200, restore)
+        self.root.after(2000, lambda: self._restore_serial(lbl, serial))
+
+    def _restore_serial(self, lbl, serial):
+        """恢复序列号显示；控件已重建（表格刷新）则跳过"""
+        try:
+            if lbl.winfo_exists():
+                lbl.configure(text=serial, foreground=getattr(lbl, "_orig_fg", "black"))
+                lbl._copied = False
+        except Exception:
+            pass
 
     def _merged_device_order(self):
         """合并显示顺序与已保存顺序：暂未连接的设备保留原槽位"""
@@ -1736,7 +1976,7 @@ class AutoFightGUI:
         # 创建弹窗
         dlg = tk.Toplevel(self.root)
         dlg.title(f"设备详情 - {serial}")
-        dlg.geometry("900x650")
+        dlg.geometry("940x720")
         dlg.resizable(True, True)
         dlg.transient(self.root)
         dlg.grab_set()
@@ -1875,10 +2115,50 @@ class AutoFightGUI:
             ttk.Label(config_table, text=value,
                      font=("Microsoft YaHei", 9, "bold")).grid(row=row, column=col+1, sticky="w", padx=(0, 20), pady=3)
 
+        # ===== 妙手空空场景配置摘要（可滚动，限高避免挤压底部按钮） =====
+        scene_cfg = device_cfg.get("scene_config", []) or []
+        scene_box = ttk.Labelframe(config_frame, text=" 妙手空空场景配置 ", padding=(10, 6))
+        scene_box.pack(fill=tk.X, pady=(12, 0))
+
+        scene_canvas = tk.Canvas(scene_box, height=150, highlightthickness=0)
+        scene_scroll = ttk.Scrollbar(scene_box, orient=tk.VERTICAL, command=scene_canvas.yview)
+        rows_frame = ttk.Frame(scene_canvas)
+        rows_frame.bind(
+            "<Configure>",
+            lambda e: scene_canvas.configure(scrollregion=scene_canvas.bbox("all"))
+        )
+        scene_canvas.create_window((0, 0), window=rows_frame, anchor="nw")
+        scene_canvas.configure(yscrollcommand=scene_scroll.set)
+
+        enabled_rows = [r for r in scene_cfg if r.get("enabled")]
+        disabled_rows = [r for r in scene_cfg if not r.get("enabled")]
+        if not enabled_rows:
+            ttk.Label(rows_frame, text="未配置启用的场景",
+                      foreground="gray", font=("Microsoft YaHei", 9)).pack(anchor="w", pady=2)
+        else:
+            for r in enabled_rows:
+                ttk.Label(rows_frame,
+                          text=(f"✅ {r.get('scene', '--')}　环:{r.get('rings', '无要求')}　"
+                                f"卡:{r.get('cards', '无要求')}　时间:{r.get('time', '无要求')}　"
+                                f"后续:{r.get('after', '后换场景')}"),
+                          font=("Microsoft YaHei", 9), foreground="#198754").pack(anchor="w", pady=1)
+            if disabled_rows:
+                ttk.Separator(rows_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=4)
+                for r in disabled_rows:
+                    ttk.Label(rows_frame, text=f"☐ {r.get('scene', '--')}（未启用）",
+                              font=("Microsoft YaHei", 9), foreground="#999").pack(anchor="w", pady=1)
+        scene_canvas.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        scene_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        ttk.Label(scene_box, text="💡 点击「编辑场景配置」可单独修改此设备的场景配置，其他设置仍跟随全局配置",
+                  foreground="#666", font=("Microsoft YaHei", 8)).pack(anchor="w", pady=(4, 0))
+
         # 底部操作按钮
         btn_frame = ttk.Frame(config_frame)
         btn_frame.pack(fill=tk.X, pady=(15, 0))
 
+        ttk.Button(btn_frame, text="编辑场景配置",
+                   command=lambda: self._edit_device_scene_config(serial, dlg),
+                   bootstyle="success", width=12).pack(side=tk.LEFT, padx=(0, 10))
         ttk.Button(btn_frame, text="对比配置", command=lambda: self._compare_config(serial),
                    bootstyle="info", width=12).pack(side=tk.LEFT, padx=(0, 10))
         ttk.Button(btn_frame, text="复制配置", command=lambda: self._copy_config_to_devices(serial),
@@ -1887,12 +2167,6 @@ class AutoFightGUI:
                    bootstyle="success", width=12).pack(side=tk.LEFT, padx=(0, 10))
         ttk.Button(btn_frame, text="清除历史", command=lambda: self._clear_scene_history(serial, dlg),
                    bootstyle="danger", width=12).pack(side=tk.LEFT)
-
-        # 关闭按钮
-        close_frame = ttk.Frame(dlg, padding=10)
-        close_frame.pack(fill=tk.X)
-        ttk.Button(close_frame, text="关闭", command=dlg.destroy,
-                   bootstyle="primary", width=10).pack()
 
         # 居中显示
         dlg.update_idletasks()
@@ -1943,17 +2217,16 @@ class AutoFightGUI:
         def on_confirm():
             choice = clear_var.get()
             if choice == "today":
-                # 只删除今天的历史文件
-                today = datetime.now().strftime("%Y-%m-%d")
-                files = [get_scene_history_file(serial, today)]
+                # 只删除当前统计日（每天5:00为界）的历史文件
+                files = [get_scene_history_file(serial, stats_day())]
                 msg = f"确定要清除设备 [{serial}] 今日的场景历史吗？"
             elif choice == "week":
-                # 删除最近7天的历史文件
+                # 删除最近7个统计日的历史文件
                 from datetime import timedelta
                 files = []
                 today = datetime.now()
                 for i in range(7):
-                    date = today - timedelta(days=i)
+                    date = today - timedelta(days=i, hours=5)
                     date_str = date.strftime("%Y-%m-%d")
                     files.append(get_scene_history_file(serial, date_str))
                 msg = f"确定要清除设备 [{serial}] 最近7天的场景历史吗？"
@@ -2523,8 +2796,8 @@ class AutoFightGUI:
                         if w and eng and eng.running:
                             scene = getattr(eng, "last_map_name", None) or eng.cfg.get("map", "") or "--"
                             w["scene"].configure(text=scene)
-                            w["card"].configure(text=str(eng._card_count))
-                            w["huan"].configure(text=str(eng._huan_count))
+                            w["card"].configure(text=str(eng._daily_card_count))
+                            w["huan"].configure(text=str(eng._daily_huan_count))
                             w["bc"].configure(text=str(eng.battle_count))
                             if getattr(eng, "start_time", 0):
                                 elapsed = int((getattr(eng, "total_runtime", 0) or 0)
@@ -2538,6 +2811,13 @@ class AutoFightGUI:
                         self._total_widgets["huan"].configure(text=str(th))
         except queue.Empty:
             pass
+        # 定期把当日累计写盘（异常退出最多丢失60秒增量）
+        if any(eng is not None and getattr(eng, "running", False)
+               for eng in self.engines.values()):
+            now = time.time()
+            if now - getattr(self, "_last_stats_save_t", 0) >= 60:
+                self._last_stats_save_t = now
+                self._save_device_stats()
         self.root.after(300, self._poll_log)
 
     def _log(self, msg):
@@ -2634,13 +2914,29 @@ class AutoFightGUI:
 
             self.log_text.insert(tk.END, msg + "\n")
 
-            self.log_text.see(tk.END)
+            # 自动滚动勾选时才跟随最新日志；取消勾选后可自由翻看历史
+            if self.log_follow.get():
+
+                self.log_text.see(tk.END)
 
             self.log_text.configure(state=tk.DISABLED)
 
         # 更新日志计数
 
         self._update_log_count()
+
+    def _on_log_scroll(self, event):
+        """日志框滚轮：向上翻看历史时自动暂停跟随，滚回底部自动恢复"""
+        try:
+            if getattr(event, "num", None) == 4 or getattr(event, "delta", 0) > 0:
+                # 向上滚动 → 暂停自动滚动，便于翻看历史
+                self.log_follow.set(False)
+            else:
+                # 向下滚动：已在底部则恢复自动滚动
+                if self.log_text.yview()[1] >= 0.999:
+                    self.log_follow.set(True)
+        except Exception:
+            pass
 
     def _update_log_count(self):
 
@@ -2674,7 +2970,10 @@ class AutoFightGUI:
 
                 self.log_text.insert(tk.END, msg + "\n")
 
-        self.log_text.see(tk.END)
+        # 自动滚动勾选时才滚到底部（筛选切换后仍跟随最新）
+        if self.log_follow.get():
+
+            self.log_text.see(tk.END)
 
         self.log_text.configure(state=tk.DISABLED)
 
@@ -2688,29 +2987,69 @@ class AutoFightGUI:
 
     def _update_log_filter_options(self):
 
-        """更新日志筛选下拉框选项"""
-
-        # 收集所有有日志的设备
+        """更新日志筛选下拉框选项：全部设备 + 所有已连接设备 + 有日志的标识"""
 
         devices_with_logs = set()
 
+        # 收集所有有日志的设备
+
         for device_id, _, _ in self.all_logs:
 
-            devices_with_logs.add(device_id)
+            if device_id:
 
-        # 添加当前运行的设备
+                devices_with_logs.add(device_id)
+
+        # 所有已连接的 ADB 设备（无论是否运行/有无日志，都能在筛选里选）
+        # 标识与引擎日志一致：自定义名优先，否则 前5位(尾3位)
+        try:
+            dev_names = self.cfg.get("device_names", {}) or {}
+            from mhxy_engine import list_adb_devices as _lad
+            for serial in _lad():
+                dev_id = dev_names.get(serial, "") or short_dev_label(serial)
+                if dev_id:
+                    devices_with_logs.add(dev_id)
+        except Exception:
+            pass
+
+        # 添加当前运行的引擎（标识与日志保持一致）
 
         for serial, engine in self.engines.items():
 
             if engine.running:
 
-                device_name = engine.device_name if hasattr(engine, 'device_name') else serial[:4]
+                dev_id = getattr(engine, "device_id", "") or ""
 
-                devices_with_logs.add(device_name)
+                if not dev_id:
 
-        # 构建选项列表
+                    dev_id = short_dev_label(serial)
 
-        options = ["全部设备"] + sorted(devices_with_logs)
+                if dev_id:
+
+                    devices_with_logs.add(dev_id)
+
+        # 构建选项列表：按设备列表顺序排列（与设备管理页一致）
+        ordered_ids = []
+        try:
+            dev_names = self.cfg.get("device_names", {}) or {}
+            from mhxy_engine import list_adb_devices as _lad
+            order = list(getattr(self, "_device_order", None) or [])
+            if not order:
+                order = list(_lad())
+            # 运行中的引擎追加到末尾，确保出现在下拉里
+            for serial, engine in self.engines.items():
+                if engine.running and serial not in order:
+                    order.append(serial)
+            for serial in order:
+                label = dev_names.get(serial, "") or short_dev_label(serial)
+                if label and label not in ordered_ids:
+                    ordered_ids.append(label)
+        except Exception:
+            pass
+        # 有日志但不在设备列表里的标识（历史/已拔出设备）排后面，系统消息排最后
+        extra = sorted(l for l in devices_with_logs if l not in ordered_ids and l != "系统")
+        options = ["全部设备"] + ordered_ids + extra
+        if "系统" in devices_with_logs:
+            options.append("系统")
 
         current_val = self.log_filter_var.get()
 
@@ -2909,6 +3248,33 @@ class AutoFightGUI:
                     self.map_select.set("小西天")
             save_config(self.cfg)
             self._log("✅ 妙手空空场景配置已保存")
+
+    def _edit_device_scene_config(self, serial, parent_dlg):
+        """在设备详情中单独编辑该设备的妙手空空场景配置（局部覆盖，其他设置仍跟随全局）"""
+        device_cfg = self._get_effective_config(serial)
+        dialog = SceneSettingsDialog(parent_dlg, device_cfg.get("scene_config", []) or [])
+        parent_dlg.wait_window(dialog.win)
+        if dialog.result is None:
+            return
+
+        # 已有独立配置则在其基础上只更新 scene_config；
+        # 没有则新建仅含 scene_config 的局部覆盖配置（其余键自然跟随全局）
+        base = dict(self._device_configs.get(serial) or {})
+        base["scene_config"] = dialog.result
+        if not save_device_config(serial, base):
+            messagebox.showerror("错误", "保存设备场景配置失败")
+            return
+
+        self._device_configs[serial] = base
+        engine = self.engines.get(serial)
+        if engine is not None and engine.running:
+            self._log(f"[{serial}] ✅ 设备场景配置已保存（当前引擎正在运行，将在下次启动时生效）")
+        else:
+            self._log(f"[{serial}] ✅ 设备场景配置已保存，启动时将使用独立配置")
+        # 重建详情弹窗刷新来源提示与场景摘要，并刷新设备管理页（🔧 标识）
+        parent_dlg.destroy()
+        self._refresh_device_tab()
+        self._show_device_detail(serial)
 
     def _apply_scene_settings(self, scene_config):
         self.cfg["scene_config"] = scene_config
@@ -3275,7 +3641,7 @@ class SceneSettingsDialog:
         # 标题区域
         ttk.Label(main, text="场景之妙手空空", font=("Microsoft YaHei", 16, "bold")).grid(
             row=0, column=0, sticky="w", pady=(0, 8))
-        ttk.Label(main, text="不支持自动换场景到：丝绸之路、无名鬼域",
+        ttk.Label(main, text="不支持自动换场景到：丝绸之路、无名鬼域；凤巢三层/凤巢五层仅支持打怪、暂不支持自动切入",
                  foreground="gray", font=("Microsoft YaHei", 9)).grid(
             row=1, column=0, sticky="w", pady=(0, 15))
 
@@ -3490,6 +3856,14 @@ class SceneSettingsDialog:
 
 
 if __name__ == "__main__":
+    # 用 pythonw.exe 启动时没有控制台，sys.stdout/stderr 为 None，
+    # 程序内异常分支的 print 会因此崩溃，这里替换为可忽略的哑对象
+    if sys.stdout is None:
+        import io as _io
+        sys.stdout = _io.StringIO()
+    if sys.stderr is None:
+        import io as _io
+        sys.stderr = _io.StringIO()
     app = AutoFightGUI()
     app.run()
 

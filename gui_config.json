@@ -85,14 +85,6 @@
     },
     {
       "enabled": false,
-      "scene": "小西天",
-      "rings": "得3个环",
-      "cards": "得2张卡片",
-      "time": "满180分钟",
-      "after": "后换场景"
-    },
-    {
-      "enabled": false,
       "scene": "须弥东界",
       "rings": "得3个环",
       "cards": "得2张卡片",
@@ -125,12 +117,17 @@
     "WEENU19314102545": "鸿元·方寸",
     "WEENU18810135788": "醉一世芳华ん",
     "WEENU18904103110": "醉一抹深秋ん",
-    "WEENU18806160281": "测试账号"
+    "WEENU18806160281": "兰时霜叶"
   },
   "capture_bb_enabled": true,
   "capture_bb_blacklist": {
-    "小西天": ["夜罗刹", "金饶僧"],
-    "小雷音寺": ["大力金刚"]
+    "小西天": [
+      "夜罗刹",
+      "金饶僧"
+    ],
+    "小雷音寺": [
+      "大力金刚"
+    ]
   },
   "device_order": [
     "WEENU18A18102828",
@@ -140,10 +137,10 @@
     "WEENU18904103110",
     "JUBNU18728128405",
     "JUBNU18813107912",
+    "WEENU18806160281",
     "JUBNU18930138252",
     "WEENU18720159489",
-    "WEENU18917107778",
-    "WEENU18806160281"
+    "WEENU18917107778"
   ],
   "use_local_four_person": true,
   "check_pkg_counts": true,

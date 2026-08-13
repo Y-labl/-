@@ -105,15 +105,17 @@ class CNNUtil(object):
             return best_run[0] + (best_run[-1] - best_run[0]) / 2 + 45
         return None
 
-    def findFourPersonLocal(self, deviceId, left=None, top=None, width=None, height=None, curFrame=None):
+    def findFourPersonLocal(self, deviceId, left=None, top=None, width=None, height=None, curFrame=None, conf_threshold=None):
         """本地四小人：与功能测试页一致——截图后“在/请”定位 + 多候选 ROI 打分。
 
         入口判定由调用方 _is_show_four_person 负责。流程同测试页：
         findFourPersonDetectArea 定位（找不到回退默认区域）-> best_four_person_roi
         多候选打分（默认 + 在/请区域 + y 扫描）-> 最高分槽位。
-        置信度必须 >=0.8 才点击（CNN 没认出弹窗绝不盲点，避免点错被系统踢下线），
-        点 50% 高度，没关掉下移 55% 再点一次；置信度不足/仍不行返回 False，
+        置信度必须 >=conf_threshold（默认 0.8）才点击（CNN 没认出弹窗绝不盲点，
+        避免点错被系统踢下线），点 50% 高度，没关掉下移 55% 再点一次；仍不行返回 False，
         由调用方按 8.5 前图灵方式兜底。返回 True=本地点击成功，False=本地未成功。
+        conf_threshold：图灵云不可用（如账户余额不足）时，调用方可传入更低阈值
+        （如 0.5）再试一次；点击后仍有 predict>0.5 验证兜底，不会盲点连点。
         """
         frame = None
         if curFrame is not None:
@@ -142,8 +144,9 @@ class CNNUtil(object):
         cv_save_img(f"{logTmpPath()}/{_ts}_{deviceId}_FourPerson.png", frame)
         # 置信度门槛：CNN 没认出弹窗（如 _is_show_four_person 误判的普通画面）
         # 绝不点击，避免连续点错被系统强制掉线；交给 8.5 前图灵验证
-        if best_prob < CONF_THRESHOLD:
-            orderLog(deviceId, f"本地识别四小人最高置信度{best_prob:.4f}不足阈值({CONF_THRESHOLD})，不点击，交给图灵验证")
+        thr = conf_threshold if conf_threshold is not None else CONF_THRESHOLD
+        if best_prob < thr:
+            orderLog(deviceId, f"本地识别四小人最高置信度{best_prob:.4f}不足阈值({thr})，不点击，交给图灵验证")
             return False
         # 仅确认是四小人界面后才保存最佳槽位截图
         _best_crop = frame[top:top + height, left + 90 * best_index:left + 90 * best_index + 90]

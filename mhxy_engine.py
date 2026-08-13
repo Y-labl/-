@@ -34,9 +34,7 @@ import requests
 
 import cv2, numpy as np
 
-from rapidocr_onnxruntime import RapidOCR
-
-
+# RapidOCR 改为惰性导入（仅 init_ocr 时加载），避免 GUI 启动时加载 onnxruntime 拖慢启动
 
 # ======================== GUI ========================
 
@@ -175,6 +173,44 @@ for scene_name in list_supported_scenes():
         "steal_target": steal_tag,
 
     }
+
+
+
+# 在 xbw_features goToMapAction 中无导航分支的场景（真实切场会静默失败），
+# 仍可打怪但不出现在自动切场轮转列表中
+NO_SWITCH_NAV_SCENES = {"凤巢三层", "凤巢五层"}
+
+
+def _match_scene_name(ocr_text, scene_name):
+    """OCR 场景名与配置场景名容错匹配：完全相等或前缀匹配。
+    OCR 常识别出带多余字符的文本（如"小西天："），用 startswith 兼容。"""
+    if not ocr_text or not scene_name:
+        return False
+    ocr_text = str(ocr_text).strip()
+    if not ocr_text:
+        return False
+    return ocr_text == scene_name or ocr_text.startswith(scene_name)
+
+
+def short_dev_label(serial):
+    """设备显示标识：前5位(尾3位)，如 WEENU18720159489 -> WEENU(489)。
+    引擎日志前缀与 GUI 筛选下拉共用此规则，保证两边可互相匹配。"""
+    if not serial:
+        return "????"
+    serial = str(serial)
+    if len(serial) >= 8:
+        return f"{serial[:5]}({serial[-3:]})"
+    return serial
+
+
+def stats_day(now=None):
+    """统计日：以每天 05:00 为界（05:00~次日 04:59 属同一天），返回 YYYY-MM-DD。
+    挂机常跨 0 点，按自然日 0 点切天会把记录串到第二天；
+    统一按游戏凌晨 5 点刷新，下班挂机跨夜后计数仍算"当天"。"""
+    if now is None:
+        now = datetime.now()
+    from datetime import timedelta
+    return (now - timedelta(hours=5)).strftime("%Y-%m-%d")
 
 
 
@@ -729,7 +765,7 @@ class AutoFightEngine:
         self.device_name = device_names.get(self.serial, "") if device_names else ""
 
         # 设备短标识（用于日志前缀，优先用设备名，否则用序列号前4位）
-        self.device_id = self.device_name if self.device_name else (self.serial[:4] if self.serial else "????")
+        self.device_id = self.device_name if self.device_name else short_dev_label(self.serial)
 
         # 日志文件路径
         import os
@@ -770,18 +806,25 @@ class AutoFightEngine:
         self._pkg_interval = 0.0         # 下次检查间隔（550~700 随机）
         self._huan_count = 0             # 当前场景累计环数
         self._card_count = 0             # 当前场景累计卡数
+        self._daily_huan_count = 0       # 当日累计环数（跨重启保留，按天重置）
+        self._daily_card_count = 0       # 当日累计卡数（跨重启保留，按天重置）
         self._scene_switch_requested = False
         self._last_4p_check_t = 0.0      # 战斗中四小人判定节流
+        self._tuling_fail_streak = 0     # 图灵云连续失败次数（用于冷却节流）
+        self._tuling_cooldown_until = 0  # 图灵云冷却截止时间戳（余额不足等持续失败时暂停调用）
         self._scene_history = []         # 场景历史记录：[{name, cards, rings, duration, start_time}]
         self._current_scene_start_time = time.time()  # 当前场景开始时间
 
-        # 场景历史文件（按天记录）
-        self._scene_history_date = datetime.now().strftime("%Y-%m-%d")
+        # 场景历史文件（按天记录，每天 5:00 为界）
+        self._scene_history_date = stats_day()
         self._scene_history_file = os.path.join(
             os.path.dirname(os.path.abspath(__file__)),
             "logs",
             f"scene_history_{self.serial}_{self._scene_history_date}.json"
         )
+
+        # 当前统计日（每天 5:00 切换）：跨统计日重置当日累计
+        self._stats_day_key = stats_day()
 
         # 加载场景历史
         self._load_scene_history()
@@ -1016,20 +1059,78 @@ class AutoFightEngine:
             time.sleep(random.uniform(0.05, 0.1))
         adb_tap(self.serial, tx, ty)
 
+    def _detect_current_map(self):
+        """OCR 检测当前实际场景名（导航后到达验证用）；失败返回 None"""
+        try:
+            if self.ocr_engine is None:
+                self.init_ocr()
+            if self.ocr_engine is None:
+                return None
+            f = self.get_frame()
+            if f is None:
+                return None
+            ocr_name, _, _ = self.detect_map_coord(f)
+            if not ocr_name:
+                return None
+            from scene_detector import detect_position as _detect
+            detected, _ = _detect(self.serial, f, self.scale_x, self.scale_y, ocr_name)
+            return detected
+        except Exception as e:
+            self._log(f"  ⚠️ 当前场景检测失败: {e}")
+            return None
+
     def _do_real_scene_switch(self, target_map):
         """
-        用小霸王 goToMapAction 真实导航到目标场景；
-        失败返回 False，由调用方回退到原来的“仅切换模板”方式。
+        真实导航到目标场景：
+        优先用 场景切换.py 的 SceneSwitcher（每段跑图有 OCR 到达验证、失败明确返回）；
+        失败/未覆盖时回退小霸王 goToMapAction（导航后 OCR 验证，未到达重试一次）。
         """
         if not self.cfg.get("use_real_scene_switch", True):
             return False
+
+        # ===== 方案1：场景切换引擎 SceneSwitcher（推荐，带到达验证 + 每步反馈） =====
+        try:
+            from 场景切换 import SceneSwitcher
+            self._log(f"  🗺️ 场景切换引擎导航到 {target_map} ...")
+            sw = SceneSwitcher(self.serial, log_fn=lambda m: self._log(f"  [切场] {m}"))
+            if not sw.connect():
+                self._log("  ⚠️ 场景切换引擎连接失败，回退小霸王导航")
+            else:
+                if sw.switch_scene(target_map):
+                    self._log(f"  ✅ 已到达 {target_map}（场景切换引擎确认）")
+                    time.sleep(1)
+                    return True
+                self._log("  ⚠️ 场景切换引擎导航失败，回退小霸王导航")
+        except Exception as e:
+            self._log(f"  ⚠️ 场景切换引擎异常({e})，回退小霸王导航")
+
+        # ===== 方案2：小霸王 goToMapAction（兜底，导航后 OCR 验证到达） =====
+        if not self.coord_enabled:
+            # 坐标检测关闭：无法 OCR 验证，仅执行导航流程
+            try:
+                from xbw_features import go_to_chang_jing
+                self._log(f"  🗺️ 小霸王导航到 {target_map} ...")
+                go_to_chang_jing(self.serial, target_map)
+                self._log(f"  ✅ 已执行导航到 {target_map}（坐标检测关闭，无法验证到达）")
+                time.sleep(1)
+                return True
+            except Exception as e:
+                self._log(f"  ⚠️ 真实切场失败({e})，回退本地切场")
+                return False
         try:
             from xbw_features import go_to_chang_jing
-            self._log(f"  🗺️ 真实导航到 {target_map} ...")
-            go_to_chang_jing(self.serial, target_map)
-            self._log(f"  ✅ 已导航到 {target_map}")
-            time.sleep(1)
-            return True
+            for _try in range(2):
+                self._log(f"  🗺️ 小霸王导航到 {target_map}（第{_try+1}次）...")
+                go_to_chang_jing(self.serial, target_map)
+                time.sleep(1.5)
+                detected = self._detect_current_map()
+                if detected and _match_scene_name(detected, target_map):
+                    self._log(f"  ✅ 已到达 {target_map}（OCR 确认）")
+                    return True
+                self._log(f"  ⚠️ 导航后仍在 {detected or '未知场景'}，未到达 {target_map}"
+                          + ("，重试一次" if _try == 0 else ""))
+            self._log(f"  ⚠️ 两次导航后仍未到达 {target_map}，回退本地切场（仅切换模板）")
+            return False
         except Exception as e:
             self._log(f"  ⚠️ 真实切场失败({e})，回退本地切场")
             return False
@@ -1037,31 +1138,43 @@ class AutoFightEngine:
     def _check_backpack_counts(self, scene):
         """
         小霸王“偷偷检查背包”：20 格快照 diff 新增槽位 ->
-        模板匹配“装备条件/怪物卡片”累计环/卡计数；达标置位切场请求。
+        模板匹配“装备条件/怪物卡片”累计环/卡计数；达标时切场请求在下次循环即触发。
         """
+        ok = False
         try:
             from xbw_features import check_backpack_and_maybe_switch
             rings_req = scene.get("rings", "无要求")
             cards_req = scene.get("cards", "无要求")
             self._log(f"  🎒 背包检查：当前环 {self._huan_count} / 卡 {self._card_count}"
                       f"（要求 {rings_req} / {cards_req}）")
-            self._pkg_snapshot, self._huan_count, self._card_count, reason = \
+            old_huan = self._huan_count
+            old_card = self._card_count
+            self._pkg_snapshot, self._huan_count, self._card_count, reason, ok = \
                 check_backpack_and_maybe_switch(
                     self.serial, rings_req, cards_req,
                     self._huan_count, self._card_count, self._pkg_snapshot)
+            # 同步累加到当日计数：切场景/重启不清零，跨统计日由引擎/统计文件重置
+            self._daily_huan_count += max(0, self._huan_count - old_huan)
+            self._daily_card_count += max(0, self._card_count - old_card)
             self._log(f"  🎒 检查后：环 {self._huan_count} / 卡 {self._card_count}")
             if reason:
                 self._log(f"  🎉 {reason}，准备切换场景")
+                # 立即置位（不依赖下一次背包检查），主循环下一次迭代即执行切场
                 self._scene_switch_requested = True
+            if not ok:
+                self._log("  ⚠️ 背包未成功打开（可能被弹窗/窗口挡住），8秒后重试")
         except Exception as e:
             self._log(f"  ⚠️ 背包检查异常: {e}")
         finally:
             self._pkg_check_t = time.time()
-            try:
-                from xbw_features import next_check_interval as _nci
-                self._pkg_interval = _nci()
-            except Exception:
-                self._pkg_interval = 600
+            if ok:
+                try:
+                    from xbw_features import next_check_interval as _nci
+                    self._pkg_interval = _nci()
+                except Exception:
+                    self._pkg_interval = 600
+            else:
+                self._pkg_interval = 8.0   # 打开失败/异常：8秒后重试，避免长时间不检查
 
 
     def get_scene_history(self):
@@ -1094,8 +1207,8 @@ class AutoFightEngine:
     def _save_scene_history(self):
         """保存场景历史到文件（按天记录）"""
         try:
-            # 检查是否跨天，如果跨天则切换到新文件
-            current_date = datetime.now().strftime("%Y-%m-%d")
+            # 检查是否跨统计日（每天 5:00 为界），跨天则切换到新文件
+            current_date = stats_day()
             if current_date != self._scene_history_date:
                 self._scene_history_date = current_date
                 self._scene_history_file = os.path.join(
@@ -1111,6 +1224,34 @@ class AutoFightEngine:
                 json.dump(self._scene_history, f, ensure_ascii=False, indent=2)
         except Exception as e:
             self._log(f"⚠️ 保存场景历史失败: {e}")
+
+    def _save_current_scene_history(self):
+        """流程结束时记录当前场景到历史（手动停止/达标停止/异常退出都会走这里），
+        避免"在小西天跑了3个环，手动换场景后小西天记录丢失"的问题。"""
+        try:
+            map_name = self.cfg.get("map", "")
+            if not map_name:
+                return
+            start_time = getattr(self, "_current_scene_start_time", 0) or 0
+            # 刚启动（<60秒）且无任何环/卡产出则视为"没跑起来"，不记录，避免空记录刷屏
+            if start_time > 0 and time.time() - start_time < 60 and not self._huan_count and not self._card_count:
+                return
+            # 避免重复记录同一条当前场景（切场块已记录过时）
+            if self._scene_history and self._scene_history[-1].get("name") == map_name \
+                    and abs((self._scene_history[-1].get("start_time") or 0) - start_time) < 1:
+                return
+            duration = max(0.0, time.time() - start_time) if start_time > 0 else 0.0
+            self._scene_history.append({
+                "name": map_name,
+                "cards": self._card_count,
+                "rings": self._huan_count,
+                "duration": duration,
+                "start_time": start_time,
+            })
+            self._save_scene_history()
+            self._log(f"📝 流程结束，已记录当前场景 {map_name} 到历史（环 {self._huan_count} / 卡 {self._card_count}）")
+        except Exception as e:
+            self._log(f"⚠️ 记录当前场景历史失败: {e}")
 
     def _load_scene_history(self):
         """从文件加载场景历史（只加载当天的）"""
@@ -1160,7 +1301,7 @@ class AutoFightEngine:
 
             "PK-妙手空空技能", "PK-自动按钮", "PK-取消自动战斗",
 
-            "重置回合数", "PK-逃跑", "PK-防御",
+            "重置回合数", "PK-逃跑", "PK-防御", "PK-撤销战斗操作",
 
             "PK-对面宝宝文字蓝色", "PK-对面宝宝文字红色",
 
@@ -2000,7 +2141,7 @@ class AutoFightEngine:
             pass
         return mx  # 扫描失败回退到模板匹配点
 
-    def _try_capture_bb(self, frame, matched_targets, max_rounds=None):
+    def _try_capture_bb(self, frame, matched_targets, max_rounds=None, scan_retries=0):
         """对面宝宝/变异召唤兽检测 + 捕捉。优先捕捉变异蛟龙/变异地狱战神；
         do_combat 开头和第四回合攻击前各调用一次；不滑动。
         返回 (是否捕捉过宝宝, 捕捉回合数)"""
@@ -2042,17 +2183,27 @@ class AutoFightEngine:
         if cur_blue:
             bb_markers.extend(cur_blue)
 
-        # 前排怪物可能遮挡后排名字（不做滑动，仅刷新帧再查一次）
+        # 前排怪物可能遮挡后排名字（不做滑动，多刷新几帧再查，等名字渲染/遮挡变化）
         if len(matched_targets) >= 5:
-            self._log("  👆 检测到前排怪物，后排名字可能被遮挡")
-            frame2 = self.get_frame()
-            if frame2 is not None:
+            self._log("  👆 检测到前排怪物，后排名字可能被遮挡，多帧重扫")
+            for _scan in range(scan_retries + 1):
+                if not self._check_in_combat():
+                    break
+                if _scan == 0:
+                    frame2 = self.get_frame()
+                else:
+                    time.sleep(0.5)
+                    frame2 = self.get_frame()
+                if frame2 is None:
+                    continue
                 cur_red = self._find_all(frame2, "PK-对面宝宝文字红色", threshold=0.80, roi=COMBAT_ROI)
                 if cur_red:
                     bb_markers.extend(cur_red)
                 cur_blue2 = self._find_all(frame2, "PK-对面宝宝文字蓝色", threshold=0.80, roi=COMBAT_ROI)
                 if cur_blue2:
                     bb_markers.extend(cur_blue2)
+                if bb_markers:
+                    break
         else:
             cur_red = self._find_all(frame, "PK-对面宝宝文字红色", threshold=0.80, roi=COMBAT_ROI)
             if cur_red:
@@ -2248,6 +2399,20 @@ class AutoFightEngine:
         self._battle_defend_ok = False
         self._steal_targets_gone = False           # 每场重置：偷窃目标是否已逃跑（喽啰会跑）
 
+        # 进战斗后如果出现“撤销战斗操作”（例如跑图点地图时误点到怪物，回合已被占用），
+        # 先撤销误操作，避免本回合被普通攻击占用导致召唤兽无法防御。
+        try:
+            _f_undo = self.get_frame()
+            if _f_undo is not None:
+                _undo_btn = self.find(_f_undo, "PK-撤销战斗操作", threshold=0.7)
+                # 撤销按钮应在下方操作区（误匹配到顶部 HUD 时忽略，避免白点一下）
+                if _undo_btn and _undo_btn[1] >= 250:
+                    self.tap(_undo_btn[0], _undo_btn[1])
+                    self._log(f"  ↩️ 检测到误操作指令，撤销战斗操作 ({_undo_btn[0]},{_undo_btn[1]})")
+                    time.sleep(0.3)
+        except Exception as e:
+            self._log(f"  ⚠️ 撤销战斗操作处理异常: {e}")
+
         map_name = self.last_map_name or self.cfg.get("map", "小西天")
 
 
@@ -2361,7 +2526,7 @@ class AutoFightEngine:
         # ========== 对面宝宝文字检测 + 捕捉（第一回合优先：有宝宝/变异先捕捉） ==========
         # 捕捉和妙手空空不互斥：捕捉后继续执行妙手空空逻辑
         # 第一回合最多捕捉3次（节省时间），之后继续妙手空空
-        captured_bb, capture_rounds = self._try_capture_bb(frame, matched_targets, max_rounds=3)
+        captured_bb, capture_rounds = self._try_capture_bb(frame, matched_targets, max_rounds=3, scan_retries=1)
         if captured_bb:
             self._log(f"  🎣 第一回合已执行捕捉 {capture_rounds} 次，继续执行妙手空空逻辑")
 
@@ -2433,137 +2598,236 @@ class AutoFightEngine:
 
         if not steal_targets:
             if retry_failed:
-                # 保存调试截图：连续2次未识别到偷卡目标，定位是后排遮挡还是模板不匹配
+                # ?????????2????????????????????????
                 try:
                     _df = self.get_frame()
                     if _df is not None:
                         self._save_detection_debug(_df, "no_steal_target", matched_targets)
                 except Exception:
                     pass
-                if self.cfg.get("escape_enabled", True):
-                    # 默认（已开启逃跑）：连续2次无偷卡目标直接逃跑，跳过本场
-                    self._log("  🏃 第一回合连续2次未识别到偷窃目标，直接逃跑")
-                    self._try_escape(force=True)
-                    self._wait_combat_end()
-                else:
-                    # 已配置不逃跑（如恋）：无偷卡目标也正常攻击击杀，
-                    # 避免强制逃跑失败时空过回合（战斗中什么都不操作）
-                    self._log("  ℹ️ 第一回合未识别到偷窃目标（已配置不逃跑），直接击杀")
-                    self._post_steal_action(skip_wait=True, matched_targets=matched_targets)
-                return
-            self._log(f"  ℹ️ 当前战斗无偷卡目标，直接击杀")
-            self._post_steal_action(skip_wait=True, matched_targets=matched_targets)
-        else:
-            plan = self._build_plan(steal_targets)
 
-            if not plan:
-                self._log(f"  ⚠️ 未检测到目标 ({display_name})，跳过妙手空空")
-
-            if self.cfg.get("miaoshou_enabled", True):
-                clicked = []
-                max_attempts = min(len(plan), 3) if plan else 3
-                self._log(f"  🎯 妙手空空 ×{max_attempts}")
-                for i in range(max_attempts):
+            # ???????????????2????/????????
+            # ???/??????????????/???????????
+            for _extra in range(2):
+                if not self._check_in_combat():
+                    return
+                time.sleep(0.8)
+                f_extra = self.get_frame()
+                if f_extra is None:
+                    continue
+                from target_mapping import get_all_monsters as _gt_extra
+                _cur_extra = []
+                for _cand_extra in (_gt_extra(self.last_map_name or self.cfg.get("map", "")) or []):
+                    _cur_extra.extend(self._find_all(f_extra, _cand_extra, threshold=0.80, roi=COMBAT_ROI))
+                # ??/???????????
+                if self._try_capture_bb(f_extra, _cur_extra or matched_targets, max_rounds=3, scan_retries=0):
+                    self._log(f"  \U0001f3a3 ?{_extra+1}?????????/???????")
                     if not self._check_in_combat():
                         return
-
-                    if i == 0:
-                        cur_all = steal_targets
-                    else:
-                        f2 = self.get_frame()
-                        if f2 is None:
-                            break
-                        cur_all = []
+                    # ???????????
+                    f_after_cap = self.get_frame()
+                    steal_targets = []
+                    if f_after_cap is not None:
                         for candidate in tou_targets:
-                            cur = self._find_all(f2, candidate, threshold=0.80, roi=COMBAT_ROI)
+                            cur = self._find_all(f_after_cap, candidate, threshold=0.80, roi=COMBAT_ROI)
                             if cur:
-                                cur_all.extend(cur)
-                        deduped2 = []
-                        for t in sorted(cur_all, key=lambda x: x[2], reverse=True):
-                            if not any(abs(t[0]-d[0])**2+abs(t[1]-d[1])**2 < 625 for d in deduped2):
-                                deduped2.append(t)
-                        cur_all = deduped2
-                        self._log(f"  🔍 重新检测 {len(cur_all)} 个目标")
+                                steal_targets.extend(cur)
+                        dedup_st2 = []
+                        for t in sorted(steal_targets, key=lambda x: x[2], reverse=True):
+                            if not any(abs(t[0]-d[0])**2+abs(t[1]-d[1])**2 < 625 for d in dedup_st2):
+                                dedup_st2.append(t)
+                        steal_targets = dedup_st2
+                    if steal_targets:
+                        self._log(f"  \U0001f3af ?????? {len(steal_targets)} ?????")
+                        break
+                    self._log("  \u2139\ufe0f ?????/?????????????")
+                    self._post_steal_action(skip_wait=True, matched_targets=matched_targets)
+                    return
+                # ????????
+                cur_st = []
+                for candidate in tou_targets:
+                    cur = self._find_all(f_extra, candidate, threshold=0.80, roi=COMBAT_ROI)
+                    if cur:
+                        cur_st.extend(cur)
+                dedup_st = []
+                for t in sorted(cur_st, key=lambda x: x[2], reverse=True):
+                    if not any(abs(t[0]-d[0])**2+abs(t[1]-d[1])**2 < 625 for d in dedup_st):
+                        dedup_st.append(t)
+                if dedup_st:
+                    steal_targets = dedup_st
+                    self._log(f"  \U0001f3af ??????? {len(steal_targets)} ?????")
+                    break
 
-                    if not cur_all:
-                        if clicked:
-                            # 重检测失败：验证旧目标位置是否还有怪物，区分
-                            # "名字暂时模糊（怪还在，可继续偷）" vs "目标已逃跑（喽啰会跑，
-                            # 继续点旧位置只会点空 → 防御按钮不出现 → 误判宝宝未参战）"。
-                            _escaped = False
-                            f_verify = self.get_frame()
-                            if f_verify is not None:
-                                _still = False
-                                for cand in all_monsters:
-                                    for _vp in self._find_all(f_verify, cand, threshold=0.70, roi=COMBAT_ROI):
-                                        # steal_targets 元素是 3 元组 (x, y, conf)
-                                        if any(abs(_vp[0]-px)**2 + abs(_vp[1]-py)**2 < 625 for px, py, _pc in steal_targets):
-                                            _still = True
-                                            break
-                                    if _still:
-                                        break
-                                if not _still:
-                                    _escaped = True
-                            if _escaped:
-                                self._log("  🏃 偷窃目标已逃跑（重检测无目标且旧位置无怪物），停止妙手空空")
-                                self._steal_targets_gone = True
-                                break
-                            cur_all = steal_targets
-                            self._log(f"  re-detect failed, fallback to initial ({len(cur_all)} targets)")
-                        else:
-                            self._log(f"  ⚠️ 无可偷目标，跳过")
-                            break
+            if not steal_targets:
+                self._log("  \U0001f3c3 ???/?????????????")
+                self._try_escape(force=True)
+                self._wait_combat_end()
+                return
 
-                    available = [c for c in cur_all if not any(abs(c[0]-px)**2+abs(c[1]-py)**2 < 2500 for px, py in clicked)]
+        # ???????????????????????????????????
+        plan = self._build_plan(steal_targets)
 
-                    if not available:
-                        available = cur_all
-                        self._log(f"  ⚠️ 所有目标均已偷过，选最优重复偷")
+        if not plan:
+            self._log(f"  ⚠️ 未检测到目标 ({display_name})，跳过妙手空空")
 
-                    best = max(available, key=lambda c: c[2])
-                    tx, ty, conf = best[0], best[1], best[2]
-                    if i == 0 and self.last_skill is not None:
-                        # 第一轮：进入战斗检测时已确认技能位置（⚡ skill at），
-                        # 直接用缓存坐标，省去 _wait_for_skill 重新取帧验证的开销
-                        ms = self.last_skill
-                    else:
-                        ms = self._wait_for_skill(timeout=20.0)
-                    if ms is None:
-                        self._log(f"  第{i+1}次: 超时，跳过")
-                        continue
-                    cx_ms, cy_ms, _ = ms
-                    self._log(f"  🎯 第{i+1}次 妙手空空 -> 点技能({cx_ms},{cy_ms}) -> 点怪物({tx},{ty}) conf={conf:.2f}")
-                    self.tap(cx_ms, cy_ms)
-                    time.sleep(random.uniform(0.3, 0.5))
-                    self.tap(tx, ty)   # 点怪物
-                    # 游戏顺序：点妙手空空 -> 点怪物 -> 然后防御，操作完才开始偷窃。
-                    # 防御按钮在点完怪物后可能延迟 2-4 秒才出现（玩家回合动画后）。
-                    # 每轮都实时轮询直到防御按钮出现再点击（超时 4 秒兜底），
-                    # 避免首轮短超时漏点被误判为"宝宝未参战/没寿命"。
-                    defend_status = self._tap_defend(log_label="宝宝", timeout=4.0)
-                    if defend_status == "missing":
-                        if self.has_no_bb:
-                            # 画面判定未带宝宝，防御按钮不出现属正常，跳过
-                            self._log("  ⚠️ 未识别到宝宝防御按钮（画面判定未带宝宝），跳过")
-                        else:
-                            self._defend_miss_streak += 1
-                            self._log(f"  ⚠️ 未识别到宝宝防御按钮（第{self._defend_miss_streak}次，可能回合收尾面板未弹出），跳过")
-                        # 有偷卡但宝宝未参战（无宝宝/没寿命）都计入：连续2场后偷3次直接逃跑
-                        self._battle_defend_attempted = True
-                    else:
-                        # 防御按钮正常识别到（点击成功）：本场至少一次有效防御
-                        self._defend_miss_streak = 0
-                        self._battle_defend_attempted = True
-                        self._battle_defend_ok = True
-                    time.sleep(0.2)
-                    clicked.append((tx, ty))
-            else:
-                if self.cfg.get("miaoshou_enabled", True):
-                    self._log("  ⏭️ 妙手空空已关闭")
+        if self.cfg.get("miaoshou_enabled", True):
+            clicked = []
+            max_attempts = min(len(plan), 3) if plan else 3
+            self._log(f"  🎯 妙手空空 ×{max_attempts}")
+            for i in range(max_attempts):
+                if not self._check_in_combat():
+                    return
+
+                if i == 0:
+                    cur_all = steal_targets
                 else:
-                    self._log("  ⏭️ 妙手空空未触发")
+                    f2 = self.get_frame()
+                    if f2 is None:
+                        break
+                    cur_all = []
+                    for candidate in tou_targets:
+                        cur = self._find_all(f2, candidate, threshold=0.80, roi=COMBAT_ROI)
+                        if cur:
+                            cur_all.extend(cur)
+                    deduped2 = []
+                    for t in sorted(cur_all, key=lambda x: x[2], reverse=True):
+                        if not any(abs(t[0]-d[0])**2+abs(t[1]-d[1])**2 < 625 for d in deduped2):
+                            deduped2.append(t)
+                    cur_all = deduped2
+                    self._log(f"  🔍 重新检测 {len(cur_all)} 个目标")
 
-            self._post_steal_action(skip_wait=not bool(plan), matched_targets=matched_targets)
+                if not cur_all:
+                    if clicked:
+                        # 重检测失败：验证旧目标位置是否还有怪物，区分
+                        # "名字暂时模糊（怪还在，可继续偷）" vs "目标已逃跑（喽啰会跑，
+                        # 继续点旧位置只会点空 → 防御按钮不出现 → 误判宝宝未参战）"。
+                        _escaped = False
+                        f_verify = self.get_frame()
+                        if f_verify is not None:
+                            _still = False
+                            for cand in all_monsters:
+                                for _vp in self._find_all(f_verify, cand, threshold=0.70, roi=COMBAT_ROI):
+                                    # steal_targets 元素是 3 元组 (x, y, conf)
+                                    if any(abs(_vp[0]-px)**2 + abs(_vp[1]-py)**2 < 625 for px, py, _pc in steal_targets):
+                                        _still = True
+                                        break
+                                if _still:
+                                    break
+                            if not _still:
+                                _escaped = True
+                        if _escaped:
+                            self._log("  🏃 偷窃目标已逃跑（重检测无目标且旧位置无怪物），停止妙手空空")
+                            self._steal_targets_gone = True
+                            break
+                        cur_all = steal_targets
+                        self._log(f"  re-detect failed, fallback to initial ({len(cur_all)} targets)")
+                    else:
+                        self._log(f"  ⚠️ 无可偷目标，跳过")
+                        break
+
+                available = [c for c in cur_all if not any(abs(c[0]-px)**2+abs(c[1]-py)**2 < 2500 for px, py in clicked)]
+
+                if not available:
+                    available = cur_all
+                    self._log(f"  ⚠️ 所有目标均已偷过，选最优重复偷")
+
+                best = max(available, key=lambda c: c[2])
+                tx, ty, conf = best[0], best[1], best[2]
+                if i == 0 and self.last_skill is not None:
+                    # 第一轮：进入战斗检测时已确认技能位置（⚡ skill at），
+                    # 直接用缓存坐标，省去 _wait_for_skill 重新取帧验证的开销
+                    ms = self.last_skill
+                else:
+                    ms = self._wait_for_skill(timeout=20.0)
+                if ms is None:
+                    self._log(f"  第{i+1}次: 超时，跳过")
+                    continue
+                cx_ms, cy_ms, _ = ms
+                # 每轮偷窃前重新检测宝宝标记（名字被前排挡住时可能晚几回合才显示），
+                # 检测到就立即捕捉一次，再继续偷窃
+                if self.cfg.get("capture_bb_enabled", False):
+                    f_cap_chk = self.get_frame()
+                    if f_cap_chk is not None:
+                        from target_mapping import get_all_monsters as _gt_chk
+                        _cur_chk = []
+                        for _cand_chk in (_gt_chk(self.last_map_name or self.cfg.get("map", "")) or []):
+                            _cur_chk.extend(self._find_all(f_cap_chk, _cand_chk, threshold=0.80, roi=COMBAT_ROI))
+                        if self._try_capture_bb(f_cap_chk, _cur_chk or matched_targets, max_rounds=1):
+                            self._log("  🎣 偷窃回合捕捉到宝宝，继续偷窃")
+                            if not self._check_in_combat():
+                                return
+                            # 捕捉占用本回合，重新等下一次玩家回合再执行偷窃
+                            ms = self._wait_for_skill(timeout=20.0)
+                            if ms is None:
+                                continue
+                            cx_ms, cy_ms, _ = ms
+                # 点技能前用当前帧刷新目标坐标：怪物位置是进入战斗时的缓存，
+                # 期间可能移动/被挡，直接用缓存坐标点容易点空（→ 技能挂在"选目标"
+                # 状态 → 被误判成四小人界面死循环）。当前帧能识别到目标就取最新的。
+                _fresh = None
+                f_pre = self.get_frame()
+                if f_pre is not None:
+                    _cand = []
+                    for _ct in tou_targets:
+                        for _c in self._find_all(f_pre, _ct, threshold=0.80, roi=COMBAT_ROI):
+                            _cand.append(_c)
+                    if _cand:
+                        # 优先选离原缓存目标最近的新位置（怪可能小幅移动，避免乱点别的怪）
+                        _cand.sort(key=lambda c: (c[0]-tx)**2 + (c[1]-ty)**2)
+                        _fresh = _cand[0]
+                if _fresh is not None:
+                    self._log(f"  🔄 点技能前刷新目标: 缓存({tx},{ty}) -> 最新({_fresh[0]},{_fresh[1]}) conf={_fresh[2]:.2f}")
+                    tx, ty = int(_fresh[0]), int(_fresh[1])
+                self._log(f"  🎯 第{i+1}次 妙手空空 -> 点技能({cx_ms},{cy_ms}) -> 点怪物({tx},{ty}) conf={conf:.2f}")
+                self.tap(cx_ms, cy_ms)
+                self._last_steal_skill_time = time.time()   # 记录点技能时间（四小人误判保护用）
+                # 点完技能后稍等，确保进入目标选择状态再点怪物，降低点空概率
+                time.sleep(random.uniform(0.8, 1.2))
+                self.tap(tx, ty)   # 点怪物
+                # 游戏顺序：点妙手空空 -> 点怪物 -> 然后防御，操作完才开始偷窃。
+                # 点中怪物且宝宝参战时，防御按钮应立即出现。
+                # 短窗口（2秒）轮询防御按钮，出现即点击。
+                defend_status = self._tap_defend(log_label="宝宝", timeout=2.0)
+                if defend_status == "missing" and not self.has_no_bb:
+                    # 防御按钮没出现：可能是怪物点空（目标坐标是检测阶段的缓存，
+                    # 期间目标可能已死/逃跑）。用当前帧重新检测目标坐标再点一次，
+                    # 二次仍无防御才归为宝宝未参战，避免"点空怪物误判宝宝"。
+                    self._log("  🔍 防御按钮未出现，重新检测目标并二次点击")
+                    f_re = self.get_frame()
+                    if f_re is not None:
+                        _re_targets = []
+                        for candidate in tou_targets:
+                            _cur_re = self._find_all(f_re, candidate, threshold=0.80, roi=COMBAT_ROI)
+                            if _cur_re:
+                                _re_targets.extend(_cur_re)
+                        if _re_targets:
+                            _best_re = max(_re_targets, key=lambda c: c[2])
+                            self._log(f"  🎯 二次点击怪物 ({_best_re[0]},{_best_re[1]}) conf={_best_re[2]:.2f}")
+                            self.tap(_best_re[0], _best_re[1])
+                            defend_status = self._tap_defend(log_label="宝宝", timeout=2.0)
+                if defend_status == "missing":
+                    if self.has_no_bb:
+                        # 画面判定未带宝宝，防御按钮不出现属正常，跳过
+                        self._log("  ⚠️ 未识别到宝宝防御按钮（画面判定未带宝宝），跳过")
+                    else:
+                        self._defend_miss_streak += 1
+                        self._log(f"  ⚠️ 未识别到宝宝防御按钮（第{self._defend_miss_streak}次，二次点击后仍无），跳过")
+                    # 有偷卡但宝宝未参战（无宝宝/没寿命）都计入：连续2场后偷3次直接逃跑
+                    self._battle_defend_attempted = True
+                else:
+                    # 防御按钮正常识别到（点击成功）：本场至少一次有效防御
+                    self._defend_miss_streak = 0
+                    self._battle_defend_attempted = True
+                    self._battle_defend_ok = True
+                time.sleep(0.2)
+                clicked.append((tx, ty))
+        else:
+            if self.cfg.get("miaoshou_enabled", True):
+                self._log("  ⏭️ 妙手空空已关闭")
+            else:
+                self._log("  ⏭️ 妙手空空未触发")
+
+        self._post_steal_action(skip_wait=not bool(plan), matched_targets=matched_targets)
 
 
 
@@ -3680,6 +3944,13 @@ class AutoFightEngine:
 
             return False
 
+        # 保护：战斗中刚点过妙手空空技能（点技能后 6 秒内）——此时画面常停在
+        # "选中技能、待选目标"状态，血蓝条空 + 头像被技能面板遮住，会被误判成
+        # 四小人界面而反复处理（本地低置信度不点 → 图灵没钱 → 死循环）。
+        # 该状态不应按四小人处理，让主循环继续走"重新检测目标并点怪物"逻辑。
+        if self.was_in_pk and (time.time() - getattr(self, "_last_steal_skill_time", 0)) < 6.0:
+            return False
+
         return True
 
 
@@ -3734,6 +4005,8 @@ class AutoFightEngine:
 
         if result["success"]:
 
+            self._tuling_fail_streak = 0
+
             x, y = result["x"], result["y"]
 
             self._log(f"  ✅ 图灵四小人识别成功: ({x}, {y})")
@@ -3744,7 +4017,22 @@ class AutoFightEngine:
 
         self._log("  ⚠️ 图灵四小人识别失败: " + str(result.get("error", "未知")))
 
+        # 连续失败（如账户余额不足）→ 进入冷却，暂停调用图灵，避免反复请求与死循环
+        self._tuling_fail_streak = getattr(self, "_tuling_fail_streak", 0) + 1
+
+        if self._tuling_fail_streak >= 2:
+
+            self._tuling_cooldown_until = time.time() + 120
+
+            self._log("  ⏸️ 图灵连续失败，2分钟内不再调用（本地降阈值重试）")
+
         return False
+
+    def _tuling_unavailable(self):
+
+        """图灵云是否处于冷却不可用状态（余额不足等持续失败时）"""
+
+        return time.time() < getattr(self, "_tuling_cooldown_until", 0)
 
 
 
@@ -3770,6 +4058,21 @@ class AutoFightEngine:
                     self._log("  ⚠️ 本地未找到“在/请”识别区域，回退默认区域识别")
                     handled = cnnUtil.findFourPersonLocal(self.serial)
                 if handled:
+                    return
+                # 本地 0.8 阈值没点掉：若图灵处于冷却（余额不足等），降阈值再试一次，
+                # 仍不行则跳过本次（不点图灵），避免反复请求 + 死循环
+                if self._tuling_unavailable():
+                    self._log("  ⚠️ 图灵冷却中，本地降阈值(0.5)重试")
+                    try:
+                        if left != 0:
+                            handled = cnnUtil.findFourPersonLocal(self.serial, left, top, w, h, conf_threshold=0.5)
+                        else:
+                            handled = cnnUtil.findFourPersonLocal(self.serial, conf_threshold=0.5)
+                    except Exception:
+                        handled = False
+                    if handled:
+                        return
+                    self._log("  ⏭️ 图灵冷却中，跳过本次四小人处理")
                     return
                 self._log("  ⚠️ 本地四小人识别未生效，按 8.5 前方式调用图灵云")
             except Exception as e:
@@ -3973,6 +4276,8 @@ class AutoFightEngine:
         self._log("初始化 RapidOCR ...")
 
         try:
+
+            from rapidocr_onnxruntime import RapidOCR
 
             self.ocr_engine = RapidOCR()
 
@@ -4260,11 +4565,30 @@ class AutoFightEngine:
 
                 reserved.append(s.get("scene"))
 
+        # 排除无导航分支的场景：仅支持打怪，不支持自动切场（否则真实切场会静默失败）
+        nav_blocked = []
 
+        supported2 = []
+
+        for s in supported:
+
+            if s.get("scene") in NO_SWITCH_NAV_SCENES:
+
+                nav_blocked.append(s.get("scene"))
+
+            else:
+
+                supported2.append(s)
+
+        supported = supported2
 
         if reserved:
 
             self._log(f"⚠️ 以下场景已配置但逻辑暂未完善：{', '.join(reserved)}")
+
+        if nav_blocked:
+
+            self._log(f"⚠️ 以下场景仅支持打怪、暂不支持自动切场，已从轮转列表移除：{', '.join(nav_blocked)}")
 
         if not supported:
 
@@ -4308,11 +4632,66 @@ class AutoFightEngine:
 
             for i, s in enumerate(supported):
 
-                if s["scene"] == gui_map:
+                if _match_scene_name(gui_map, s["scene"]):
 
                     current_idx = i
 
                     break
+
+        # 设备初始化（启动场景对齐需要在真实帧上 OCR，必须先连上设备）
+        if not self.init_device():
+
+            self._log("❌ 设备初始化失败")
+
+            return
+
+        self._wire_xbw_backend()
+
+        # 启动场景对齐：先 OCR 检测角色当前实际所在的场景
+        # 在配置轮转列表内 → 直接从这里开始；不在/检测失败 → 自动导航到配置的第一个场景
+        actual_scene = None
+        if self.coord_enabled:
+            try:
+                if self.ocr_engine is None:
+                    self.init_ocr()
+                ocr_name, _, _ = self.detect_map_coord()
+                if ocr_name:
+                    from scene_detector import detect_position as _detect
+                    detected, _ = _detect(self.serial, None, self.scale_x, self.scale_y, ocr_name)
+                    actual_scene = detected
+            except Exception as e:
+                self._log(f"  ⚠️ 启动场景检测失败: {e}")
+
+        start_scene = None
+        if actual_scene:
+            for i, s in enumerate(supported):
+                if _match_scene_name(actual_scene, s["scene"]):
+                    current_idx = i
+                    start_scene = s["scene"]
+                    self._log(f"📍 检测到当前位于 {actual_scene}，从该场景开始轮转")
+                    break
+            if start_scene is None:
+                # 角色实际所在场景不在配置里：自动导航到配置顺序的第一个场景
+                start_scene = supported[0]["scene"]
+                current_idx = 0
+                self._log(f"🧭 当前位于 {actual_scene}，不在切场配置中，自动导航到配置第一个场景: {start_scene}")
+                if not self._do_real_scene_switch(start_scene):
+                    self._log(f"  ⚠️ 导航失败，回退本地切场（将按 {start_scene} 模板运行）")
+        else:
+            # OCR 检测失败/未启用：不知道角色在哪，退而尊重 GUI 地图选择；GUI 也不匹配则导航到第一个
+            if gui_map in MAP_CONFIG and any(_match_scene_name(gui_map, s["scene"]) for s in supported):
+                for i, s in enumerate(supported):
+                    if _match_scene_name(gui_map, s["scene"]):
+                        current_idx = i
+                        start_scene = s["scene"]
+                        break
+                self._log(f"📌 未能检测到当前场景，按 GUI 地图选择从 {start_scene} 开始")
+            else:
+                start_scene = supported[0]["scene"]
+                current_idx = 0
+                self._log(f"🧭 未能检测到当前场景，自动导航到配置第一个场景: {start_scene}")
+                if not self._do_real_scene_switch(start_scene):
+                    self._log(f"  ⚠️ 导航失败，回退本地切场（将按 {start_scene} 模板运行）")
 
         current_scene = supported[current_idx]
 
@@ -4326,15 +4705,6 @@ class AutoFightEngine:
 
         self.load_templates(map_name)
 
-        if not self.init_device():
-
-            self._log("❌ 设备初始化失败")
-
-            return
-
-
-
-        self._wire_xbw_backend()
         self._pkg_snapshot = None
         self._pkg_check_t = time.time()
         self._pkg_interval = 0.0   # 启动后立即检查背包
@@ -4347,13 +4717,17 @@ class AutoFightEngine:
 
         scene_start_time = time.time()
 
-        # 切换场间隔：优先读场景配置的“满XX分钟”，否则默认 10 分钟
+        # 切换场间隔：读场景配置的“满XX分钟”；“无要求”= 永不按时间切（仅靠环/卡达标切）
         try:
             from xbw_features import parse_require as _parse_require
-            _switch_minutes = _parse_require(current_scene.get("time")) or 10
+            _switch_minutes = _parse_require(current_scene.get("time"))
         except Exception:
-            _switch_minutes = 10
-        scene_switch_interval = _switch_minutes * 60
+            _switch_minutes = None
+        if _switch_minutes is None:
+            scene_switch_interval = None
+            self._log(f"  ⏱️ 场景 {map_name} 时间要求为无要求：将只在环/卡达标时切换")
+        else:
+            scene_switch_interval = _switch_minutes * 60
 
         hp_method = self.cfg.get("hp_method", "")
 
@@ -4408,6 +4782,15 @@ class AutoFightEngine:
             while self.running:
 
                 loop += 1
+                # 统计日切换（每天 5:00）：重置当日累计，避免跨 0 点挂机把记录串到第二天
+                _day_key = stats_day()
+                if self._stats_day_key != _day_key:
+                    self._stats_day_key = _day_key
+                    self._daily_huan_count = 0
+                    self._daily_card_count = 0
+                    self.battle_count = 0
+                    self.total_runtime = 0
+                    self._log(f"📅 进入新统计日 {_day_key}（每天5:00为界），当日环/卡计数已重置")
                 if self._paused:
                     time.sleep(0.2)
                     continue
@@ -4488,10 +4871,11 @@ class AutoFightEngine:
 
 
 
-                # === 场景切换检测：时间到时自动轮询 ===
+                # === 场景切换检测：时间到期 / 环卡达标 / 后续操作判定 ===
 
-                _switch_due = (time.time() - scene_start_time) > scene_switch_interval
-                if not self.was_in_pk and len(supported) > 1 and (self._scene_switch_requested or _switch_due):
+                _switch_due = (scene_switch_interval is not None
+                               and (time.time() - scene_start_time) > scene_switch_interval)
+                if not self.was_in_pk and (self._scene_switch_requested or _switch_due):
 
                     # 记录当前场景到历史
                     prev_map_name = self.cfg.get("map", "")
@@ -4507,6 +4891,25 @@ class AutoFightEngine:
                         # 保存场景历史到文件
                         self._save_scene_history()
 
+                    # 当前场景“后续操作=停止”：达标后整个自动流程结束
+                    if current_scene.get("after", "后换场景") == "停止":
+                        self._log(f"🛑 场景 {map_name} 条件已满足且配置为“停止”，结束自动流程")
+                        self.running = False
+                        break
+
+                    # 单场景且配置为“后换场景”：没有下一个可去的场景，重置计数继续挂机
+                    if len(supported) == 1:
+                        self._log(f"🔁 仅配置了一个场景({map_name})，条件满足后重置环/卡计数继续挂机")
+                        self._scene_switch_requested = False
+                        self._pkg_snapshot = None
+                        self._pkg_check_t = time.time()
+                        self._pkg_interval = 0.0   # 立即重建背包基线
+                        self._huan_count = 0
+                        self._card_count = 0
+                        scene_start_time = time.time()
+                        self._current_scene_start_time = time.time()  # 更新当前场景开始时间
+                        continue
+
                     current_idx = (current_idx + 1) % len(supported)
 
                     current_scene = supported[current_idx]
@@ -4518,7 +4921,8 @@ class AutoFightEngine:
                     self._log(f"场景切换: {map_name}")
 
                     self._scene_switch_requested = False
-                    self._do_real_scene_switch(map_name)
+                    if not self._do_real_scene_switch(map_name):
+                        self._log(f"  ⚠️ 真实切场失败，回退本地切场（仅切换模板）")
 
                     self.cfg["map"] = map_name
 
@@ -4533,13 +4937,17 @@ class AutoFightEngine:
                     self._huan_count = 0
                     self._card_count = 0
 
-                    # 按新场景的时间要求重算切换间隔
+                    # 按新场景的时间要求重算切换间隔；“无要求”= 永不按时间切
                     try:
                         from xbw_features import parse_require as _parse_require
-                        _switch_minutes = _parse_require(current_scene.get("time")) or 10
+                        _switch_minutes = _parse_require(current_scene.get("time"))
                     except Exception:
-                        _switch_minutes = 10
-                    scene_switch_interval = _switch_minutes * 60
+                        _switch_minutes = None
+                    if _switch_minutes is None:
+                        scene_switch_interval = None
+                        self._log(f"  ⏱️ 场景 {map_name} 时间要求为无要求：将只在环/卡达标时切换")
+                    else:
+                        scene_switch_interval = _switch_minutes * 60
 
                     scene_start_time = time.time()
                     self._current_scene_start_time = time.time()  # 更新当前场景开始时间
@@ -4603,9 +5011,9 @@ class AutoFightEngine:
 
                         detected, method = _detect(self.serial, frame, self.scale_x, self.scale_y, ocr_name)
 
-                        if detected and detected != map_name:
+                        if detected and not _match_scene_name(detected, map_name):
 
-                            target_idx = next((i for i, s in enumerate(supported) if s["scene"] == detected), None)
+                            target_idx = next((i for i, s in enumerate(supported) if _match_scene_name(detected, s["scene"])), None)
 
                             if target_idx is not None:
 
@@ -4625,7 +5033,27 @@ class AutoFightEngine:
 
                                 self.reset_coord_tracking()
 
+                                # 场景已变：重置环/卡计数与背包基线（与正常切场一致）
+                                self._scene_switch_requested = False
+                                self._pkg_snapshot = None
+                                self._pkg_check_t = time.time()
+                                self._pkg_interval = 0.0   # 新场景立即检查背包
+                                self._huan_count = 0
+                                self._card_count = 0
+
+                                # 按新场景时间要求重算切换间隔；“无要求”= 永不按时间切
+                                try:
+                                    from xbw_features import parse_require as _parse_require
+                                    _switch_minutes = _parse_require(current_scene.get("time"))
+                                except Exception:
+                                    _switch_minutes = None
+                                if _switch_minutes is None:
+                                    scene_switch_interval = None
+                                else:
+                                    scene_switch_interval = _switch_minutes * 60
+
                                 scene_start_time = time.time()
+                                self._current_scene_start_time = time.time()  # 更新当前场景开始时间
 
                                 continue
 
@@ -4743,6 +5171,14 @@ class AutoFightEngine:
 
                             for _ in range(tap_count):
 
+                                # 每次点击前再查一次战斗，防止切入战斗的瞬间点到怪物
+
+                                if _pk_check():
+
+                                    pk_detected = True
+
+                                    break
+
                                 ox = cx + random.randint(-8, 8)
 
                                 oy = cy + random.randint(-8, 8)
@@ -4753,7 +5189,13 @@ class AutoFightEngine:
 
                         else:
 
-                            self.tap(cx, cy, offset=False)
+                            if _pk_check():
+
+                                pk_detected = True
+
+                            else:
+
+                                self.tap(cx, cy, offset=False)
 
                         for _ in range(2):
 
@@ -4864,6 +5306,8 @@ class AutoFightEngine:
             self._log(traceback.format_exc())
 
         finally:
+
+            self._save_current_scene_history()
 
             self.stop()
 
