@@ -1,0 +1,68 @@
+{
+  "scene_config": [
+    {
+      "enabled": true,
+      "scene": "龙窟五层",
+      "rings": "得3个环",
+      "cards": "得2张卡片",
+      "time": "满180分钟",
+      "after": "后换场景"
+    },
+    {
+      "enabled": true,
+      "scene": "子母河底",
+      "rings": "得3个环",
+      "cards": "得2张卡片",
+      "time": "满180分钟",
+      "after": "后换场景"
+    },
+    {
+      "enabled": true,
+      "scene": "凤巢四层",
+      "rings": "得3个环",
+      "cards": "得2张卡片",
+      "time": "满180分钟",
+      "after": "后换场景"
+    },
+    {
+      "enabled": false,
+      "scene": "小西天",
+      "rings": "得3个环",
+      "cards": "得2张卡片",
+      "time": "满180分钟",
+      "after": "后换场景"
+    },
+    {
+      "enabled": false,
+      "scene": "小雷音寺",
+      "rings": "得3个环",
+      "cards": "得2张卡片",
+      "time": "满180分钟",
+      "after": "后换场景"
+    },
+    {
+      "enabled": false,
+      "scene": "女娲神迹",
+      "rings": "得3个环",
+      "cards": "得2张卡片",
+      "time": "满180分钟",
+      "after": "停止"
+    },
+    {
+      "enabled": false,
+      "scene": "须弥东界",
+      "rings": "得3个环",
+      "cards": "得2张卡片",
+      "time": "满180分钟",
+      "after": "后换场景"
+    },
+    {
+      "enabled": false,
+      "scene": "须弥东界",
+      "rings": "得3个环",
+      "cards": "得2张卡片",
+      "time": "满180分钟",
+      "after": "后换场景"
+    }
+  ]
+}

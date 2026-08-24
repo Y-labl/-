@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """忠诚度恢复工具类 - 独立运行，传入设备号自动连接并执行恢复流程"""
 
 import os
@@ -238,6 +238,15 @@ SCENE_RECOVERY["凤巢五层"] = {
         "凤巢五层",
         [["凤巢五层", "凤巢四层"], ["凤巢四层", "凤巢三层"]],
         [["凤巢三层", "凤巢四层"], ["凤巢四层", "凤巢五层"]],
+        "凤巢三层",
+    ),
+}
+# 四层恢复配置：层间传送下行到三层恢复 → 传送回四层 → 摄妖香
+SCENE_RECOVERY["凤巢四层"] = {
+    "steps": _build_floor_recovery(
+        "凤巢四层",
+        [["凤巢四层", "凤巢三层"]],
+        [["凤巢三层", "凤巢四层"]],
         "凤巢三层",
     ),
 }
@@ -690,10 +699,27 @@ class ToolEngine:
             frame = self.get_frame()
 
         if not map_name:
-            self._log("未识别到地图，跳过")
-            return
+            # OCR 未识别到地图：用引擎传入的已知场景兜底（run_loyalty_recovery 的 map_name
+            # 已写入 cfg["map"]），避免画面被遮挡/OCR 抖动时整个恢复流程被跳过
+            fallback = self._get_current_map()
+            if fallback:
+                map_name = fallback
+                self._log(f"OCR 未识别到地图，用引擎已知场景兜底: {map_name}")
+            else:
+                self._log("未识别到地图且无已知场景，跳过")
+                return
 
         config = SCENE_RECOVERY.get(map_name)
+
+        if config is None:
+            # 容错匹配：OCR 可能识别出变体（如"龙窟五"/"龙窟5层"），按 前缀/包含 匹配
+            for key in SCENE_RECOVERY:
+                if key.startswith(map_name) or map_name.startswith(key) \
+                        or key in map_name or map_name in key:
+                    self._log(f"场景名容错匹配: OCR[{map_name}] -> 配置[{key}]")
+                    config = SCENE_RECOVERY[key]
+                    map_name = key
+                    break
 
         if config is None:
             self._log(f"当前场景 [{map_name}] 未配置忠诚度恢复流程，跳过")

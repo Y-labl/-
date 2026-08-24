@@ -7,6 +7,7 @@ screenshots/*.jpg
 *.log
 .env
 node_modules/
+.modlens-work/
 
 # IDE
 .idea/

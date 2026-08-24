@@ -79,6 +79,10 @@ SCENE_ROUTES = {
     "子母河底": ["西梁女国", "子母河底"],
 }
 
+# 不需要摄妖香/洞冥草的场景：跑图途中不遇低级怪，飞行后直接走位到达即可
+# （其他场景统一在飞行后吃摄妖香、到达后吃洞冥草）
+NO_BUFF_SCENES = {"子母河底"}
+
 # 小地图面板参数（来自小霸王项目反编译）: 地图名 -> (左下点, xy范围, xy宽高)
 # 地图坐标→小地图点击: clickX = lb.x + x*wh.x/range.x; clickY = lb.y - y*wh.y/range.y
 MAP_PARAMS = {
@@ -101,12 +105,7 @@ MAP_PARAMS = {
     "大唐国境": ((153, 399), (351, 335), (380, 360)),
     "江南野外": ((189, 332), (159, 119), (308, 227)),
     "西梁女国": ((149, 364), (163, 123), (387, 290)),
-    "大唐境外": ((78, 284), (639, 118), (641, 120)),
-    "小西天": ((210, 417), (159, 239), (266, 397)),
-    "小雷音寺": ((92, 406), (191, 143), (501, 375)),
-    "女娲神迹": ((145, 366), (191, 143), (394, 295)),
     "宝象国": ((158, 357), (159, 119), (370, 276)),
-    "北俱芦洲": ((145, 367), (227, 169), (394, 297)),
 }
 
 # 跨图腿: (起点, 终点) -> (走位地图, 目标坐标, 方式)
@@ -231,15 +230,24 @@ def load_template(name):
 
 
 def match_template(screenshot, template, threshold=0.75, debug_name=""):
-    """多尺度 + 多方法模板匹配，返回 (中心x, 中心y, 置信度) 或 None。"""
+    """多尺度 + 多方法模板匹配，返回 (中心x, 中心y, 置信度) 或 None。
+    性能优化：同分辨率设备（模板与截图都是 800x448 流坐标）绝大多数情况
+    1.0 尺度单方法即可命中（约 0.04s），先试 1.0；未命中才扩展多尺度双方法，
+    避免每次点击都付出 13 尺度 × 2 方法 ≈ 1.2s 的全量匹配成本。"""
     if screenshot is None or template is None:
         return None
     h, w = screenshot.shape[:2]
     tw, th = template.shape[1], template.shape[0]
     if h < th or w < tw:
         return None
+    # 快路径：1.0 尺度 TM_CCOEFF_NORMED
+    r1 = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)
+    _, v1, _, loc1 = cv2.minMaxLoc(r1)
+    if v1 >= threshold:
+        return (loc1[0] + tw // 2, loc1[1] + th // 2, v1)
+    # 慢路径：多尺度双方法（与历史行为一致，覆盖不同分辨率/UI缩放）
     best_result = None
-    best_val = -1.0
+    best_val = v1
     scales = [round(x, 2) for x in np.arange(0.7, 1.35, 0.05)]
     methods = [cv2.TM_CCOEFF_NORMED, cv2.TM_CCORR_NORMED]
     for method in methods:
@@ -249,7 +257,7 @@ def match_template(screenshot, template, threshold=0.75, debug_name=""):
             if stw > w or sth > h:
                 continue
             if abs(s - 1.0) < 0.01:
-                result = cv2.matchTemplate(screenshot, template, method)
+                result = r1 if method == cv2.TM_CCOEFF_NORMED else cv2.matchTemplate(screenshot, template, method)
                 _, max_val, _, max_loc = cv2.minMaxLoc(result)
             else:
                 small_tmpl = cv2.resize(template, (stw, sth), interpolation=cv2.INTER_AREA)
@@ -292,14 +300,23 @@ def adb_screencap(serial):
 
 # ======================== 场景切换引擎 ========================
 
+class SceneSwitchCombatAbort(Exception):
+    """切场过程中检测到进入战斗：中止切换，交由上层战斗流程处理。"""
+
+
 class SceneSwitcher:
-    def __init__(self, serial, threshold=0.75, retries=3, wait=0.8, debug=False, log_fn=None):
+    def __init__(self, serial, threshold=0.75, retries=3, wait=0.8, debug=False, log_fn=None,
+                 combat_check=None, client=None, frame_lock=None):
         self.serial = serial
         self.threshold = threshold
         self.retries = retries
         self.wait = wait
         self.debug = debug
         self.log_fn = log_fn   # 可选：外部日志回调（引擎/测试页回灌用）
+        self.combat_check = combat_check  # 可选：外部战斗检测回调，返回 True=战斗中
+        self.client = client             # 可选：复用引擎 scrcpy 流帧（免 ADB 截图，性能优化）
+        self.frame_lock = frame_lock     # 可选：引擎的帧锁（访问 client.last_frame 时加锁）
+        self._last_combat_check_t = 0.0
         self.device_w = 0
         self.device_h = 0
         self.scale_x = 1.0
@@ -319,6 +336,25 @@ class SceneSwitcher:
             except Exception:
                 pass
         print(f"[{ts}] {msg}")
+
+    def _in_combat(self, force=False):
+        """调用外部战斗检测回调（带 1 秒节流，避免高频截图/模板匹配）。"""
+        if not self.combat_check:
+            return False
+        now = time.time()
+        if not force and now - self._last_combat_check_t < 1.0:
+            return False
+        self._last_combat_check_t = now
+        try:
+            return bool(self.combat_check())
+        except Exception:
+            return False
+
+    def _abort_if_combat(self, force=False):
+        """检测到战斗立即抛出 SceneSwitchCombatAbort，中止当前切场流程。"""
+        if self._in_combat(force=force):
+            self._log("  ⚔️ 检测到进入战斗，中止场景切换")
+            raise SceneSwitchCombatAbort()
 
     def _load_templates(self, target_name=None):
         names = ["道具", "道具-道具栏", "飞行符", "使用", "关闭弹窗", "打开地图",
@@ -372,7 +408,7 @@ class SceneSwitcher:
                                 return True
                         except Exception:
                             pass
-            time.sleep(0.35)
+            time.sleep(0.6)  # OCR 轮询节流：减少每轮截图次数（截图约1.5s/次）
         return False
 
     def connect(self):
@@ -400,7 +436,23 @@ class SceneSwitcher:
         return True
 
     def get_frame(self):
-        frame = adb_screencap(self.serial)
+        # 优先复用引擎 scrcpy 流帧（几乎零成本，免 ADB 截图 1.5s/次）；
+        # 未传 client 或流无帧时回退 ADB 截图
+        if self.client is not None:
+            try:
+                if self.frame_lock is not None:
+                    with self.frame_lock:
+                        frame = self.client.last_frame
+                        frame = frame.copy() if frame is not None else None
+                else:
+                    frame = self.client.last_frame
+                    frame = frame.copy() if frame is not None else None
+            except Exception:
+                frame = None
+            if frame is None:
+                frame = adb_screencap(self.serial)
+        else:
+            frame = adb_screencap(self.serial)
         if frame is None:
             return None
         fh, fw = frame.shape[:2]
@@ -541,7 +593,7 @@ class SceneSwitcher:
 
     # ---------- OCR 查找 ----------
 
-    def _ocr_find(self, roi, keyword, timeout=5.0):
+    def _ocr_find(self, roi, keyword, timeout=5.0, check_combat=False):
         """在指定流坐标区域 OCR 查找关键字，返回 (x, y, 文本) 或 None。"""
         if self.ocr is None:
             self._init_ocr()
@@ -550,6 +602,8 @@ class SceneSwitcher:
         x1, y1, x2, y2 = roi
         deadline = time.time() + timeout
         while time.time() < deadline:
+            if check_combat:
+                self._abort_if_combat()
             frame = self.get_frame()
             if frame is not None and frame.shape[0] >= y2 and frame.shape[1] >= x2:
                 crop = frame[y1:y2, x1:x2]
@@ -566,7 +620,7 @@ class SceneSwitcher:
                                 return (cx, cy, t)
                     except Exception:
                         pass
-            time.sleep(0.2)
+            time.sleep(0.4)  # OCR 轮询节流：减少每轮截图次数
         return None
 
     def _open_minimap(self):
@@ -628,6 +682,7 @@ class SceneSwitcher:
         x1, y1, x2, y2 = MAP_ROI
         deadline = time.time() + timeout
         while time.time() < deadline:
+            self._abort_if_combat()
             frame = self.get_frame()
             if frame is not None:
                 crop = frame[y1:y2, x1:x2]
@@ -639,7 +694,7 @@ class SceneSwitcher:
                                 return str(text)
                     except Exception:
                         pass
-            time.sleep(0.3)
+            time.sleep(0.6)  # 等地图名轮询节流：减少每轮截图次数
         return None
 
     # ---------- 小地图走位（坐标制，参考小霸王 map_action） ----------
@@ -671,6 +726,7 @@ class SceneSwitcher:
             return True
         deadline = time.time() + timeout
         while time.time() < deadline:
+            self._abort_if_combat()
             frame = self.get_frame()
             if frame is not None:
                 # 左上角坐标显示区域（流坐标 y 30-62, x 55-135）
@@ -682,7 +738,7 @@ class SceneSwitcher:
                         if abs(cx - x) <= tolerance and abs(cy - y) <= tolerance:
                             self._log(f"  已走到目标坐标 ({cx},{cy})")
                             return True
-            time.sleep(0.3)
+            time.sleep(0.6)  # 等坐标轮询节流：角色移动是秒级的，0.6s 足够且省截图
         return False
 
     def _go_to_position(self, map_name, x, y, timeout=90.0, wait_coord=True):
@@ -711,16 +767,17 @@ class SceneSwitcher:
         （如朱紫国有多个传送口，泛匹配"传送"可能命中"传送西梁女国"而非目标）。"""
         if target_map:
             for kw in (f"传送{target_map[:2]}", target_map[:2]):
-                tr = self._ocr_find((0, 0, 800, 448), kw, timeout=3.0)
+                tr = self._ocr_find((0, 0, 800, 448), kw, timeout=3.0, check_combat=True)
                 if tr:
                     self._log(f"  点击传送口({kw}) {tr}")
                     self.tap(tr[0], tr[1])
                     return True
-        tr = self._ocr_find((0, 0, 800, 448), "传送", timeout=5.0)
+        tr = self._ocr_find((0, 0, 800, 448), "传送", timeout=5.0, check_combat=True)
         if tr:
             self._log(f"  点击传送 {tr}")
             self.tap(tr[0], tr[1])
             return True
+        self._abort_if_combat(force=True)
         self._log("  未找到传送按钮，用兜底位置")
         self.tap(MAP_TRANSFER_BTN[0], MAP_TRANSFER_BTN[1])
         return True
@@ -947,13 +1004,13 @@ class SceneSwitcher:
         time.sleep(0.4)
         self._close_minimap()
         # 角色自动跑向传送口，等传送图标出现
-        tr = self._ocr_find((0, 0, 800, 448), "传送", timeout=30.0)
+        tr = self._ocr_find((0, 0, 800, 448), "传送", timeout=30.0, check_combat=True)
         if tr is None:
             # 传送图标未出现：点旁边的传送圈，图标会出现
             self._log(f"  传送图标未出现，点旁边的传送圈 {CAVE_GUANGQUAN}")
             self._click_map_times(CAVE_GUANGQUAN)
             time.sleep(2.0)
-            tr = self._ocr_find((0, 0, 800, 448), "传送", timeout=10.0)
+            tr = self._ocr_find((0, 0, 800, 448), "传送", timeout=10.0, check_combat=True)
         if tr:
             self._log(f"  点击传送 {tr}")
             self.tap(tr[0], tr[1])
@@ -1060,22 +1117,33 @@ class SceneSwitcher:
         route = resolve_route(target_name)
         if route is not None and len(route) >= 2:
             self._log(f"路线: {target_name} = {' -> '.join(route)}")
+            self._abort_if_combat(force=True)
             if not self._fly_to(route[0]):
                 self._log(f"飞行到起点失败: {route[0]}")
                 return False
-            self._use_bag_item("摄妖香")
+            self._abort_if_combat(force=True)
+            # 子母河底等场景不遇低级怪，无需摄妖香防怪 / 洞冥草恢复，跳过这两步
+            need_buff = target_name not in NO_BUFF_SCENES
+            if need_buff:
+                self._use_bag_item("摄妖香")
+            self._abort_if_combat(force=True)
             cur = route[0]
             for i, leg in enumerate(route[1:], 1):
                 self._log(f"跑图段 {i}/{len(route)-1}")
+                self._abort_if_combat(force=True)
                 if not self._walk_leg(cur, leg):
                     self._log(f"跑图失败: {cur} -> {leg}")
                     return False
                 cur = leg
-            self._use_bag_item("洞冥草")
+                self._abort_if_combat(force=True)
+            if need_buff:
+                self._use_bag_item("洞冥草")
+            self._abort_if_combat(force=True)
             self._log(f"场景切换完成: {target_name}")
             return True
 
         self._log(f"目标模板: {target_name} -> {resolve_template(target_name)}")
+        self._abort_if_combat(force=True)
         return self._fly_to(target_name)
 
 
