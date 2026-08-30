@@ -171,6 +171,15 @@ def save_device_config(serial, cfg):
         return False
 
 
+def fmt_duration_hm(seconds):
+    """把秒数格式化为"小时+分钟"显示：满1小时显示 X小时YY分，不足1小时显示 Y分钟"""
+    total_minutes = int(seconds or 0) // 60
+    h, m = divmod(total_minutes, 60)
+    if h > 0:
+        return f"{h}小时{m:02d}分"
+    return f"{m}分钟"
+
+
 def load_config():
     if os.path.exists(GUI_CONFIG_FILE):
         try:
@@ -1681,13 +1690,11 @@ class AutoFightGUI:
         total_runtime = getattr(engine, "total_runtime", 0) or 0
         if running and getattr(engine, "start_time", 0):
             elapsed = int(total_runtime + (time.time() - engine.start_time))
-            duration = f"{elapsed // 60:02d}:{elapsed % 60:02d}"
+            duration = fmt_duration_hm(elapsed)
         elif total_runtime > 0:
-            elapsed = int(total_runtime)
-            duration = f"{elapsed // 60:02d}:{elapsed % 60:02d}"
+            duration = fmt_duration_hm(total_runtime)
         elif not running and stats.get("total_runtime"):
-            elapsed = int(stats.get("total_runtime", 0))
-            duration = f"{elapsed // 60:02d}:{elapsed % 60:02d}"
+            duration = fmt_duration_hm(stats.get("total_runtime", 0))
         else:
             duration = "--"
         dur_lbl = self._table_cell(parent, row, 8, serial=serial, text=duration,
@@ -1728,7 +1735,7 @@ class AutoFightGUI:
         self._update_device_row_buttons(serial)
 
     def _add_total_row(self):
-        """在设备表格最下面加一行"总计"：统计所有设备的当日累计卡片/环总数"""
+        """在设备表格最下面加一行"总计"：统计所有设备的当日累计卡片/环总数与运行时长"""
         parent = self.dev_table
         row = self._device_row
 
@@ -1748,7 +1755,13 @@ class AutoFightGUI:
                             foreground="#dc3545")
         huan_lbl.grid(row=row, column=6, sticky="ew")
 
-        self._total_widgets = {"card": card_lbl, "huan": huan_lbl}
+        dur_lbl = tk.Label(parent, text=fmt_duration_hm(self._compute_total_runtime()),
+                           font=("Microsoft YaHei", 9, "bold"),
+                           bg="white", bd=0, padx=4, pady=2, anchor="center",
+                           foreground="#0d6efd")
+        dur_lbl.grid(row=row, column=8, sticky="ew")
+
+        self._total_widgets = {"card": card_lbl, "huan": huan_lbl, "dur": dur_lbl}
 
     def _compute_total_counts(self):
         """计算所有设备的当日累计卡片/环总数（含空闲设备，跨重启保留）"""
@@ -1769,6 +1782,25 @@ class AutoFightGUI:
                     getattr(eng, "_daily_huan_count", 0) or 0)
         stats = self._today_stats().get(serial, {})
         return (stats.get("cards", 0) or 0, stats.get("rings", 0) or 0)
+
+    def _device_daily_runtime(self, serial):
+        """返回设备当日累计运行时长（秒）：运行中含本次已运行时间，空闲/重启后取统计文件值"""
+        eng = self.engines.get(serial)
+        if eng is not None:
+            runtime = getattr(eng, "total_runtime", 0) or 0
+            if getattr(eng, "running", False) and getattr(eng, "start_time", 0):
+                runtime += max(0.0, time.time() - eng.start_time)
+            return runtime
+        stats = self._today_stats().get(serial, {})
+        return stats.get("total_runtime", 0) or 0
+
+    def _compute_total_runtime(self):
+        """计算所有设备的当日累计运行时长总数（秒，含空闲设备，跨重启保留）"""
+        total = 0.0
+        serials = set(self.engines.keys()) | set(self._today_stats().keys())
+        for serial in serials:
+            total += float(self._device_daily_runtime(serial) or 0)
+        return total
 
     def _today_stats(self):
         """返回今日统计文件中的设备数据（每天5:00自动切换新统计日）"""
@@ -1800,8 +1832,7 @@ class AutoFightGUI:
             w["bc"].configure(text=str(stats.get("battle_count", 0) or 0))
             runtime = stats.get("total_runtime", 0) or 0
             if runtime:
-                elapsed = int(runtime)
-                w["dur"].configure(text=f"{elapsed // 60:02d}:{elapsed % 60:02d}")
+                w["dur"].configure(text=fmt_duration_hm(runtime))
             else:
                 w["dur"].configure(text="--")
 
@@ -2362,6 +2393,18 @@ class AutoFightGUI:
                 # 设备未启动，从文件加载历史数据（支持多天）
                 history = load_scene_history_from_file(serial)
 
+            # 连续同名场景合并为一条（旧数据里的重复行 / 重启产生的分段记录）：
+            # 时长累计、环/卡累加；中间隔了其他场景的再次进入仍各自一行
+            merged_history = []
+            for record in history:
+                if merged_history and merged_history[-1].get("name") == record.get("name"):
+                    merged_history[-1]["duration"] = (merged_history[-1].get("duration") or 0) + (record.get("duration") or 0)
+                    merged_history[-1]["cards"] = (merged_history[-1].get("cards") or 0) + (record.get("cards") or 0)
+                    merged_history[-1]["rings"] = (merged_history[-1].get("rings") or 0) + (record.get("rings") or 0)
+                else:
+                    merged_history.append(dict(record))
+            history = merged_history
+
             if not history:
                 tree.insert("", tk.END, values=("暂无场景记录", "--", "--", "--", "--"))
             else:
@@ -2376,13 +2419,7 @@ class AutoFightGUI:
                         tree.insert("", tk.END, values=(f"📅 {record_date}", "---", "---", "---"),
                                   tags=("date_row"))
 
-                    duration_seconds = int(record["duration"])
-                    if duration_seconds >= 60:
-                        minutes = duration_seconds // 60
-                        seconds = duration_seconds % 60
-                        duration_str = f"{minutes}分{seconds}秒"
-                    else:
-                        duration_str = f"{duration_seconds}秒"
+                    duration_str = fmt_duration_hm(record["duration"])
 
                     tree.insert("", tk.END, values=(
                         record["name"],
@@ -3131,13 +3168,16 @@ class AutoFightGUI:
                             if getattr(eng, "start_time", 0):
                                 elapsed = int((getattr(eng, "total_runtime", 0) or 0)
                                               + (time.time() - eng.start_time))
-                                w["dur"].configure(text=f"{elapsed // 60:02d}:{elapsed % 60:02d}")
+                                w["dur"].configure(text=fmt_duration_hm(elapsed))
                             w["status"].configure(text="运行中", foreground="green")
                     # 同步更新总计行（所有运行中设备的卡片/环总数）
                     if getattr(self, "_total_widgets", None):
                         tc, th = self._compute_total_counts()
                         self._total_widgets["card"].configure(text=str(tc))
                         self._total_widgets["huan"].configure(text=str(th))
+                        if "dur" in self._total_widgets:
+                            self._total_widgets["dur"].configure(
+                                text=fmt_duration_hm(self._compute_total_runtime()))
         except queue.Empty:
             pass
         # 定期把当日累计写盘（异常退出最多丢失60秒增量）
@@ -3922,7 +3962,7 @@ class SceneSettingsDialog:
     """场景之妙手空空 - 多场景配置弹窗"""
 
     SCENE_NAMES = ["龙窟五层", "凤巢四层", "凤巢五层", "子母河底", "小西天", "小雷音寺", "女娲神迹", "须弥东界"]
-    RING_OPTIONS = ["无要求", "得1个环", "得2个环", "得3个环"]
+    RING_OPTIONS = ["无要求", "得1个环", "得2个环", "得3个环", "得4个环"]
     CARD_OPTIONS = ["无要求", "得1张卡片", "得2张卡片"]
     TIME_OPTIONS = ["无要求", "满60分钟", "满120分钟", "满180分钟"]
     AFTER_OPTIONS = ["后换场景", "停止"]

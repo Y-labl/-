@@ -816,10 +816,13 @@ class AutoFightEngine:
         self._daily_card_count = 0       # 当日累计卡数（跨重启保留，按天重置）
         self._scene_switch_requested = False
         self._switch_retry_after = 0.0    # 真实切场失败后的重试冷却截止时间戳
+        self._renav_after = 0.0           # 中途地图恢复导航的冷却截止时间戳
+        self._nav_pending = None          # 启动导航未成功时的目标场景（到位前不跑图）
         self._last_4p_check_t = 0.0      # 战斗中四小人判定节流
         self._tuling_fail_streak = 0     # 图灵云连续失败次数（用于冷却节流）
         self._tuling_cooldown_until = 0  # 图灵云冷却截止时间戳（余额不足等持续失败时暂停调用）
         self._scene_history = []         # 场景历史记录：[{name, cards, rings, duration, start_time}]
+        self._last_recorded_key = None   # 最近一次已记录的会话键 (name, start_time)，防重复记录
         self._current_scene_start_time = time.time()  # 当前场景开始时间
 
         # 场景历史文件（按天记录，每天 5:00 为界）
@@ -1101,9 +1104,9 @@ class AutoFightEngine:
 
     def _do_real_scene_switch(self, target_map):
         """
-        真实导航到目标场景：
-        优先用 场景切换.py 的 SceneSwitcher（每段跑图有 OCR 到达验证、失败明确返回）；
-        失败/未覆盖时回退小霸王 goToMapAction（导航后 OCR 验证，未到达重试一次）。
+        真实导航到目标场景：只走 场景切换.py 的 SceneSwitcher（每段跑图有 OCR 到达验证、失败明确返回）。
+        失败返回 False，由主循环保留切场请求并冷却 30 秒重试（启动时回退本地切场）；
+        小霸王 goToMapAction 兜底已按用户要求注释掉（见方案2 注释）。
         """
         if not self.cfg.get("use_real_scene_switch", True):
             return False
@@ -1118,7 +1121,7 @@ class AutoFightEngine:
                                client=self.client,          # 复用引擎 scrcpy 流帧（免 ADB 截图）
                                frame_lock=self._frame_lock)
             if not sw.connect():
-                self._log("  ⚠️ 场景切换引擎连接失败，回退小霸王导航")
+                self._log("  ⚠️ 场景切换引擎连接失败")
             else:
                 try:
                     if sw.switch_scene(target_map):
@@ -1128,49 +1131,68 @@ class AutoFightEngine:
                 except SceneSwitchCombatAbort:
                     self._log("  ⚔️ 切场途中检测到战斗，中止切场（保留切场请求，稍后重试）")
                     return False
-                self._log("  ⚠️ 场景切换引擎导航失败，回退小霸王导航")
+                self._log("  ⚠️ 场景切换引擎导航失败")
         except Exception as e:
-            self._log(f"  ⚠️ 场景切换引擎异常({e})，回退小霸王导航")
+            self._log(f"  ⚠️ 场景切换引擎异常({e})")
 
         # ===== 方案2：小霸王 goToMapAction（兜底，导航后 OCR 验证到达） =====
-        if not self.coord_enabled:
-            # 坐标检测关闭：无法 OCR 验证，仅执行导航流程
-            try:
-                from xbw_features import go_to_chang_jing
-                if self._check_in_combat():
-                    self._log("  ⚔️ 导航前检测到战斗，中止切场")
-                    return False
-                self._log(f"  🗺️ 小霸王导航到 {target_map} ...")
-                go_to_chang_jing(self.serial, target_map)
-                self._log(f"  ✅ 已执行导航到 {target_map}（坐标检测关闭，无法验证到达）")
-                time.sleep(1)
-                return True
-            except Exception as e:
-                self._log(f"  ⚠️ 真实切场失败({e})，回退本地切场")
-                return False
-        try:
-            from xbw_features import go_to_chang_jing
-            for _try in range(2):
-                if self._check_in_combat():
-                    self._log("  ⚔️ 导航前检测到战斗，中止切场")
-                    return False
-                self._log(f"  🗺️ 小霸王导航到 {target_map}（第{_try+1}次）...")
-                go_to_chang_jing(self.serial, target_map)
-                time.sleep(1.5)
-                if self._check_in_combat():
-                    self._log("  ⚔️ 导航后检测到战斗，中止切场")
-                    return False
-                detected = self._detect_current_map()
-                if detected and _match_scene_name(detected, target_map):
-                    self._log(f"  ✅ 已到达 {target_map}（OCR 确认）")
-                    return True
-                self._log(f"  ⚠️ 导航后仍在 {detected or '未知场景'}，未到达 {target_map}"
-                          + ("，重试一次" if _try == 0 else ""))
-            self._log(f"  ⚠️ 两次导航后仍未到达 {target_map}，回退本地切场（仅切换模板）")
+        # 已按用户要求注释掉：goToMapAction 从源头导航依赖飞行符飞傲来国，
+        # 龙窟/凤巢等地下场景飞行符用不了 → 角色卡原地；且与方案1 重复、让切场链路混乱。
+        # 切场失败统一由主循环保留切场请求 + 30 秒冷却重试兜底（启动时回退本地切场）。
+        # if not self.coord_enabled:
+        #     # 坐标检测关闭：无法 OCR 验证，仅执行导航流程
+        #     try:
+        #         from xbw_features import go_to_chang_jing
+        #         if self._check_in_combat():
+        #             self._log("  ⚔️ 导航前检测到战斗，中止切场")
+        #             return False
+        #         self._log(f"  🗺️ 小霸王导航到 {target_map} ...")
+        #         go_to_chang_jing(self.serial, target_map)
+        #         self._log(f"  ✅ 已执行导航到 {target_map}（坐标检测关闭，无法验证到达）")
+        #         time.sleep(1)
+        #         return True
+        #     except Exception as e:
+        #         self._log(f"  ⚠️ 真实切场失败({e})，回退本地切场")
+        #         return False
+        # try:
+        #     from xbw_features import go_to_chang_jing
+        #     for _try in range(2):
+        #         if self._check_in_combat():
+        #             self._log("  ⚔️ 导航前检测到战斗，中止切场")
+        #             return False
+        #         self._log(f"  🗺️ 小霸王导航到 {target_map}（第{_try+1}次）...")
+        #         go_to_chang_jing(self.serial, target_map)
+        #         time.sleep(1.5)
+        #         if self._check_in_combat():
+        #             self._log("  ⚔️ 导航后检测到战斗，中止切场")
+        #             return False
+        #         detected = self._detect_current_map()
+        #         if detected and _match_scene_name(detected, target_map):
+        #             self._log(f"  ✅ 已到达 {target_map}（OCR 确认）")
+        #             return True
+        #         self._log(f"  ⚠️ 导航后仍在 {detected or '未知场景'}，未到达 {target_map}"
+        #                   + ("，重试一次" if _try == 0 else ""))
+        #     self._log(f"  ⚠️ 两次导航后仍未到达 {target_map}，回退本地切场（仅切换模板）")
+        #     return False
+        # except Exception as e:
+        #     self._log(f"  ⚠️ 真实切场失败({e})，回退本地切场")
+        #     return False
+        return False
+
+    def _try_renav_to(self, map_name):
+        """角色落在非配置的中途地图（导航被打断/切场半途停止）时，重新真实导航回目标场景。
+        返回 True=已到达并重置跑图/背包状态；False=失败（调用方冷却后重试）。"""
+        self._log(f"🧭 重新导航到 {map_name} ...")
+        if not self._do_real_scene_switch(map_name):
+            self._log("  ⚠️ 重新导航失败，30 秒后重试（期间角色原地待命，不跑图）")
             return False
-        except Exception as e:
-            self._log(f"  ⚠️ 真实切场失败({e})，回退本地切场")
-            return False
+        self.reset_coord_tracking()
+        self._pkg_snapshot = None
+        self._pkg_check_t = time.time()
+        self._pkg_interval = 0.0   # 新场景立即检查背包
+        self._huan_count = 0
+        self._card_count = 0
+        return True
 
     def _check_backpack_counts(self, scene):
         """
@@ -1275,22 +1297,39 @@ class AutoFightEngine:
             # 刚启动（<60秒）且无任何环/卡产出则视为"没跑起来"，不记录，避免空记录刷屏
             if start_time > 0 and time.time() - start_time < 60 and not self._huan_count and not self._card_count:
                 return
-            # 避免重复记录同一条当前场景（切场块已记录过时）
-            if self._scene_history and self._scene_history[-1].get("name") == map_name \
-                    and abs((self._scene_history[-1].get("start_time") or 0) - start_time) < 1:
-                return
             duration = max(0.0, time.time() - start_time) if start_time > 0 else 0.0
-            self._scene_history.append({
-                "name": map_name,
-                "cards": self._card_count,
-                "rings": self._huan_count,
-                "duration": duration,
-                "start_time": start_time,
-            })
-            self._save_scene_history()
+            self._record_scene_history(map_name, self._card_count, self._huan_count,
+                                       duration, start_time)
             self._log(f"📝 流程结束，已记录当前场景 {map_name} 到历史（环 {self._huan_count} / 卡 {self._card_count}）")
         except Exception as e:
             self._log(f"⚠️ 记录当前场景历史失败: {e}")
+
+    def _record_scene_history(self, name, cards, rings, duration, start_time):
+        """记录一次场景会话到历史（带去重合并）：
+        - 连续同名场景合并为一条：程序重启 / 切场失败重试不再产生重复行，
+          时长累计、环/卡累加（重启后背包基线重建，只统计新获得的部分，累加不重复）；
+        - 中间隔了其他场景的再次进入才新开一条记录；
+        - 同一次会话（同名+同开始时间）只记录一次，避免"停止"分支与流程结束重复记。"""
+        try:
+            if getattr(self, "_last_recorded_key", None) == (name, start_time):
+                return
+            if self._scene_history and self._scene_history[-1].get("name") == name:
+                last = self._scene_history[-1]
+                last["duration"] = (last.get("duration") or 0) + max(0.0, duration)
+                last["cards"] = (last.get("cards") or 0) + (cards or 0)
+                last["rings"] = (last.get("rings") or 0) + (rings or 0)
+            else:
+                self._scene_history.append({
+                    "name": name,
+                    "cards": cards,
+                    "rings": rings,
+                    "duration": max(0.0, duration),
+                    "start_time": start_time,
+                })
+            self._last_recorded_key = (name, start_time)
+            self._save_scene_history()
+        except Exception as e:
+            self._log(f"⚠️ 记录场景历史失败: {e}")
 
     def _load_scene_history(self):
         """从文件加载场景历史（只加载当天的）"""
@@ -4455,39 +4494,6 @@ class AutoFightEngine:
 
                     time.sleep(random.uniform(0.3, 0.5))
 
-                    # 点完逃跑再点一下防御：逃跑失败时本回合仍执行防御动作，
-                    # 避免角色空过回合（与原版小霸王逻辑一致）
-
-                    if self._check_in_combat():
-
-                        d_frame = self.get_frame()
-
-                        if d_frame is not None:
-
-                            # 防御按钮固定在右下操作区 (708,402) 附近；
-                            # 0.50 低阈值会误匹配到怪物/场景元素（如日志中的
-                            # (114,146)、(154,280) 等坐标），点到错误位置，
-                            # 因此识别后用位置过滤掉远离右下操作区的误匹配。
-                            defend = self.find(d_frame, "PK-防御", threshold=0.70)
-
-                            if defend is None:
-
-                                defend = self.find(d_frame, "PK-防御", threshold=0.60)
-
-                            if defend and not (defend[0] > 480 and defend[1] > 280):
-
-                                self._log(f"  ⚠️ 防御模板误匹配 ({defend[0]},{defend[1]})，忽略")
-
-                                defend = None
-
-                            if defend:
-
-                                self._log(f"  🛡 点完逃跑再点防御 ({defend[0]},{defend[1]})")
-
-                                self.tap(defend[0], defend[1])
-
-                    time.sleep(1.2)
-
                     if not self._check_in_combat():
 
                         self._log("  🏁 已逃跑")
@@ -4495,6 +4501,14 @@ class AutoFightEngine:
                         break
 
                     self._log("  ❌ 逃跑失败")
+
+                    # 逃跑失败：等宝宝面板出现（妙手空空技能图标消失 = 宝宝回合），
+                    # 给宝宝点防御，避免宝宝空过回合站桩挨打；
+                    # 下回合轮到人物时继续逃跑，形成"人物逃跑 / 宝宝防御"循环。
+                    # 宝宝没出战/死亡时最多等 3 秒就跳过，不拖慢逃跑节奏
+                    self._tap_defend(log_label="宝宝", timeout=3.0, require_skill_hidden=True)
+
+                    time.sleep(0.5)
 
             elif not ms:
 
@@ -5326,19 +5340,26 @@ class AutoFightEngine:
         self._wire_xbw_backend()
 
         # 启动场景对齐：先 OCR 检测角色当前实际所在的场景
-        # 在配置轮转列表内 → 直接从这里开始；不在/检测失败 → 自动导航到配置的第一个场景
+        # 在配置轮转列表内 → 直接从这里开始；不在/检测失败 → 自动导航到配置的第一个场景。
+        # 场景去哪由「场景配置」轮转列表决定，不再信任 GUI「地图选择」下拉框
+        # （那是旧版单场景模式遗留；角色实际位置只能以检测为准）。
         actual_scene = None
         if self.coord_enabled:
-            try:
-                if self.ocr_engine is None:
-                    self.init_ocr()
-                ocr_name, _, _ = self.detect_map_coord()
-                if ocr_name:
-                    from scene_detector import detect_position as _detect
-                    detected, _ = _detect(self.serial, None, self.scale_x, self.scale_y, ocr_name)
-                    actual_scene = detected
-            except Exception as e:
-                self._log(f"  ⚠️ 启动场景检测失败: {e}")
+            for _try in range(3):   # 多帧重试：启动首帧常因画面未稳定/弹窗遮挡读不出地图名
+                try:
+                    if self.ocr_engine is None:
+                        self.init_ocr()
+                    ocr_name, _, _ = self.detect_map_coord()
+                    if ocr_name:
+                        from scene_detector import detect_position as _detect
+                        detected, _ = _detect(self.serial, None, self.scale_x, self.scale_y, ocr_name)
+                        actual_scene = detected
+                        if actual_scene:
+                            break
+                except Exception as e:
+                    self._log(f"  ⚠️ 启动场景检测失败: {e}")
+                if actual_scene is None:
+                    time.sleep(0.8)
 
         start_scene = None
         if actual_scene:
@@ -5348,28 +5369,21 @@ class AutoFightEngine:
                     start_scene = s["scene"]
                     self._log(f"📍 检测到当前位于 {actual_scene}，从该场景开始轮转")
                     break
-            if start_scene is None:
-                # 角色实际所在场景不在配置里：自动导航到配置顺序的第一个场景
-                start_scene = supported[0]["scene"]
-                current_idx = 0
+        if start_scene is None:
+            # 实际场景不在配置里，或检测失败（无法确认角色位置）：
+            # 统一导航到配置顺序的第一个场景
+            start_scene = supported[0]["scene"]
+            current_idx = 0
+            if actual_scene:
                 self._log(f"🧭 当前位于 {actual_scene}，不在切场配置中，自动导航到配置第一个场景: {start_scene}")
-                if not self._do_real_scene_switch(start_scene):
-                    self._log(f"  ⚠️ 导航失败，回退本地切场（将按 {start_scene} 模板运行）")
-        else:
-            # OCR 检测失败/未启用：不知道角色在哪，退而尊重 GUI 地图选择；GUI 也不匹配则导航到第一个
-            if gui_map in MAP_CONFIG and any(_match_scene_name(gui_map, s["scene"]) for s in supported):
-                for i, s in enumerate(supported):
-                    if _match_scene_name(gui_map, s["scene"]):
-                        current_idx = i
-                        start_scene = s["scene"]
-                        break
-                self._log(f"📌 未能检测到当前场景，按 GUI 地图选择从 {start_scene} 开始")
             else:
-                start_scene = supported[0]["scene"]
-                current_idx = 0
                 self._log(f"🧭 未能检测到当前场景，自动导航到配置第一个场景: {start_scene}")
-                if not self._do_real_scene_switch(start_scene):
-                    self._log(f"  ⚠️ 导航失败，回退本地切场（将按 {start_scene} 模板运行）")
+            if not self._do_real_scene_switch(start_scene):
+                # 不再"回退本地切场"假装成功：角色还在中途地图时跑图/打怪都没有意义，
+                # 置 _renav_after=0 让主循环第一轮就触发重新导航，成功前角色原地待命
+                self._log(f"  ⚠️ 启动导航失败，主循环将持续重试导航到 {start_scene}（成功前不跑图）")
+                self._renav_after = 0
+                self._nav_pending = start_scene
 
         current_scene = supported[current_idx]
 
@@ -5391,9 +5405,7 @@ class AutoFightEngine:
         self._scene_switch_requested = False
 
         self.start_time = time.time()
-        self._current_scene_start_time = time.time()  # 记录当前场景开始时间
-
-        scene_start_time = time.time()
+        scene_start_time = self._current_scene_start_time = time.time()  # 记录当前场景开始时间
 
         # 切换场间隔：读场景配置的“满XX分钟”；“无要求”= 永不按时间切（仅靠环/卡达标切）
         try:
@@ -5427,25 +5439,43 @@ class AutoFightEngine:
 
             jiusi_mp = self.cfg.get("jiusi_mp_threshold", 30)
 
-        self._log("=" * 40)
+        def _log_start_banner():
 
-        self._log(f"🚀 {map_name} 自动打怪 启动")
+            self._log("=" * 40)
 
-        self._log(f"   场景: {current_scene.get('scene')}  环数:{current_scene.get('rings')}  卡片:{current_scene.get('cards')}  时间:{current_scene.get('time')}")
+            self._log(f"🚀 {map_name} 自动打怪 启动")
 
-        self._log(f"   战斗中: 气血<{self.cfg.get('hp_threshold',30)}%→{self.cfg.get('hp_item','红碗')}  "
+            self._log(f"   场景: {current_scene.get('scene')}  环数:{current_scene.get('rings')}  卡片:{current_scene.get('cards')}  时间:{current_scene.get('time')}")
 
-                  f"魔法<{self.cfg.get('mp_threshold',20)}%→{self.cfg.get('mp_item','蓝碗')}")
+            self._log(f"   战斗中: 气血<{self.cfg.get('hp_threshold',30)}%→{self.cfg.get('hp_item','红碗')}  "
 
-        self._log(f"   战后酒肆: {'✅' if jiusi_en else '❌'}  "
+                      f"魔法<{self.cfg.get('mp_threshold',20)}%→{self.cfg.get('mp_item','蓝碗')}")
 
-                  f"气血<{jiusi_hp}%  "
+            self._log(f"   战后酒肆: {'✅' if jiusi_en else '❌'}  "
 
-                  f"魔法<{jiusi_mp}%  "
+                      f"气血<{jiusi_hp}%  "
 
-                  f"BB<{self.cfg.get('jiusi_bb_threshold',50)}%")
+                      f"魔法<{jiusi_mp}%  "
 
-        self._log("=" * 40)
+                      f"BB<{self.cfg.get('jiusi_bb_threshold',50)}%")
+
+            self._log("=" * 40)
+
+        # 启动导航失败时（_nav_pending 非空）不打印"启动"横幅、不开始打怪流程，
+        # 主循环恢复导航成功后才正式启动，避免误导
+        start_banner_shown = self._nav_pending is None
+
+        if start_banner_shown:
+
+            _log_start_banner()
+
+        else:
+
+            self._log("=" * 40)
+
+            self._log(f"⏳ {map_name} 自动打怪 待启动：导航恢复成功后自动开始")
+
+            self._log("=" * 40)
 
 
 
@@ -5536,65 +5566,67 @@ class AutoFightEngine:
                                and (time.time() - scene_start_time) > scene_switch_interval)
                 _switch_retry_ok = time.time() >= self._switch_retry_after
                 if (self.cfg.get("use_real_scene_switch", True)
+                        and not self._nav_pending
                         and not self.was_in_pk and _switch_retry_ok
                         and not self.is_in_pk(frame)
                         and (self._scene_switch_requested or _switch_due)):
 
-                    # 记录当前场景到历史
-                    prev_map_name = self.cfg.get("map", "")
-                    if prev_map_name:
-                        duration = time.time() - scene_start_time
-                        self._scene_history.append({
-                            "name": prev_map_name,
-                            "cards": self._card_count,
-                            "rings": self._huan_count,
-                            "duration": duration,
-                            "start_time": scene_start_time,
-                        })
-                        # 保存场景历史到文件
-                        self._save_scene_history()
-
-                    # 当前场景“后续操作=停止”：达标后整个自动流程结束
+                    # 当前场景“后续操作=停止”：达标后记录本次会话并结束整个自动流程
                     if current_scene.get("after", "后换场景") == "停止":
+                        prev_map_name = self.cfg.get("map", "")
+                        if prev_map_name:
+                            self._record_scene_history(
+                                prev_map_name, self._card_count, self._huan_count,
+                                time.time() - scene_start_time, scene_start_time)
                         self._log(f"🛑 场景 {map_name} 条件已满足且配置为“停止”，结束自动流程")
                         self.running = False
                         break
 
-                    # 单场景且配置为“后换场景”：没有下一个可去的场景，重置计数继续挂机
+                    # 单场景且配置为“后换场景”：没有下一个可去的场景，记录后重置计数继续挂机
                     if len(supported) == 1:
                         self._log(f"🔁 仅配置了一个场景({map_name})，条件满足后重置环/卡计数继续挂机")
+                        prev_map_name = self.cfg.get("map", "")
+                        if prev_map_name:
+                            self._record_scene_history(
+                                prev_map_name, self._card_count, self._huan_count,
+                                time.time() - scene_start_time, scene_start_time)
                         self._scene_switch_requested = False
                         self._pkg_snapshot = None
                         self._pkg_check_t = time.time()
                         self._pkg_interval = 0.0   # 立即重建背包基线
                         self._huan_count = 0
                         self._card_count = 0
-                        scene_start_time = time.time()
-                        self._current_scene_start_time = time.time()  # 更新当前场景开始时间
+                        scene_start_time = self._current_scene_start_time = time.time()
                         continue
 
-                    current_idx = (current_idx + 1) % len(supported)
-
-                    current_scene = supported[current_idx]
-
-                    map_name = current_scene["scene"]
-
-                    mc = _get_mc(map_name)
-
-                    self._log(f"场景切换: {map_name}")
+                    # 计算下一个目标场景（失败不推进索引，保证严格按配置顺序轮转）
+                    next_idx = (current_idx + 1) % len(supported)
+                    next_scene = supported[next_idx]
+                    next_map = next_scene["scene"]
+                    self._log(f"场景切换: {next_map}")
 
                     self._scene_switch_requested = False
-                    if not self._do_real_scene_switch(map_name):
-                        # 真实导航失败：不静默降级为"只切模板"（否则角色实际还在旧图，
-                        # 日志却显示在新图打怪）。保留切场请求并冷却 30 秒后重试，
-                        # 期间维持原场景的计数/模板/时间间隔状态不变。
-                        self._log(f"  ⚠️ 真实切场失败，角色可能仍在 {prev_map_name or '原场景'}；"
+                    if not self._do_real_scene_switch(next_map):
+                        # 真实导航失败：不记录历史（避免重试产生重复记录）、不推进轮转索引，
+                        # 保留切场请求并冷却 30 秒后重试，期间维持原场景的
+                        # 计数/模板/时间间隔状态不变。
+                        self._log(f"  ⚠️ 真实切场失败，角色可能仍在 {self.cfg.get('map', '') or '原场景'}；"
                                   f"保留切场请求，30 秒后重试（不切模板）")
-                        # 回退轮转索引（上方已 +1），重试时仍指向同一目标场景
-                        current_idx = (current_idx - 1) % len(supported)
                         self._scene_switch_requested = True
                         self._switch_retry_after = time.time() + 30
                         continue
+
+                    # 切换成功：先记录已完成的场景会话，再推进轮转索引
+                    prev_map_name = self.cfg.get("map", "")
+                    if prev_map_name:
+                        self._record_scene_history(
+                            prev_map_name, self._card_count, self._huan_count,
+                            time.time() - scene_start_time, scene_start_time)
+
+                    current_idx = next_idx
+                    current_scene = next_scene
+                    map_name = next_map
+                    mc = _get_mc(map_name)
 
                     self.cfg["map"] = map_name
 
@@ -5621,9 +5653,32 @@ class AutoFightEngine:
                     else:
                         scene_switch_interval = _switch_minutes * 60
 
-                    scene_start_time = time.time()
-                    self._current_scene_start_time = time.time()  # 更新当前场景开始时间
+                    scene_start_time = self._current_scene_start_time = time.time()
 
+                    continue
+
+                # === 启动导航未成功的恢复：目标场景没到位前，打怪/背包/跑图全部
+                # 不执行（OCR 读不出地图名的未知场景也照样重试导航）。
+                # 到位后正式打印"自动打怪 启动"横幅并恢复完整流程 ===
+                if (self._nav_pending and self.coord_enabled
+                        and self.cfg.get("use_real_scene_switch", True)):
+                    recovered = False
+                    cur = self._detect_current_map()
+                    if cur and _match_scene_name(cur, self._nav_pending):
+                        self._nav_pending = None   # 已到位
+                        recovered = True
+                    elif time.time() >= self._renav_after:
+                        self._renav_after = time.time() + 30
+                        if self._try_renav_to(self._nav_pending):
+                            scene_start_time = self._current_scene_start_time = time.time()
+                            self._nav_pending = None
+                            recovered = True
+                    if recovered:
+                        if not start_banner_shown:
+                            _log_start_banner()
+                            start_banner_shown = True
+                        continue
+                    time.sleep(1.0)
                     continue
 
                 # === 非战斗：背包环/卡计数（小霸王合并功能） ===
@@ -5727,8 +5782,7 @@ class AutoFightEngine:
                                 else:
                                     scene_switch_interval = _switch_minutes * 60
 
-                                scene_start_time = time.time()
-                                self._current_scene_start_time = time.time()  # 更新当前场景开始时间
+                                scene_start_time = self._current_scene_start_time = time.time()
 
                                 continue
 
@@ -5767,6 +5821,23 @@ class AutoFightEngine:
                     if loop % 5 == 0:
 
                         self._log(f"[{loop}] coord_check: {time.time()-t0:.2f}s")
+
+
+                    # === 中途地图恢复：角色既不在目标场景、也不在切场配置里
+                    # （如导航被打断落在傲来国）→ 在错误地图跑图没有意义，
+                    # 重新真实导航回目标场景；冷却期内原地待命，不跑图不乱走 ===
+                    if (self.coord_enabled and cur_map
+                            and self.cfg.get("use_real_scene_switch", True)
+                            and not _match_scene_name(cur_map, map_name)
+                            and all(not _match_scene_name(cur_map, s.get("scene", ""))
+                                    for s in supported)):
+                        if time.time() >= self._renav_after:
+                            self._renav_after = time.time() + 30
+                            if self._try_renav_to(map_name):
+                                scene_start_time = self._current_scene_start_time = time.time()
+                                continue
+                        time.sleep(1.0)
+                        continue
 
 
 

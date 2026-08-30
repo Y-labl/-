@@ -109,18 +109,19 @@ MAP_PARAMS = {
 }
 
 # 跨图腿: (起点, 终点) -> (走位地图, 目标坐标, 方式)
-# 方式: "chuan_song"=走位后点传送; "npc"=走位后点NPC
+# 方式: "chuan_song"=走位后点传送; "npc"=走位后点NPC; "cave"=打开地图点标签坐标后等传送图标点传送
 LEG_STEPS = {
-    ("傲来国", "花果山"): ("傲来国", (215, 143), "chuan_song"),
+    ("傲来国", "花果山"): ("傲来国", (566, 82), "cave"),
     ("花果山", "北俱芦洲"): ("花果山", (28, 98), "npc"),
-    ("北俱芦洲", "龙窟一层"): ("北俱芦洲", (11, 80), "chuan_song"),
+    # 第4元素（可选）：传送光圈兜底坐标——点传送模板没反应且图标消失时点光圈进洞
+    ("北俱芦洲", "龙窟一层"): ("北俱芦洲", (164, 215), "cave", (141, 227)),
     ("北俱芦洲", "凤巢一层"): ("北俱芦洲", (285, 102), "cave"),
     ("朱紫国", "大唐境外"): ("朱紫国", (4, 4), "chuan_song"),
     # 洞穴层间：小地图标签点击位置（流坐标）
-    ("龙窟一层", "龙窟二层"): ("龙窟一层", (110, 129), "cave"),
-    ("龙窟二层", "龙窟三层"): ("龙窟二层", (146, 336), "cave"),
-    ("龙窟三层", "龙窟四层"): ("龙窟三层", (583, 282), "cave"),
-    ("龙窟四层", "龙窟五层"): ("龙窟四层", (526, 224), "cave"),
+    ("龙窟一层", "龙窟二层"): ("龙窟一层", (110, 129), "cave", (163, 204)),
+    ("龙窟二层", "龙窟三层"): ("龙窟二层", (146, 336), "cave", (303, 374)),
+    ("龙窟三层", "龙窟四层"): ("龙窟三层", (583, 282), "cave", (618, 249)),
+    ("龙窟四层", "龙窟五层"): ("龙窟四层", (526, 224), "cave", (465, 184)),
     ("凤巢一层", "凤巢二层"): ("凤巢一层", (281, 321), "cave"),
     ("凤巢二层", "凤巢三层"): ("凤巢二层", (548, 185), "cave"),
     ("凤巢三层", "凤巢四层"): ("凤巢三层", (543, 322), "cave"),
@@ -154,6 +155,9 @@ NPC_CONFIRM_ROI = (580, 195, 710, 230)
 # 点击某按钮时的备选模板
 FALLBACK_NAMES = {
     "道具": ["道具-道具栏"],
+    # 旧"关闭弹窗"模板在大地图界面会匹配错位（命中 X 按钮右侧的其他元素），
+    # 新模板从大地图实测截图裁剪，精确命中右上角 X
+    "关闭弹窗": ["关闭弹窗2"],
 }
 
 # 模板匹配中心到按钮可点击中心的偏移（流坐标，y 向下为正）
@@ -179,6 +183,12 @@ BAG_CLOSE_FALLBACK = (668, 38)
 CAVE_GUANGQUAN = (586, 260)   # 洞穴传送光圈（流坐标，实测 1406,626 设备）
 CHUANSONG_NEAR_POINT = (120, 410)   # 点传送后未触发时，点屏幕左下角让角色靠近传送口
                                      #（朱紫国→大唐境外等传送口在地图左下方，角色走到附近差几步时补点一下）
+
+# 传送按钮出现区域（流坐标，实测 西梁女国→子母河底 在 (596,310)、洞穴传送光圈在 (586,260)）：
+# 只裁屏幕中下部，排除顶部小地图/坐标/任务文字——旧版全帧 800x448 OCR 每轮 2~4s 且
+# "传送"小字常漏读，是"点小地图关图 → 点击传送"空耗 ~34s 的根因
+TRANSFER_BTN_ROI = (250, 180, 800, 430)
+TRANSFER_BTN_WAIT = 30.0   # 等传送按钮出现的最大时长（覆盖角色走路到传送口的时间）
 
 
 def resolve_template(name):
@@ -230,10 +240,10 @@ def load_template(name):
 
 
 def match_template(screenshot, template, threshold=0.75, debug_name=""):
-    """多尺度 + 多方法模板匹配，返回 (中心x, 中心y, 置信度) 或 None。
+    """多尺度模板匹配，返回 (中心x, 中心y, 置信度) 或 None。
     性能优化：同分辨率设备（模板与截图都是 800x448 流坐标）绝大多数情况
-    1.0 尺度单方法即可命中（约 0.04s），先试 1.0；未命中才扩展多尺度双方法，
-    避免每次点击都付出 13 尺度 × 2 方法 ≈ 1.2s 的全量匹配成本。"""
+    1.0 尺度单方法即可命中（约 0.04s），先试 1.0；未命中才扩展多尺度，
+    避免每次点击都付出 13 尺度 ≈ 1.2s 的全量匹配成本。"""
     if screenshot is None or template is None:
         return None
     h, w = screenshot.shape[:2]
@@ -245,27 +255,26 @@ def match_template(screenshot, template, threshold=0.75, debug_name=""):
     _, v1, _, loc1 = cv2.minMaxLoc(r1)
     if v1 >= threshold:
         return (loc1[0] + tw // 2, loc1[1] + th // 2, v1)
-    # 慢路径：多尺度双方法（与历史行为一致，覆盖不同分辨率/UI缩放）
+    # 慢路径：只保留 TM_CCOEFF_NORMED。TM_CCORR_NORMED 在主界面高亮区域
+    # 会产生 0.90+ 的大面积假命中，导致“地图-筛选/关闭弹窗”位置乱跳。
     best_result = None
     best_val = v1
     scales = [round(x, 2) for x in np.arange(0.7, 1.35, 0.05)]
-    methods = [cv2.TM_CCOEFF_NORMED, cv2.TM_CCORR_NORMED]
-    for method in methods:
-        for s in scales:
-            stw = max(2, int(tw * s))
-            sth = max(2, int(th * s))
-            if stw > w or sth > h:
-                continue
-            if abs(s - 1.0) < 0.01:
-                result = r1 if method == cv2.TM_CCOEFF_NORMED else cv2.matchTemplate(screenshot, template, method)
-                _, max_val, _, max_loc = cv2.minMaxLoc(result)
-            else:
-                small_tmpl = cv2.resize(template, (stw, sth), interpolation=cv2.INTER_AREA)
-                result = cv2.matchTemplate(screenshot, small_tmpl, method)
-                _, max_val, _, max_loc = cv2.minMaxLoc(result)
-            if max_val > best_val:
-                best_val = max_val
-                best_result = (max_loc[0] + stw // 2, max_loc[1] + sth // 2, max_val)
+    for s in scales:
+        stw = max(2, int(tw * s))
+        sth = max(2, int(th * s))
+        if stw > w or sth > h:
+            continue
+        if abs(s - 1.0) < 0.01:
+            result = r1
+            _, max_val, _, max_loc = cv2.minMaxLoc(result)
+        else:
+            small_tmpl = cv2.resize(template, (stw, sth), interpolation=cv2.INTER_AREA)
+            result = cv2.matchTemplate(screenshot, small_tmpl, cv2.TM_CCOEFF_NORMED)
+            _, max_val, _, max_loc = cv2.minMaxLoc(result)
+        if max_val > best_val:
+            best_val = max_val
+            best_result = (max_loc[0] + stw // 2, max_loc[1] + sth // 2, max_val)
     if best_result is not None and best_val >= threshold:
         return best_result
     if debug_name:
@@ -594,11 +603,13 @@ class SceneSwitcher:
     # ---------- OCR 查找 ----------
 
     def _ocr_find(self, roi, keyword, timeout=5.0, check_combat=False):
-        """在指定流坐标区域 OCR 查找关键字，返回 (x, y, 文本) 或 None。"""
+        """在指定流坐标区域 OCR 查找关键字，返回 (x, y, 文本) 或 None。
+        keyword 可为 str 或 list/tuple（按优先级顺序逐个匹配，命中即返回）。"""
         if self.ocr is None:
             self._init_ocr()
             if self.ocr is None:
                 return None
+        kws = keyword if isinstance(keyword, (list, tuple)) else [keyword]
         x1, y1, x2, y2 = roi
         deadline = time.time() + timeout
         while time.time() < deadline:
@@ -612,32 +623,43 @@ class SceneSwitcher:
                         res, _ = self.ocr(crop)
                         for box, text, conf in (res or []):
                             t = str(text)
-                            if keyword in t:
-                                bx = [p[0] for p in box]
-                                by = [p[1] for p in box]
-                                cx = (min(bx) + max(bx)) // 2 + x1
-                                cy = (min(by) + max(by)) // 2 + y1
-                                return (cx, cy, t)
+                            for k in kws:
+                                if k in t:
+                                    bx = [p[0] for p in box]
+                                    by = [p[1] for p in box]
+                                    cx = (min(bx) + max(bx)) // 2 + x1
+                                    cy = (min(by) + max(by)) // 2 + y1
+                                    return (cx, cy, t)
                     except Exception:
                         pass
-            time.sleep(0.4)  # OCR 轮询节流：减少每轮截图次数
+            time.sleep(0.2)  # OCR 轮询节流（截图约1.5s/次时开销在截图，节流取小值）
         return None
 
     def _open_minimap(self):
-        self._log("打开小地图")
-        return self.click_template("打开地图")
+        """必须先点击“打开地图”，再验证地图是否真的打开。
+        即使上次可能已开着，也不先用“地图-筛选”跳过点击。"""
+        self._log("先点击打开地图（打开地图点卡服.png）")
+        clicked = self.click_template("打开地图")
+        if not clicked:
+            self._log("  未点击到打开地图按钮；再确认地图是否已打开")
+        deadline = time.time() + 2.0
+        while time.time() < deadline:
+            if self._is_minimap_open():
+                return True
+            time.sleep(0.2)
+        self._log("  ⚠️ 已点击打开地图，但未确认到地图-筛选；不盲点地图坐标")
+        return False
 
     def _is_minimap_open(self):
-        """小地图开着时，画面上有"地图-筛选"按钮（比"前往"更可靠）"""
+        """小地图开着时，画面上必须有"地图-筛选"按钮。
+        不再使用“前往”OCR兜底：主界面/其他弹窗误报“前往”会导致地图未开就点坐标。"""
         frame = self.get_frame()
         if frame is None:
             return False
         # 限定在小地图区域（屏幕右侧）找"地图-筛选"，避免主界面其他图标误匹配
-        found, _ = self.find(frame, "地图-筛选", threshold=0.8, roi=(380, 40, 800, 448))
+        found, r = self.find(frame, "地图-筛选", threshold=0.8, roi=(380, 40, 800, 448))
         if found:
-            return True
-        # "前往"确认框出现也说明小地图/走位面板开着
-        if self._ocr_find(MAP_GO_ROI, "前往", timeout=0.8):
+            self._log(f"已确认地图打开：识别到地图-筛选 ({r[0]}, {r[1]}) 置信度 {r[2]:.2f}")
             return True
         return False
 
@@ -655,23 +677,78 @@ class SceneSwitcher:
 
     def _close_minimap(self):
         """关闭小地图：调用时地图必然刚被打开（_go_to_position 刚 _open_minimap）。
-        识别"关闭弹窗"优先；识别不到（阈值严/模板位置偏）时依次点右上角候选关闭位，
-        确保地图真正关掉（不同画面关闭按钮在 705,63 / 644,36 / 684,65 等位置出现过）。"""
-        frame = self.get_frame()
-        if frame is not None:
-            found, r = self.find(frame, "关闭弹窗", threshold=0.75, roi=(500, 20, 800, 120))
-            if found:
-                self._log(f"  点小地图关闭按钮 ({r[0]}, {r[1]}) 置信度 {r[2]:.2f}")
-                self.tap(r[0], r[1])
-                time.sleep(1.0)
+        每轮重新识别"关闭弹窗"按钮（自动尝试新旧两套模板）并点击，点击后必须验证
+        真的关掉；未关掉则逐轮放宽阈值重识别，识别不到时点大地图已知 X 坐标兜底。
+        最多 4 轮，不做其他固定坐标盲点。"""
+        known_x = (677, 72)   # 大地图对话框右上角 X 实测位置
+        for round_, thr in enumerate([0.75, 0.72, 0.70, 0.68]):
+            if not self._is_minimap_open():
                 return True
-        # 识别不到：依次点右上角候选关闭位（图必开着，点右上角不会误伤主界面）
-        for pos in [(705, 63), (644, 36), (684, 65)]:
-            self._log(f"  点小地图关闭候选 {pos}")
-            self.tap(pos[0], pos[1])
-            time.sleep(0.8)
-        time.sleep(0.6)
-        return True
+            btn = self._find_close_btn(thr)
+            if btn:
+                self._log(f"  点小地图关闭按钮 ({btn[0]}, {btn[1]}) 置信度 {btn[2]:.2f}")
+                self.tap(btn[0], btn[1])
+                # 点击关闭后立即截图会拿到关闭前的旧帧/未完成动画，
+                # 之前因此误判“未关闭成功”并马上多点了一次。
+                time.sleep(0.8)
+            else:
+                self._log(f"  未识别到关闭按钮（阈值 {thr}），点已知关闭位 {known_x}")
+                self.tap(known_x[0], known_x[1])
+                time.sleep(1.0)
+            if self._minimap_closed():
+                return True
+            self._log(f"  小地图未关闭成功，重试（第 {round_ + 1}/4 轮）")
+        self._log("  ⚠️ 小地图关闭失败，继续后续流程")
+        return False
+
+    def _find_close_btn(self, thr):
+        """识别小地图/大地图弹窗的关闭按钮（自动尝试新旧两套模板）。"""
+        frame = self.get_frame()
+        if frame is None:
+            return None
+        found, r = self.find(frame, "关闭弹窗", threshold=thr, roi=(500, 20, 800, 120))
+        if found:
+            return r
+        return None
+
+    def _minimap_closed(self):
+        """小地图是否已关闭：关闭按钮消失，且筛选/前往都不在画面上。"""
+        if self._find_close_btn(0.65) is not None:
+            return False
+        return not self._is_minimap_open()
+
+    def _get_current_map(self, attempts=3):
+        """读取左上角当前地图名（一次性检测）；失败返回 None。"""
+        if self.ocr is None:
+            self._init_ocr()
+            if self.ocr is None:
+                return None
+        x1, y1, x2, y2 = MAP_ROI
+        for _ in range(attempts):
+            frame = self.get_frame()
+            if frame is not None and frame.shape[0] >= y2 and frame.shape[1] >= x2:
+                crop = frame[y1:y2, x1:x2]
+                if crop.size:
+                    try:
+                        res, _ = self.ocr(crop)
+                        for box, text, conf in (res or []):
+                            t = str(text).strip()
+                            if len(t) >= 2:
+                                return t
+                    except Exception:
+                        pass
+            time.sleep(0.3)
+        return None
+
+    def _scene_in_route(self, ocr_text, route):
+        """OCR 地图名与路线场景名容错匹配，返回 route 下标；不匹配返回 -1。"""
+        if not ocr_text:
+            return -1
+        t = str(ocr_text).strip()
+        for i, scene in enumerate(route):
+            if t == scene or t.startswith(scene) or scene.startswith(t):
+                return i
+        return -1
 
     def _wait_map_name(self, keyword, timeout=90.0):
         """等待左上角地图名出现关键字。"""
@@ -709,36 +786,68 @@ class SceneSwitcher:
         cy = lb[1] - int(y * wh[1] / rng[1])
         return (cx, cy)
 
+    def _map_game_xy_from_click(self, map_name, px, py):
+        """小地图点击像素 -> 游戏坐标（MAP_PARAMS 逆变换）。
+        用于核对角色是否真的走到传送口附近，再点传送图标。"""
+        params = MAP_PARAMS.get(map_name)
+        if params is None:
+            return None
+        lb, rng, wh = params
+        gx = (px - lb[0]) * rng[0] / wh[0]
+        gy = (lb[1] - py) * rng[1] / wh[1]
+        return (int(round(gx)), int(round(gy)))
+
     def _click_map_times(self, point):
-        """在小地图目标点随机点 1~3 下，每下在 ±8 像素内随机偏移（避免同坐标被检测）。"""
+        """在小地图目标点批量随机点 1~3 下，必须整批点完后才允许关图。
+        每下在 ±8 像素内随机偏移（避免同坐标被检测）。"""
         cnt = random.randint(1, 3)
-        for _ in range(cnt):
+        for i in range(cnt):
             ox = point[0] + random.randint(-8, 8)
             oy = point[1] + random.randint(-8, 8)
+            self._log(f"  点小地图 {i + 1}/{cnt} ({ox}, {oy})")
             self.tap(ox, oy, offset=False)
             time.sleep(random.uniform(0.08, 0.15))
 
-    def _wait_coord_near(self, x, y, tolerance=8, timeout=90.0):
+    def _wait_coord_near(self, x, y, tolerance=8, timeout=90.0, stable_secs=2.0):
+        """等待角色走到目标坐标附近（跑图/走位用）。
+        到达判定：
+        1. 左上角坐标进入目标 ±tolerance → 立即算到达；
+        2. 坐标连续 stable_secs 秒无变化 = 角色已停下：停下位置在容差内算到达，
+           否则说明跑动结束但没到目标（被挡/点歪），快速返回 False 让上层重试，
+           不再干等到 timeout。"""
         if self.ocr is None:
             self._init_ocr()
         if self.ocr is None:
             time.sleep(6.0)
             return True
         deadline = time.time() + timeout
+        last_coord = None
+        last_move_t = time.time()
         while time.time() < deadline:
             self._abort_if_combat()
             frame = self.get_frame()
             if frame is not None:
                 # 左上角坐标显示区域（流坐标 y 30-62, x 55-135）
                 res, _ = self.ocr(frame[30:62, 55:135])
+                cur = None
                 for box, text, conf in (res or []):
                     m = re.search(r"\((\d{1,3}),(\d{1,3})\)", str(text))
                     if m:
-                        cx, cy = int(m.group(1)), int(m.group(2))
-                        if abs(cx - x) <= tolerance and abs(cy - y) <= tolerance:
-                            self._log(f"  已走到目标坐标 ({cx},{cy})")
-                            return True
-            time.sleep(0.6)  # 等坐标轮询节流：角色移动是秒级的，0.6s 足够且省截图
+                        cur = (int(m.group(1)), int(m.group(2)))
+                        break
+                if cur is not None:
+                    if abs(cur[0] - x) <= tolerance and abs(cur[1] - y) <= tolerance:
+                        self._log(f"  已走到目标坐标 ({cur[0]},{cur[1]})")
+                        return True
+                    if cur == last_coord:
+                        if time.time() - last_move_t >= stable_secs:
+                            self._log(f"  坐标连续{stable_secs:.0f}秒无变化，角色停在 ({cur[0]},{cur[1]})，"
+                                      f"未到目标 ({x},{y})")
+                            return False
+                    else:
+                        last_coord = cur
+                        last_move_t = time.time()
+            time.sleep(0.5)  # 等坐标轮询节流：角色移动是秒级的，0.5s 足够且省截图
         return False
 
     def _go_to_position(self, map_name, x, y, timeout=90.0, wait_coord=True):
@@ -750,32 +859,50 @@ class SceneSwitcher:
         if not self._open_minimap():
             return False
         time.sleep(0.4)
-        # 点目标点即触发自动寻路（梦幻地图点小地图目标点，角色自动前往，
-        # 不需要"前往"按钮）。多点一次确保点中（画面刷新慢时一次可能没生效）。
-        self._click_map_times(pt)
-        time.sleep(0.6)
+        # 点目标点即触发自动寻路。这里批量随机点 1~3 下；
+        # 必须等这一批点完再关图，关图后不再补点地图坐标。
         self._click_map_times(pt)
         time.sleep(0.3)
-        # 点完目标点立即关闭小地图（角色已开始寻路，图再开着会挡操作）
+        # 点完目标点立即关闭小地图
         self._close_minimap()
         if wait_coord:
             return self._wait_coord_near(x, y, timeout=timeout)
         return True
 
-    def _click_chuan_song(self, target_map=None):
-        """点传送按钮：优先匹配目标地图的传送口，避免 OCR 点到其他传送口
-        （如朱紫国有多个传送口，泛匹配"传送"可能命中"传送西梁女国"而非目标）。"""
+    def _wait_transfer_button(self, target_map=None, timeout=TRANSFER_BTN_WAIT):
+        """轮询传送按钮出现：每轮先模板匹配（~0.04s，远快于 OCR），未命中再按钮区域 OCR
+        （单轮合并多关键字、按优先级返回）。返回 ("tmpl"/"ocr", 坐标+信息) 或 None。
+        旧版 _click_chuan_song 全帧 OCR 串行扫"传送子母/子母/传送"3 轮（3+3+5s 超时），
+        按钮出现前空转十几秒、每轮 2~4s 且"传送"小字常漏读 → 关图到点击实测空耗 ~34s。"""
+        kws = None
         if target_map:
-            for kw in (f"传送{target_map[:2]}", target_map[:2]):
-                tr = self._ocr_find((0, 0, 800, 448), kw, timeout=3.0, check_combat=True)
+            # 优先目标传送口文字（朱紫国等多口地图避免点到其他传送口），最后泛匹配
+            kws = [f"传送{target_map[:2]}", target_map[:2], "传送"]
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            self._abort_if_combat()
+            frame = self.get_frame()
+            if frame is not None:
+                found, r = self.find(frame, "传送", threshold=0.75, roi=TRANSFER_BTN_ROI)
+                if found:
+                    return ("tmpl", r)
+                tr = self._ocr_find(TRANSFER_BTN_ROI, kws or ["传送"], timeout=0.8,
+                                    check_combat=False)
                 if tr:
-                    self._log(f"  点击传送口({kw}) {tr}")
-                    self.tap(tr[0], tr[1])
-                    return True
-        tr = self._ocr_find((0, 0, 800, 448), "传送", timeout=5.0, check_combat=True)
-        if tr:
-            self._log(f"  点击传送 {tr}")
-            self.tap(tr[0], tr[1])
+                    return ("ocr", tr)
+            time.sleep(0.2)
+        return None
+
+    def _click_chuan_song(self, target_map=None):
+        """点传送按钮：等按钮出现即点（模板优先、区域 OCR 兜底）；超时未出现用固定位兜底。"""
+        hit = self._wait_transfer_button(target_map, timeout=3.0)
+        if hit is not None:
+            kind, pos = hit
+            if kind == "tmpl":
+                self._log(f"  点击传送(模板) ({pos[0]}, {pos[1]}) 置信度 {pos[2]:.2f}")
+            else:
+                self._log(f"  点击传送(OCR) {pos}")
+            self.tap(pos[0], pos[1])
             return True
         self._abort_if_combat(force=True)
         self._log("  未找到传送按钮，用兜底位置")
@@ -854,7 +981,9 @@ class SceneSwitcher:
         """跨图腿：走位到传送点 → 点传送 / 点 NPC → 等地图变化。"""
         self._log(f"跑图: {source_map} -> {target_map}")
         if (source_map, target_map) in LEG_STEPS:
-            walk_map, xy, mode = LEG_STEPS[(source_map, target_map)]
+            step = LEG_STEPS[(source_map, target_map)]
+            walk_map, xy, mode = step[0], step[1], step[2]
+            circle_fallback = step[3] if len(step) > 3 else None
         elif (source_map, target_map) in LEG_NPCS:
             npc_xy = LEG_NPCS[(source_map, target_map)][0]
             walk_map, xy, mode = source_map, npc_xy, "npc"
@@ -866,7 +995,7 @@ class SceneSwitcher:
             return False
 
         if mode == "cave":
-            return self._cave_leg(walk_map, target_map, xy)
+            return self._cave_leg(walk_map, target_map, xy, circle_fallback)
 
         if mode == "npc2":
             # NPC 对话式传送：走位到点 -> 点 NPC -> 等确认对话框（"送我到XX"）点击 -> 等地图变化
@@ -919,7 +1048,7 @@ class SceneSwitcher:
                     self._log("  未找到确认对话框，点兜底位置 (405,190)")
                     self.tap(405, 190)
                 kw = target_map[-2:] if target_map.endswith("层") else target_map[:2]
-                got = self._wait_map_name(kw, timeout=45.0)
+                got = self._wait_map_name(kw, timeout=3.0)
                 if got:
                     self._log(f"  已到达 {target_map}（OCR: {got}）")
                     return True
@@ -959,7 +1088,7 @@ class SceneSwitcher:
                     self._log("  确认按钮兜底固定位置 (607,210)")
                     self.tap(607, 210)
                 kw = target_map[-2:] if target_map.endswith("层") else target_map[:2]
-                got = self._wait_map_name(kw, timeout=45.0)
+                got = self._wait_map_name(kw, timeout=3.0)
                 if got:
                     self._log(f"  已到达 {target_map}（OCR: {got}）")
                     return True
@@ -972,7 +1101,7 @@ class SceneSwitcher:
             self._click_chuan_song(target_map=target_map)
 
         kw = target_map[-2:] if target_map.endswith("层") else target_map[:2]
-        got = self._wait_map_name(kw, timeout=30.0)
+        got = self._wait_map_name(kw, timeout=3.0)
         if got:
             self._log(f"  已到达 {target_map}（OCR: {got}）")
             return True
@@ -982,47 +1111,71 @@ class SceneSwitcher:
         for _ in range(2):
             self.tap(CHUANSONG_NEAR_POINT[0], CHUANSONG_NEAR_POINT[1])
             time.sleep(1.5)
-            got = self._wait_map_name(kw, timeout=15.0)
+            got = self._wait_map_name(kw, timeout=3.0)
             if got:
                 self._log(f"  已到达 {target_map}（OCR: {got}）")
                 return True
             self._click_chuan_song(target_map=target_map)
-            got = self._wait_map_name(kw, timeout=15.0)
+            got = self._wait_map_name(kw, timeout=3.0)
             if got:
                 self._log(f"  已到达 {target_map}（OCR: {got}）")
                 return True
         self._log(f"  等待地图变化超时: {target_map}")
         return False
 
-    def _cave_leg(self, source_map, target_map, label_click):
-        """洞穴层间：点小地图传送光圈（角色自动跑）→ 关图 → 等传送图标 → 点传送 → 验证。"""
+    def _cave_leg(self, source_map, target_map, label_click, circle_fallback=None):
+        """洞穴层间：打开地图 → 点标签坐标 → 关图 → 等角色走到传送口 → 等传送图标 → 点传送 → 验证。
+        点传送后地图没变且传送图标消失时，若配置了光圈兜底坐标则点光圈进洞；
+        否则重新打开地图重新点标签重试。"""
         self._log(f"洞穴传送: {source_map} -> {target_map}（标签点击 {label_click}）")
-        if not self._open_minimap():
-            return False
-        time.sleep(0.4)
-        self._click_map_times(label_click)
-        time.sleep(0.4)
-        self._close_minimap()
-        # 角色自动跑向传送口，等传送图标出现
-        tr = self._ocr_find((0, 0, 800, 448), "传送", timeout=30.0, check_combat=True)
-        if tr is None:
-            # 传送图标未出现：点旁边的传送圈，图标会出现
-            self._log(f"  传送图标未出现，点旁边的传送圈 {CAVE_GUANGQUAN}")
-            self._click_map_times(CAVE_GUANGQUAN)
-            time.sleep(2.0)
-            tr = self._ocr_find((0, 0, 800, 448), "传送", timeout=10.0, check_combat=True)
-        if tr:
-            self._log(f"  点击传送 {tr}")
-            self.tap(tr[0], tr[1])
-        else:
-            self._log("  未找到传送图标")
-            return False
         kw = target_map[-2:] if target_map.endswith("层") else target_map[:2]
-        got = self._wait_map_name(kw, timeout=45.0)
-        if got:
-            self._log(f"  已到达 {target_map}（OCR: {got}）")
-            return True
-        self._log(f"  等待地图变化超时: {target_map}")
+        # 传送口游戏坐标（小地图点击像素逆推）：角色没走到之前，场景里其他"传送"
+        # 文字（市场招牌/NPC名等）可能以高置信度误匹配传送模板，导致提前空点。
+        # 先用左上角坐标确认到位，再等传送图标。
+        gate_xy = self._map_game_xy_from_click(source_map, *label_click)
+        for retry in range(3):
+            # 上一轮点击可能延迟生效：先确认是否已经到达目标（≤3秒）
+            got = self._wait_map_name(kw, timeout=1.0)
+            if got:
+                self._log(f"  已到达 {target_map}（OCR: {got}）")
+                return True
+            if not self._open_minimap():
+                return False
+            time.sleep(0.4)
+            self._click_map_times(label_click)
+            time.sleep(0.4)
+            self._close_minimap()
+            if gate_xy is not None:
+                if not self._wait_coord_near(gate_xy[0], gate_xy[1], tolerance=25, timeout=90.0):
+                    self._log(f"  等待走到传送口超时，重新打开地图重试（第 {retry + 1}/3 次）")
+                    continue
+            # 已走到传送口，等传送图标出现（模板优先、区域 OCR 兜底）
+            hit = self._wait_transfer_button(timeout=3.0)
+            if hit is None:
+                self._log(f"  传送图标未出现，重新打开地图重试（第 {retry + 1}/3 次）")
+                continue
+            kind, pos = hit
+            if kind == "tmpl":
+                self._log(f"  点击传送(模板) ({pos[0]}, {pos[1]}) 置信度 {pos[2]:.2f}")
+            else:
+                self._log(f"  点击传送 {pos}")
+            self.tap(pos[0], pos[1])
+            # 传送正常 2~5 秒内完成，步骤等待不超过 3 秒，失败走兜底/重试
+            got = self._wait_map_name(kw, timeout=3.0)
+            if got:
+                self._log(f"  已到达 {target_map}（OCR: {got}）")
+                return True
+            # 点传送没反应、且传送图标已消失 → 点传送光圈兜底（如北俱芦洲进洞口）
+            if circle_fallback and self._wait_transfer_button(timeout=3.0) is None:
+                self._log(f"  传送图标已消失，点击传送光圈 {circle_fallback} 兜底")
+                self.tap(circle_fallback[0], circle_fallback[1])
+                time.sleep(1.5)
+                got = self._wait_map_name(kw, timeout=2.0)
+                if got:
+                    self._log(f"  已到达 {target_map}（OCR: {got}）")
+                    return True
+            self._log(f"  点传送后地图未变，重新打开地图重试（第 {retry + 1}/3 次）")
+        self._log(f"  洞穴传送失败: {source_map} -> {target_map}")
         return False
 
     # ---------- 道具使用 ----------
@@ -1111,6 +1264,15 @@ class SceneSwitcher:
             return False
         time.sleep(1.5)
         self._close_bag_if_open()
+
+        # 到达验证：之前点完目的地就直接返回成功，目的地按钮没点中/飞行没触发时，
+        # 后续跑图会在原地图里瞎点。这里 OCR 左上角地图名确认真的到达才算成功，
+        # 未到达判定飞行失败，由主循环保留切场请求稍后重试。
+        arrived = self._wait_map_name(map_name, timeout=3.0)
+        if not arrived:
+            self._log(f"飞行后未到达 {map_name}（可能飞行未触发），判定飞行失败")
+            return False
+        self._log(f"已确认到达 {map_name}")
         return True
 
     def switch_scene(self, target_name):
@@ -1118,17 +1280,29 @@ class SceneSwitcher:
         if route is not None and len(route) >= 2:
             self._log(f"路线: {target_name} = {' -> '.join(route)}")
             self._abort_if_combat(force=True)
-            if not self._fly_to(route[0]):
-                self._log(f"飞行到起点失败: {route[0]}")
-                return False
+
+            # 检测当前场景：已在路线中就从当前位置继续（不重复飞行/跑图）
+            cur_map = self._get_current_map()
+            start_idx = self._scene_in_route(cur_map, route)
+            if start_idx > 0:
+                self._log(f"  当前位于 {cur_map}（{route[start_idx]}），从该处继续")
+            elif start_idx == 0:
+                self._log(f"  已在 {route[0]}，跳过飞行")
+            else:
+                self._log(f"  当前 {cur_map or '未知场景'}，飞行到起点 {route[0]}")
+                if not self._fly_to(route[0]):
+                    self._log(f"飞行到起点失败: {route[0]}")
+                    return False
+                start_idx = 0
+
             self._abort_if_combat(force=True)
             # 子母河底等场景不遇低级怪，无需摄妖香防怪 / 洞冥草恢复，跳过这两步
             need_buff = target_name not in NO_BUFF_SCENES
-            if need_buff:
+            if need_buff and start_idx == 0:
                 self._use_bag_item("摄妖香")
             self._abort_if_combat(force=True)
-            cur = route[0]
-            for i, leg in enumerate(route[1:], 1):
+            cur = route[start_idx]
+            for i, leg in enumerate(route[start_idx + 1:], start_idx + 1):
                 self._log(f"跑图段 {i}/{len(route)-1}")
                 self._abort_if_combat(force=True)
                 if not self._walk_leg(cur, leg):

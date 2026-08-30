@@ -311,6 +311,7 @@ class ToolEngine:
         names = [
             "打开地图", "地图-筛选", "关闭地图", "好友入口",
             "PK-妙手空空技能", "PK-自动按钮", "PK-取消自动战斗",
+            "PK-右下取消自动战斗", "PK-逃跑", "PK-防御",
             "道具", "道具-道具栏", "洞冥草", "关闭弹窗", "关闭聊天", "关闭活动弹窗", "左下角返回",
             "菜单-指引", "摄妖香", "使用摄妖香", "wuyi", "wuyi1", "wuyi2", "wuyi3",
         ]
@@ -679,6 +680,116 @@ class ToolEngine:
 
     # ---------- 忠诚度恢复 ----------
 
+    def _find_command_in_roi(self, frame, name, threshold, roi=(460, 320, 800, 448)):
+        """在战斗指令栏 ROI 内找按钮，避免右侧图标/怪物造成误匹配。"""
+        if frame is None:
+            return None
+        h, w = frame.shape[:2]
+        x1, y1, x2, y2 = roi
+        x1 = max(0, min(int(x1), w - 1))
+        y1 = max(0, min(int(y1), h - 1))
+        x2 = max(x1 + 1, min(int(x2), w))
+        y2 = max(y1 + 1, min(int(y2), h))
+        crop = frame[y1:y2, x1:x2]
+        hit = self.find(crop, name, threshold=threshold)
+        if hit is None:
+            return None
+        return (hit[0] + x1, hit[1] + y1, hit[2])
+
+    def _find_cancel_auto_in_battle(self, frame):
+        """自动/取消自动按钮都在右下角；缩小 ROI 防止画面图标误报。"""
+        return (
+            self._find_command_in_roi(frame, "PK-取消自动战斗", 0.72,
+                                      roi=(660, 330, 800, 448))
+            or self._find_command_in_roi(frame, "PK-右下取消自动战斗", 0.72,
+                                         roi=(660, 330, 800, 448))
+        )
+
+    def _recovery_combat_visible(self, frame=None):
+        """用战斗专用按钮判断是否进入战斗。
+
+        不复用主循环的“好友入口消失”判断：恢复流程会主动打开地图/弹窗，
+        那些界面也会遮住好友入口，容易误报。"""
+        f = frame if frame is not None else self.get_frame()
+        if f is None:
+            return False
+        return (
+            self._find_command_in_roi(f, "PK-逃跑", threshold=0.65) is not None
+            or self._find_command_in_roi(f, "PK-防御", threshold=0.70) is not None
+            or self._find_command_in_roi(f, "PK-自动按钮", threshold=0.72) is not None
+            or self._find_cancel_auto_in_battle(f) is not None
+        )
+
+    def _escape_recovery_combat(self, timeout=180.0):
+        """忠诚恢复途中遇到怪时只逃跑，不进入打怪流程。
+
+        返回 True=已脱离战斗；False=超时（调用方应停止本轮恢复）。"""
+        self._log("⚔️ 忠诚恢复途中进入战斗，尝试逃跑...")
+        deadline = time.time() + timeout
+        noncombat_since = None
+        last_log_t = 0.0
+
+        while time.time() < deadline:
+            if self._stop_event and self._stop_event.is_set():
+                self._log("收到停止信号，退出战斗逃跑")
+                return False
+
+            frame = self.get_frame()
+            if frame is None:
+                time.sleep(0.2)
+                continue
+
+            if not self._recovery_combat_visible(frame):
+                now = time.time()
+                if noncombat_since is None:
+                    noncombat_since = now
+                elif now - noncombat_since >= 1.2:
+                    self._log("✅ 已脱离战斗，继续忠诚恢复")
+                    return True
+                time.sleep(0.2)
+                continue
+
+            noncombat_since = None
+            now = time.time()
+            if now - last_log_t >= 15:
+                self._log("⏳ 仍在战斗，等待可操作按钮...")
+                last_log_t = now
+
+            # 人物回合：优先逃跑。逃跑有成功率，失败后下一回合会继续点。
+            esc = self._find_command_in_roi(frame, "PK-逃跑", threshold=0.62)
+            if esc:
+                self._log("🏃 恢复途中点逃跑 ({},{})".format(esc[0], esc[1]))
+                self.tap(esc[0], esc[1])
+                time.sleep(random.uniform(1.0, 1.4))
+                continue
+
+            # 宝宝回合：点防御保命；逃跑按钮优先级更高
+            defend = self._find_command_in_roi(frame, "PK-防御", threshold=0.70)
+            if defend:
+                self._log("🛡️ 恢复途中宝宝点防御 ({},{})".format(defend[0], defend[1]))
+                self.tap(defend[0], defend[1])
+                time.sleep(0.8)
+                continue
+
+            time.sleep(0.3)
+
+        self._log("❌ 恢复途中战斗超过 {:.0f} 秒未结束".format(timeout))
+        return False
+
+    def _check_and_escape_recovery_combat(self):
+        """两次确认战斗后处理；只要遇过战斗就要求外层重新走恢复流程。
+
+        进入战斗通常会取消原寻路，所以即使逃跑成功也不应继续当前步骤。"""
+        # 两次确认可避免动画/弹窗的一帧误匹配；第二次不会耗时太久。
+        if not self._recovery_combat_visible():
+            return False
+        time.sleep(0.2)
+        if not self._recovery_combat_visible():
+            return False
+        self._escape_recovery_combat()
+        time.sleep(0.5)
+        return True
+
     def loyalty_recovery(self):
         frame = self.get_frame()
         if frame is None:
@@ -727,270 +838,304 @@ class ToolEngine:
 
         self._log(f"执行 [{map_name}] 完整流程...")
 
-        steps = build_steps(config)
-        for i, step in enumerate(steps, 1):
-            if self._stop_event and self._stop_event.is_set():
-                self._log("[{}] 收到停止信号，退出".format(i))
-                return
-            action = step["action"]
-            wait = step.get("wait", 0.3)
+        for recovery_attempt in range(1, 4):
+            steps = build_steps(config)
+            combat_interrupted = False
+            if recovery_attempt > 1:
+                self._log("🔁 战斗打断后重新执行忠诚恢复流程（第 {}/3 次）".format(recovery_attempt))
 
-            if action == "click_template":
-                name = step["name"]
-                thr = step.get("threshold", 0.75)
-                btn = self.find(frame, name, threshold=thr)
-                if btn is None:
-                    self._log("[{}] 未找到 {}, abort".format(i, name))
+            for i, step in enumerate(steps, 1):
+                if self._stop_event and self._stop_event.is_set():
+                    self._log("[{}] 收到停止信号，退出".format(i))
                     return
-                self._log("[{}] click {} ({},{})".format(i, name, btn[0], btn[1]))
-                self.tap(btn[0], btn[1])
-                time.sleep(wait)
-                frame = self.get_frame()
 
-            elif action == "double_click_template":
-                name = step["name"]
-                btn = self.find(frame, name)
-                if btn is None:
-                    self._log(f"[{i}] 未找到 {name}, abort")
-                    return
-                cx, cy = btn[0], btn[1]
-                self._log(f"[{i}] double-click {name} ({cx},{cy})")
-                self.tap(cx, cy)  # first tap (random offset)
-                time.sleep(0.1)  # 100ms
-                self.tap(cx, cy)  # second tap (random offset)
-                time.sleep(wait)
-                frame = self.get_frame()
+                # 每个动作前检查一次；打怪/逃跑常会打断当前寻路
+                if self._check_and_escape_recovery_combat():
+                    combat_interrupted = True
+                    break
 
-            elif action == "click_map":
-                x, y = step["x"], step["y"]
-                self._log(f"[{i}] 点击地图坐标 ({x}, {y})")
-                self.tap(x, y, offset=False)
-                time.sleep(wait)
+                action = step["action"]
+                wait = step.get("wait", 0.3)
 
-            elif action == "close_map":
-                self._log(f"[{i}] 关闭地图")
-                self.close_pop(is_one_time=True)
-                time.sleep(wait)
-
-            elif action == "click_position":
-                cx = step["x"]
-                cy = step["y"]
-                self._log(f"[{i}] click position ({cx},{cy})")
-                self.tap(cx, cy)
-                time.sleep(wait)
-                frame = self.get_frame()
-
-            elif action == "input_coord":
-                name = step["name"]
-                offset_x = step.get("offset_x", 0)
-                offset_y = step.get("offset_y", 0)
-                text = step["text"]
-                thr = step.get("threshold", 0.75)
-                btn = self.find(frame, name, threshold=thr)
-                if btn is None:
-                    self._log("[{}] 未找到 {}, abort".format(i, name))
-                    return
-                tx = btn[0] + offset_x
-                ty = btn[1] + offset_y
-                self._log("[{}] input_coord {} at ({},{}) text={}".format(i, name, tx, ty, text))
-                self.tap(tx, ty)
-                time.sleep(0.3)
-                sp.run([_ADB_EXE, "-s", self.serial, "shell", "input", "text", str(text)],
-                       capture_output=True, timeout=3, creationflags=CREATE_NO_WINDOW)
-                time.sleep(wait)
-                frame = self.get_frame()
-
-            elif action == "click_sequence":
-                positions = step["positions"]
-                interval = step.get("interval", 0.1)
-                self._log("[{}] click_sequence {} points".format(i, len(positions)))
-                for px, py in positions:
-                    self.tap(px, py)
-                    time.sleep(interval)
-                time.sleep(wait)
-
-            elif action == "debug_shot":
-                tag = step.get("tag", "shot")
-                self._save_debug_frame(tag)
-                time.sleep(wait)
-
-            elif action == "wait_coord":
-                self._init_ocr()
-                target_map = step["target_map"]
-                target_x = step["target_x"]
-                target_y = step["target_y"]
-                tolerance = step.get("tolerance", 3)
-                timeout = step.get("timeout", 120)
-                stable_time = step.get("stable_time", 1.5)
-                clicks = step.get("clicks", [])
-                retry_inputs = step.get("retry_inputs", [])
-                max_retries = step.get("max_retries", 2)
-                stall_timeout = step.get("stall_timeout", 5)   # 坐标超过 N 秒没变 = 卡住
-                stall_grace = step.get("stall_grace", 8)       # 每轮输入后先给 N 秒起步时间
-                self._log("[{}] 等待坐标: {} ({},{})".format(i, target_map, target_x, target_y))
-                self._save_debug_frame("wait_coord_start_{}_{}".format(target_x, target_y))
-                reached = False
-                last_coord = None
-                last_stable_t = 0
-                last_log_t = 0
-                for retry_round in range(max_retries + 1):
-                    if self._stop_event and self._stop_event.is_set():
-                        self._log(f"[{i}] 收到停止信号，退出等待坐标")
+                if action == "click_template":
+                    name = step["name"]
+                    thr = step.get("threshold", 0.75)
+                    btn = self.find(frame, name, threshold=thr)
+                    if btn is None:
+                        self._log("[{}] 未找到 {}, abort".format(i, name))
                         return
-                    round_start = time.time()
-                    last_read_coord = None
-                    last_move_t = None
-                    while time.time() - round_start < timeout:
+                    self._log("[{}] click {} ({},{})".format(i, name, btn[0], btn[1]))
+                    self.tap(btn[0], btn[1])
+                    time.sleep(wait)
+                    frame = self.get_frame()
+
+                elif action == "double_click_template":
+                    name = step["name"]
+                    btn = self.find(frame, name)
+                    if btn is None:
+                        self._log(f"[{i}] 未找到 {name}, abort")
+                        return
+                    cx, cy = btn[0], btn[1]
+                    self._log(f"[{i}] double-click {name} ({cx},{cy})")
+                    self.tap(cx, cy)  # first tap (random offset)
+                    time.sleep(0.1)  # 100ms
+                    self.tap(cx, cy)  # second tap (random offset)
+                    time.sleep(wait)
+                    frame = self.get_frame()
+
+                elif action == "click_map":
+                    x, y = step["x"], step["y"]
+                    self._log(f"[{i}] 点击地图坐标 ({x}, {y})")
+                    self.tap(x, y, offset=False)
+                    time.sleep(wait)
+
+                elif action == "close_map":
+                    self._log(f"[{i}] 关闭地图")
+                    self.close_pop(is_one_time=True)
+                    time.sleep(wait)
+
+                elif action == "click_position":
+                    cx = step["x"]
+                    cy = step["y"]
+                    self._log(f"[{i}] click position ({cx},{cy})")
+                    self.tap(cx, cy)
+                    time.sleep(wait)
+                    frame = self.get_frame()
+
+                elif action == "input_coord":
+                    name = step["name"]
+                    offset_x = step.get("offset_x", 0)
+                    offset_y = step.get("offset_y", 0)
+                    text = step["text"]
+                    thr = step.get("threshold", 0.75)
+                    btn = self.find(frame, name, threshold=thr)
+                    if btn is None:
+                        self._log("[{}] 未找到 {}, abort".format(i, name))
+                        return
+                    tx = btn[0] + offset_x
+                    ty = btn[1] + offset_y
+                    self._log("[{}] input_coord {} at ({},{}) text={}".format(i, name, tx, ty, text))
+                    self.tap(tx, ty)
+                    time.sleep(0.3)
+                    sp.run([_ADB_EXE, "-s", self.serial, "shell", "input", "text", str(text)],
+                           capture_output=True, timeout=3, creationflags=CREATE_NO_WINDOW)
+                    time.sleep(wait)
+                    frame = self.get_frame()
+
+                elif action == "click_sequence":
+                    positions = step["positions"]
+                    interval = step.get("interval", 0.1)
+                    self._log("[{}] click_sequence {} points".format(i, len(positions)))
+                    for px, py in positions:
+                        self.tap(px, py)
+                        time.sleep(interval)
+                    time.sleep(wait)
+
+                elif action == "debug_shot":
+                    tag = step.get("tag", "shot")
+                    self._save_debug_frame(tag)
+                    time.sleep(wait)
+
+                elif action == "wait_coord":
+                    self._init_ocr()
+                    target_map = step["target_map"]
+                    target_x = step["target_x"]
+                    target_y = step["target_y"]
+                    tolerance = step.get("tolerance", 3)
+                    timeout = step.get("timeout", 120)
+                    stable_time = step.get("stable_time", 1.5)
+                    clicks = step.get("clicks", [])
+                    retry_inputs = step.get("retry_inputs", [])
+                    max_retries = step.get("max_retries", 2)
+                    stall_timeout = step.get("stall_timeout", 5)   # 坐标超过 N 秒没变 = 卡住
+                    stall_grace = step.get("stall_grace", 8)       # 每轮输入后先给 N 秒起步时间
+                    self._log("[{}] 等待坐标: {} ({},{})".format(i, target_map, target_x, target_y))
+                    self._save_debug_frame("wait_coord_start_{}_{}".format(target_x, target_y))
+                    reached = False
+                    last_coord = None
+                    last_stable_t = 0
+                    last_log_t = 0
+                    last_combat_check_t = 0.0
+                    for retry_round in range(max_retries + 1):
                         if self._stop_event and self._stop_event.is_set():
                             self._log(f"[{i}] 收到停止信号，退出等待坐标")
                             return
-                        frame = self.get_frame()
-                        if frame is None:
-                            time.sleep(0.3)
-                            continue
-                        map_name, coord = self._ocr_coord(frame, log=False)
-                        now = time.time()
-                        on_target = False
-                        if map_name and target_map in map_name and coord:
-                            dx = abs(coord[0] - target_x)
-                            dy = abs(coord[1] - target_y)
-                            on_target = dx <= tolerance and dy <= tolerance
-                            if on_target:
-                                if last_coord is None:
-                                    last_coord = coord
-                                    last_stable_t = now
-                                    self._log("[{}] 首次进入目标区域: {} ({},{})".format(i, map_name, coord[0], coord[1]))
-                                elif coord == last_coord:
-                                    if now - last_stable_t >= stable_time:
-                                        self._log("[{}] 坐标已稳定: {} ({},{})".format(i, map_name, coord[0], coord[1]))
-                                        reached = True
-                                        break
+                        round_start = time.time()
+                        last_read_coord = None
+                        last_move_t = None
+                        while time.time() - round_start < timeout:
+                            if self._stop_event and self._stop_event.is_set():
+                                self._log(f"[{i}] 收到停止信号，退出等待坐标")
+                                return
+
+                            # 寻路中最容易遇怪；不能只等 OCR 坐标超时
+                            now_c = time.time()
+                            if now_c - last_combat_check_t >= 1.0:
+                                if self._check_and_escape_recovery_combat():
+                                    combat_interrupted = True
+                                    break
+                                last_combat_check_t = time.time()
+
+                            frame = self.get_frame()
+                            if frame is None:
+                                time.sleep(0.3)
+                                continue
+                            map_name, coord = self._ocr_coord(frame, log=False)
+                            now = time.time()
+                            on_target = False
+                            if map_name and target_map in map_name and coord:
+                                dx = abs(coord[0] - target_x)
+                                dy = abs(coord[1] - target_y)
+                                on_target = dx <= tolerance and dy <= tolerance
+                                if on_target:
+                                    if last_coord is None:
+                                        last_coord = coord
+                                        last_stable_t = now
+                                        self._log("[{}] 首次进入目标区域: {} ({},{})".format(i, map_name, coord[0], coord[1]))
+                                    elif coord == last_coord:
+                                        if now - last_stable_t >= stable_time:
+                                            self._log("[{}] 坐标已稳定: {} ({},{})".format(i, map_name, coord[0], coord[1]))
+                                            reached = True
+                                    else:
+                                        last_coord = coord
+                                        last_stable_t = now
                                 else:
-                                    last_coord = coord
-                                    last_stable_t = now
-                            else:
-                                last_coord = None
-                        # 移动检测：坐标变化即刷新最近移动时间
-                        if coord:
+                                    last_coord = None
+                                    last_stable_t = 0
                             if coord != last_read_coord:
                                 last_read_coord = coord
                                 last_move_t = now
-                            elif last_move_t is None:
-                                last_move_t = now
-                        # 卡住检测：非目标位置、已过起步宽限、坐标超过 stall_timeout 没变
-                        stalled = (not on_target and last_read_coord is not None
-                                   and (now - round_start) > stall_grace
-                                   and last_move_t is not None
-                                   and (now - last_move_t) >= stall_timeout)
-                        if stalled:
-                            self._log("[{}] 角色超过 {}s 未移动（当前 {}），提前重试坐标输入".format(
-                                i, stall_timeout, last_read_coord))
-                            break
-                        # 进度日志：每 15 秒一次，避免 OCR 刷屏
-                        if now - last_log_t >= 15:
-                            last_log_t = now
-                            dist = ""
-                            if coord:
-                                dist = "距离 ({},{})".format(
-                                    abs(coord[0] - target_x), abs(coord[1] - target_y))
-                            self._log("[{}] 等待中... 当前 {} {} {}".format(
-                                i, map_name or "?", coord or "?", dist))
-                        time.sleep(0.3)
-                    if reached:
-                        break
-                    if retry_round < max_retries and retry_inputs:
-                        self._log(f"[{i}] 坐标未到达，重试输入坐标（第 {retry_round + 1}/{max_retries} 次）")
-                        self._save_debug_frame("retry_input_{}".format(retry_round + 1))
-                        ok = self._retry_coord_input(retry_inputs)
-                        self._save_debug_frame("retry_input_{}_done".format(retry_round + 1))
-                        if not ok:
-                            break
-                        last_coord = None
-                        last_stable_t = 0
-                    else:
-                        break
-                if reached:
-                    self._log("[{}] 已到达目标坐标: {} ({},{})".format(i, target_map, target_x, target_y))
-                    self._log("[{}] 依次点击 {} 个位置: {}".format(i, len(clicks), clicks))
-                    for idx_c, (px, py) in enumerate(clicks):
-                        if self._stop_event and self._stop_event.is_set():
-                            self._log(f"[{i}] 收到停止信号，中断点击")
-                            return
-                        self._log("[{}]   点击 [{}/{}] ({},{})".format(i, idx_c+1, len(clicks), px, py))
-                        self.tap(px, py)
-                        time.sleep(0.2)
-                else:
-                    self._log("[{}] 等待坐标超时，跳过".format(i))
-                time.sleep(wait)
+                            elif last_move_t is not None \
+                                    and now - last_move_t > stall_timeout \
+                                    and now - round_start > stall_grace:
+                                self._log("[{}] 坐标 {} 秒未变化，可能卡住".format(i, stall_timeout))
+                                break
+                            if now - last_log_t >= 15:
+                                last_log_t = now
+                                dist = ""
+                                if coord:
+                                    dist = "距离 ({},{})".format(
+                                        abs(coord[0] - target_x), abs(coord[1] - target_y))
+                                self._log("[{}] 等待中... 当前 {} {} {}".format(
+                                    i, map_name or "?", coord or "?", dist))
+                            time.sleep(0.3)
 
-            elif action == "layer_teleport":
-                # 层间传送回上层场景（如龙窟三层→四层→五层），复用场景切换引擎的洞穴传送
-                legs = step.get("legs", [])
-                self._log("[{}] 层间传送: {}".format(i, " -> ".join("{}→{}".format(a, b) for a, b in legs)))
-                from 场景切换 import SceneSwitcher
-                switcher = SceneSwitcher(self.serial)
-                switcher.connect()
-                ok = True
-                for src, dst in legs:
-                    if self._stop_event and self._stop_event.is_set():
-                        self._log(f"[{i}] 收到停止信号，退出层间传送")
-                        return
-                    if not switcher._walk_leg(src, dst):
-                        self._log("[{}] 层间传送失败: {} -> {}".format(i, src, dst))
-                        ok = False
-                        break
-                if ok:
-                    self._log("[{}] 层间传送完成，回到 {}".format(i, legs[-1][1]))
-                time.sleep(wait)
-                frame = self.get_frame()
-                if frame is not None:
-                    m, _ = self._ocr_coord(frame, log=False)
-                    if m:
-                        self.last_map_name = m
-
-            elif action == "detect_wuyi":
-                timeout = step.get("timeout", 120)
-                threshold = step.get("threshold", 0.65)
-                wuyi_names = step.get("templates", ["wuyi1", "wuyi2", "wuyi3"])
-                self._log("into wuyi detect mode, timeout {}s, templates={}".format(timeout, wuyi_names))
-                start_t = time.time()
-                found = False
-                while time.time() - start_t < timeout:
-                    frame = self.get_frame()
-                    if frame is None:
-                        time.sleep(0.2)
-                        continue
-                    result = self.match_template_multi(frame, wuyi_names, threshold=threshold)
-                    if result:
-                        cx, cy, conf = result
-                        self._log("wuyi found ({},{}) conf={:.0%}".format(cx, cy, conf))
-                        self.tap(cx, cy)
-                        time.sleep(0.3)
-                        # click popup
-                        f2 = self.get_frame()
-                        if f2 is not None:
-                            fh, fw = f2.shape[:2]
-                            sx = fw / 800.0
-                            sy = fh / 448.0
+                        if combat_interrupted:
+                            break
+                        if reached:
+                            break
+                        if retry_round < max_retries and retry_inputs:
+                            self._log(f"[{i}] 坐标未到达，重试输入坐标（第 {retry_round + 1}/{max_retries} 次）")
+                            self._save_debug_frame("retry_input_{}".format(retry_round + 1))
+                            ok = self._retry_coord_input(retry_inputs)
+                            self._save_debug_frame("retry_input_{}_done".format(retry_round + 1))
+                            if not ok:
+                                break
+                            last_coord = None
+                            last_stable_t = 0
                         else:
-                            sx = sy = 1.0
-                        yb_x = int(665 * sx)
-                        yb_y = int(225 * sy)
-                        self._log("click popup ({},{})".format(yb_x, yb_y))
-                        self.tap(yb_x, yb_y, offset=False)
-                        time.sleep(0.2)
-                        yb2_x = int(780 * sx)
-                        yb2_y = int(353 * sy)
-                        self._log("click confirm ({},{})".format(yb2_x, yb2_y))
-                        self.tap(yb2_x, yb2_y, offset=False)
-                        found = True
+                            break
+                    if combat_interrupted:
                         break
-                    time.sleep(0.5)
-                if not found:
-                    self._log("timeout, no wuyi detected")
-                time.sleep(wait)
+                    if reached:
+                        self._log("[{}] 已到达目标坐标: {} ({},{})".format(i, target_map, target_x, target_y))
+                        self._log("[{}] 依次点击 {} 个位置: {}".format(i, len(clicks), clicks))
+                        for idx_c, (px, py) in enumerate(clicks):
+                            if self._stop_event and self._stop_event.is_set():
+                                self._log(f"[{i}] 收到停止信号，中断点击")
+                                return
+                            self._log("[{}]   点击 [{}/{}] ({},{})".format(i, idx_c+1, len(clicks), px, py))
+                            self.tap(px, py)
+                            time.sleep(0.2)
+                    else:
+                        self._log("[{}] 等待坐标超时，跳过".format(i))
+                    time.sleep(wait)
 
-        self._log("loyalty recovery done")
+                elif action == "layer_teleport":
+                    # 层间传送会调用独立 SceneSwitcher；只能在进入前/后兜底检查战斗
+                    legs = step.get("legs", [])
+                    self._log("[{}] 层间传送: {}".format(i, " -> ".join("{}→{}".format(a, b) for a, b in legs)))
+                    from 场景切换 import SceneSwitcher
+                    switcher = SceneSwitcher(self.serial)
+                    switcher.connect()
+                    ok = True
+                    for src, dst in legs:
+                        if self._stop_event and self._stop_event.is_set():
+                            self._log(f"[{i}] 收到停止信号，退出层间传送")
+                            return
+                        if self._check_and_escape_recovery_combat():
+                            combat_interrupted = True
+                            ok = False
+                            break
+                        if not switcher._walk_leg(src, dst):
+                            self._log("[{}] 层间传送失败: {} -> {}".format(i, src, dst))
+                            ok = False
+                            break
+                    if ok:
+                        self._log("[{}] 层间传送完成，回到 {}".format(i, legs[-1][1]))
+                    time.sleep(wait)
+                    frame = self.get_frame()
+                    if frame is not None:
+                        m, _ = self._ocr_coord(frame, log=False)
+                        if m:
+                            self.last_map_name = m
+
+                elif action == "detect_wuyi":
+                    timeout = step.get("timeout", 120)
+                    threshold = step.get("threshold", 0.65)
+                    wuyi_names = step.get("templates", ["wuyi1", "wuyi2", "wuyi3"])
+                    self._log("into wuyi detect mode, timeout {}s, templates={}".format(timeout, wuyi_names))
+                    start_t = time.time()
+                    found = False
+                    while time.time() - start_t < timeout:
+                        if self._stop_event and self._stop_event.is_set():
+                            self._log("收到停止信号，退出五宝检测")
+                            return
+                        if self._check_and_escape_recovery_combat():
+                            combat_interrupted = True
+                            break
+                        frame = self.get_frame()
+                        if frame is None:
+                            time.sleep(0.2)
+                            continue
+                        result = self.match_template_multi(frame, wuyi_names, threshold=threshold)
+                        if result:
+                            cx, cy, conf = result
+                            self._log("wuyi found ({},{}) conf={:.0%}".format(cx, cy, conf))
+                            self.tap(cx, cy)
+                            time.sleep(0.3)
+                            # click popup
+                            f2 = self.get_frame()
+                            if f2 is not None:
+                                fh, fw = f2.shape[:2]
+                                sx = fw / 800.0
+                                sy = fh / 448.0
+                            else:
+                                sx = sy = 1.0
+                            yb_x = int(665 * sx)
+                            yb_y = int(225 * sy)
+                            self._log("click popup ({},{})".format(yb_x, yb_y))
+                            self.tap(yb_x, yb_y, offset=False)
+                            time.sleep(0.2)
+                            yb2_x = int(780 * sx)
+                            yb2_y = int(353 * sy)
+                            self._log("click confirm ({},{})".format(yb2_x, yb2_y))
+                            self.tap(yb2_x, yb2_y, offset=False)
+                            found = True
+                            break
+                        time.sleep(0.5)
+                    if combat_interrupted:
+                        break
+                    if not found:
+                        self._log("timeout, no wuyi detected")
+                    time.sleep(wait)
+
+            if not combat_interrupted:
+                self._log("loyalty recovery done")
+                return
+            time.sleep(1.0)
+
+        self._log("❌ 忠诚恢复连续被战斗打断，交回主循环")
 
 
 
