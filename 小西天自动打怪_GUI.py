@@ -675,7 +675,7 @@ class AutoFightGUI:
             style.map(dst, **style.map(src))
 
         tab2 = ttk.Frame(self.notebook, padding=15)
-        self.notebook.add(tab2, text="设备管理")
+        self.notebook.add(tab2, text="偷偷场景")
         self._tab2_frame = tab2   # 用于调整 Tab 顺序（设备管理放最前）
         tab2.columnconfigure(0, weight=1)
         tab2.rowconfigure(1, weight=3)   # 设备列表
@@ -3840,7 +3840,7 @@ class AutoFightGUI:
         """应用模板到选中的设备"""
         selected = self._selected_serials()
         if not selected:
-            messagebox.showwarning("提示", "请先在设备管理页勾选设备")
+            messagebox.showwarning("提示", "请先在偷偷场景页勾选设备")
             return
 
         if messagebox.askyesno("确认",

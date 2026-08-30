@@ -164,7 +164,7 @@ for scene_name in list_supported_scenes():
 
     steal_tag = tou_targets[0].split("-")[-1] if tou_targets else ""
 
-    MAP_CONFIG[scene_name] = {
+MAP_CONFIG[scene_name] = {
 
         "map_click": get_map_click_area(scene_name),
 
@@ -173,6 +173,19 @@ for scene_name in list_supported_scenes():
         "steal_target": steal_tag,
 
     }
+
+
+# 动态/多态怪物：同一目标附加更多识别模板（合并命中）。
+# 例：凤巢凤凰动画多变，静态"PK-召唤兽-凤凰"常漏识别，追加"放大镜*凤凰*"多帧模板提升准确率。
+MONSTER_TEMPLATE_ALIASES = {
+    "PK-召唤兽-凤凰": [
+        "放大镜凤凰点卡服", "放大镜凤凰一点卡服", "放大镜凤凰二点卡服",
+        "放大镜凤凰三点卡服", "放大镜凤凰四点卡服",
+        "放大镜变异凤凰点卡服", "放大镜变异凤凰一点卡服",
+        "放大镜变异凤凰二点卡服", "放大镜变异凤凰三点卡服",
+    ],
+}
+
 
 
 
@@ -1208,13 +1221,26 @@ class AutoFightEngine:
                       f"（要求 {rings_req} / {cards_req}）")
             old_huan = self._huan_count
             old_card = self._card_count
-            self._pkg_snapshot, self._huan_count, self._card_count, reason, ok = \
+            # 历史累计（重启不清零）：把当天该场景已得环/卡并入判定，达标即切。
+            _scene_nm = scene.get("scene", "")
+            _hist_rings = sum((rec.get("rings") or 0) for rec in self._scene_history
+                              if rec.get("name") == _scene_nm)
+            _hist_cards = sum((rec.get("cards") or 0) for rec in self._scene_history
+                              if rec.get("name") == _scene_nm)
+            _switch_huan = self._huan_count + _hist_rings
+            _switch_card = self._card_count + _hist_cards
+            self._pkg_snapshot, _tot_huan, _tot_card, reason, ok = \
                 check_backpack_and_maybe_switch(
                     self.serial, rings_req, cards_req,
-                    self._huan_count, self._card_count, self._pkg_snapshot)
+                    _switch_huan, _switch_card, self._pkg_snapshot)
+            # 当前会话新增 = 总计 - 历史 - 旧当前
+            _add_huan = max(0, _tot_huan - _switch_huan)
+            _add_card = max(0, _tot_card - _switch_card)
+            self._huan_count = old_huan + _add_huan
+            self._card_count = old_card + _add_card
             # 同步累加到当日计数：切场景/重启不清零，跨统计日由引擎/统计文件重置
-            self._daily_huan_count += max(0, self._huan_count - old_huan)
-            self._daily_card_count += max(0, self._card_count - old_card)
+            self._daily_huan_count += _add_huan
+            self._daily_card_count += _add_card
             self._log(f"  🎒 检查后：环 {self._huan_count} / 卡 {self._card_count}")
             if reason:
                 self._log(f"  🎉 {reason}，准备切换场景")
@@ -1341,6 +1367,29 @@ class AutoFightEngine:
         except Exception as e:
             self._log(f"⚠️ 加载场景历史失败: {e}")
             self._scene_history = []
+
+
+    def _scene_already_satisfied(self, scene_cfg):
+        """判断目标场景今日是否已达标：按当天历史累计，环/卡/时长满足其一即算。
+        用于换场景时跳过已经满足条件的场景，避免反复进入已完成的地图。"""
+        from xbw_features import parse_require as _pr
+        name = scene_cfg.get("scene", "")
+        total_rings = total_cards = total_dur = 0
+        for rec in self._scene_history:
+            if rec.get("name") == name:
+                total_rings += rec.get("rings") or 0
+                total_cards += rec.get("cards") or 0
+                total_dur += rec.get("duration") or 0
+        r_req = _pr(scene_cfg.get("rings", "无要求"))
+        c_req = _pr(scene_cfg.get("cards", "无要求"))
+        t_req = _pr(scene_cfg.get("time", "无要求"))
+        if r_req is not None and total_rings >= r_req:
+            return True
+        if c_req is not None and total_cards >= c_req:
+            return True
+        if t_req is not None and total_dur >= t_req * 60:
+            return True
+        return False
 
 
     def press_key(self, key_name):
@@ -4321,6 +4370,36 @@ class AutoFightEngine:
 
     def _find_all(self, frame, name, threshold=0.81, roi=None):
 
+        # 别名合并：动态/多态怪物（如凤凰）用多帧模板一起识别，提升漏检率。
+        aliases = MONSTER_TEMPLATE_ALIASES.get(name)
+
+        if aliases:
+
+            results = []
+
+            for nm in [name] + aliases:
+
+                if self.templates.get(nm) is None:
+
+                    self.templates[nm] = load_template(nm)
+
+                if self.templates.get(nm) is None:
+
+                    continue
+
+                results.extend(self._find_all(frame, nm, threshold, roi))
+
+            dedup = []
+
+            for t in sorted(results, key=lambda x: x[2], reverse=True):
+
+                if not any(abs(t[0]-d[0])**2 + abs(t[1]-d[1])**2 < 625 for d in dedup):
+
+                    dedup.append(t)
+
+            return dedup
+
+
         tmpl = self.templates.get(name)
 
         if tmpl is None or frame is None:
@@ -5577,8 +5656,14 @@ class AutoFightEngine:
                 # === 场景切换检测：时间到期 / 环卡达标 / 后续操作判定 ===
                 # 关闭"真实场景导航" → 不自动切换场景（固定当前场景打怪）
 
+                # 时间达标 = 历史累计时长 + 当前会话时长（重启后 scene_start_time 会重置，
+                # 若只看当前会话会漏掉重启前在场景里待过的时间，导致该切时不切）
+                _cur_dur = time.time() - scene_start_time
+                _hist_dur = sum((rec.get("duration") or 0)
+                                for rec in self._scene_history
+                                if rec.get("name") == map_name)
                 _switch_due = (scene_switch_interval is not None
-                               and (time.time() - scene_start_time) > scene_switch_interval)
+                               and (_cur_dur + _hist_dur) > scene_switch_interval)
                 _switch_retry_ok = time.time() >= self._switch_retry_after
                 if (self.cfg.get("use_real_scene_switch", True)
                         and not self._nav_pending
@@ -5614,9 +5699,20 @@ class AutoFightEngine:
                         scene_start_time = self._current_scene_start_time = time.time()
                         continue
 
-                    # 计算下一个目标场景（失败不推进索引，保证严格按配置顺序轮转）
+                    # 计算下一个目标场景：跳过今日已达标（历史满足条件）的场景，
+                    # 避免反复进入已完成的地图；全部已达标则结束流程。
                     next_idx = (current_idx + 1) % len(supported)
-                    next_scene = supported[next_idx]
+                    next_scene = None
+                    for _ in range(len(supported)):
+                        cand = supported[next_idx]
+                        if not self._scene_already_satisfied(cand):
+                            next_scene = cand
+                            break
+                        next_idx = (next_idx + 1) % len(supported)
+                    if next_scene is None:
+                        self._log("⚠️ 所有配置场景今日均已达标，结束自动流程")
+                        self.running = False
+                        break
                     next_map = next_scene["scene"]
                     self._log(f"场景切换: {next_map}")
 

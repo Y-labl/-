@@ -141,8 +141,6 @@ LEG_STEPS = {
 # 与 LEG_NPCS 不同：确认按钮直接是"送我到XX"对话框本身（OCR 文本/模板均可点）
 LEG_NPCS2 = {
     # 第4元素（可选）：NPC 名号 OCR 关键字（用于直接定位 NPC，避免角色坐标公式在人物遮挡时出错）。
-    # 第5元素（可选）：走位目标。默认走 NPC 触发点会与 NPC 重叠、挡住名号导致点不到；
-    # 传旁侧点（如 大唐境外→小西天 的 (16,100)）可让角色停在 NPC 旁而不遮挡。
     ("北俱芦洲", "女娲神迹"): ((14, 156), "点NPC对话-请送我进去", "点NPC对话-请送我进去", "女娲神迹"),
     ("大唐境外", "小西天"): ((16, 106), "点NPC对话-快送我进去吧", "点NPC对话-快送我进去吧", "传说小西天", (16, 100)),
 }
@@ -178,6 +176,18 @@ CUSTOM_LEGS = {
          "timeout": 90, "wait": 0.5},
         {"action": "click_transfer", "target_map": "小雷音寺", "wait": 1.0},
         {"action": "wait_map", "keyword": "小雷音寺", "timeout": 12, "wait": 0.5},
+    ],
+    ("北俱芦洲", "女娲神迹"): [
+        {"action": "open_minimap", "wait": 0.5},
+        {"action": "click_sequence",
+         "positions": [(593, 111), (474, 204), (654, 262), (649, 328),
+                       (466, 204), (531, 269), (597, 265), (663, 328)],
+         "interval": 0.15, "wait": 0.4},
+        {"action": "close_minimap", "wait": 0.5},
+        {"action": "wait_coord", "target_x": 10, "target_y": 156, "tolerance": 10,
+         "timeout": 90, "wait": 0.5},
+        {"action": "npc_transfer_loop", "npc": (243, 164), "confirm": (671, 160),
+         "target": "女娲神迹", "attempts": 5, "wait": 0.5},
     ],
 }
 
@@ -905,17 +915,21 @@ class SceneSwitcher:
         旧版 _click_chuan_song 全帧 OCR 串行扫"传送子母/子母/传送"3 轮（3+3+5s 超时），
         按钮出现前空转十几秒、每轮 2~4s 且"传送"小字常漏读 → 关图到点击实测空耗 ~34s。"""
         kws = None
+        tmpl_names = ["传送"]
         if target_map:
             # 优先目标传送口文字（朱紫国等多口地图避免点到其他传送口），最后泛匹配
             kws = [f"传送{target_map[:2]}", target_map[:2], "传送"]
+            # 优先用目标名专用模板（如 传送女娲.png），命中更准
+            tmpl_names = [f"传送{target_map[:2]}", "传送"]
         deadline = time.time() + timeout
         while time.time() < deadline:
             self._abort_if_combat()
             frame = self.get_frame()
             if frame is not None:
-                found, r = self.find(frame, "传送", threshold=0.75, roi=TRANSFER_BTN_ROI)
-                if found:
-                    return ("tmpl", r)
+                for nm in tmpl_names:
+                    found, r = self.find(frame, nm, threshold=0.75, roi=TRANSFER_BTN_ROI)
+                    if found:
+                        return ("tmpl", r)
                 tr = self._ocr_find(TRANSFER_BTN_ROI, kws or ["传送"], timeout=0.8,
                                     check_combat=False)
                 if tr:
@@ -1052,7 +1066,14 @@ class SceneSwitcher:
                 time.sleep(wait)
             elif action == "click_template":
                 name = step["name"]
-                ok = self.click_template(name, threshold=step.get("threshold", 0.75))
+                thr = step.get("threshold", 0.75)
+                hide_pos = step.get("hide_on_miss")   # 可选 (x,y)：找不到时点这里隐藏玩家再重试
+                ok = self.click_template(name, threshold=thr)
+                if not ok and hide_pos:
+                    self._log(f"  [自定义] 未找到 {name}，点隐藏玩家 {hide_pos} 后重试")
+                    self.tap(hide_pos[0], hide_pos[1])
+                    time.sleep(0.8)
+                    ok = self.click_template(name, threshold=thr)
                 if not ok:
                     self._log(f"  [自定义] 未找到模板 {name}")
                     return False
@@ -1071,6 +1092,40 @@ class SceneSwitcher:
                 time.sleep(wait)
             elif action == "click_transfer":
                 self._click_chuan_song(target_map=step.get("target_map"))
+                time.sleep(wait)
+            elif action == "click_ocr":
+                # 在画面 OCR 找关键字并点击（如 NPC 传送确认框「送我」）
+                kw = step["keyword"]
+                roi = step.get("roi", (0, 0, 800, 448))
+                pos = self._ocr_find(roi, kw, timeout=step.get("timeout", 3.0))
+                if pos:
+                    self._log(f"  [自定义] 点OCR '{kw}': {pos[:2]}")
+                    self.tap(pos[0], pos[1])
+                else:
+                    self._log(f"  [自定义] 未找到OCR '{kw}'")
+                    return False
+                time.sleep(wait)
+            elif action == "npc_transfer_loop":
+                # 固定坐标循环：点 NPC → 点传送确认 → 验证(≤3s)；未成功继续点，不再开图。
+                npc = step["npc"]           # (x,y) 点 NPC
+                confirm = step["confirm"]   # (x,y) 点传送确认
+                target_kw = step["target"]
+                attempts = step.get("attempts", 5)
+                done = False
+                for attempt in range(attempts):
+                    self._log(f"  [自定义] 点NPC {npc} -> 点传送 {confirm}（第 {attempt + 1}/{attempts} 次）")
+                    self.tap(npc[0], npc[1])
+                    time.sleep(0.8)
+                    self.tap(confirm[0], confirm[1])
+                    time.sleep(0.8)
+                    got = self._wait_map_name(target_kw, timeout=3.0)
+                    if got:
+                        self._log(f"  [自定义] 已到达 {target_kw}（OCR: {got}）")
+                        done = True
+                        break
+                if not done:
+                    self._log(f"  [自定义] 传送 {target_kw} 失败")
+                    return False
                 time.sleep(wait)
             elif action == "click_sequence":
                 positions = step["positions"]
