@@ -44,6 +44,13 @@ SCENE_MAPPING = {
         "map_click": {"x1": 212, "y1": 21, "x2": 475, "y2": 415},
         "support_type": "support",
     },
+    "小雷音寺": {
+        # 小雷音寺怪物：灵鹤、雾中仙、大力金刚；只对灵鹤偷卡。
+        "tou_targets": ["PK-召唤兽-灵鹤"],
+        "jineng_targets": ["PK-召唤兽-灵鹤", "PK-召唤兽-雾中仙", "PK-召唤兽-大力金刚"],
+        "map_click": {"x1": 180, "y1": 220, "x2": 500, "y2": 380},
+        "support_type": "support",
+    },
     "子母河底": {
         "tou_targets": ["PK-召唤兽-鲛人", "PK-召唤兽-碧水夜叉", "PK-召唤兽-蚌精"],
         "jineng_targets": ["PK-召唤兽-鲛人", "PK-召唤兽-碧水夜叉", "PK-召唤兽-蚌精"],

@@ -813,6 +813,79 @@ class AutoFightGUI:
         self.notebook.add(tab3, text="功能测试")
         self._tab3_frame = tab3   # 用于调整 Tab 顺序
         tab3.columnconfigure(0, weight=1)
+        tab3.rowconfigure(2, weight=1)
+
+        # 设备 + 地图选择
+        sel = ttk.Labelframe(tab3, text=" 选择设备 / 地图 ", padding=10)
+        sel.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        ttk.Label(sel, text="设备：").grid(row=0, column=0, sticky="w")
+        self.test_device_combo = ttk.Combobox(sel, state="readonly", width=26, bootstyle="primary")
+        self.test_device_combo.grid(row=0, column=1, sticky="w", padx=(0, 8))
+        ttk.Button(sel, text="刷新", command=self._refresh_test_devices,
+                   width=6, bootstyle="outline").grid(row=0, column=2, sticky="w", padx=(0, 16))
+        ttk.Label(sel, text="忠诚恢复场景：").grid(row=0, column=3, sticky="w")
+        self.test_map_combo = ttk.Combobox(sel, state="readonly", width=16)
+        self.test_map_combo.grid(row=0, column=4, sticky="w")
+
+        # 忠诚恢复支持的场景；其余地图仍可用于“测试切换地图”
+        try:
+            from 工具 import SCENE_RECOVERY
+            recovery_scenes = list(SCENE_RECOVERY.keys())
+        except Exception:
+            recovery_scenes = ["小西天", "女娲神迹", "子母河底", "龙窟三层", "凤巢三层"]
+        try:
+            scene_cfg = self.cfg.get("scene_config", []) or []
+            preferred = []
+            for r in scene_cfg:
+                s = r.get("scene")
+                if s in recovery_scenes and s not in preferred:
+                    preferred.append(s)
+            recovery_scenes = preferred + [s for s in recovery_scenes if s not in preferred]
+        except Exception:
+            pass
+        self.test_map_combo["values"] = recovery_scenes
+        if recovery_scenes:
+            self.test_map_combo.current(0)
+
+        # 测试按钮
+        btns = ttk.Frame(tab3)
+        btns.grid(row=1, column=0, sticky="ew", pady=(0, 10))
+        ttk.Button(btns, text="① 本地识别四小人（上传图片）", bootstyle="primary",
+                   command=self._test_four_person_image).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(btns, text="② 测试背包环/卡", bootstyle="success",
+                   command=self._test_backpack).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(btns, text="③ 测试切换地图", bootstyle="warning",
+                   command=self._test_switch_map).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(btns, text="④ 测试忠诚度恢复", bootstyle="info",
+                   command=self._test_loyalty_recovery).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(btns, text="⏹ 停止", bootstyle="danger",
+                   command=self._test_stop).pack(side=tk.LEFT)
+
+        self._test_stop_event = threading.Event()
+
+        # 图片预览区
+        preview = ttk.Labelframe(tab3, text=" 识别预览（四小人 / 背包环卡标注） ", padding=6)
+        preview.grid(row=2, column=0, sticky="nsew", pady=(0, 8))
+        preview.columnconfigure(0, weight=1)
+        preview.rowconfigure(0, weight=1)
+        self._test_photo = None
+        self.test_image_label = ttk.Label(preview, text="四小人识别/背包环卡标注会显示在这里",
+                                          anchor="center", bootstyle="secondary")
+        self.test_image_label.grid(row=0, column=0, sticky="nsew")
+
+        # 测试日志区
+        log_card = ttk.Labelframe(tab3, text=" 测试日志 ", padding=6)
+        log_card.grid(row=3, column=0, sticky="ew")
+        log_card.columnconfigure(0, weight=1)
+        self.test_log_text = tk.Text(log_card, height=6, font=("Microsoft YaHei", 9),
+                                     state=tk.DISABLED, wrap="word")
+        self.test_log_text.grid(row=0, column=0, sticky="ew")
+        tlog_sb = ttk.Scrollbar(log_card, orient=tk.VERTICAL, command=self.test_log_text.yview)
+        tlog_sb.grid(row=0, column=1, sticky="ns")
+        self.test_log_text.configure(yscrollcommand=tlog_sb.set)
+
+        # 初始化设备列表
+        self._refresh_test_devices()
 
     # ---------- Tab: 特殊场景（队伍抓特殊） ----------
     def _build_tab_special(self):
@@ -1125,81 +1198,6 @@ class AutoFightGUI:
                         else "队员(防御)")
                 except Exception:
                     pass
-        tab3.rowconfigure(2, weight=1)
-
-        # 设备 + 地图选择
-        sel = ttk.Labelframe(tab3, text=" 选择设备 / 地图 ", padding=10)
-        sel.grid(row=0, column=0, sticky="ew", pady=(0, 10))
-        ttk.Label(sel, text="设备：").grid(row=0, column=0, sticky="w")
-        self.test_device_combo = ttk.Combobox(sel, state="readonly", width=26, bootstyle="primary")
-        self.test_device_combo.grid(row=0, column=1, sticky="w", padx=(0, 8))
-        ttk.Button(sel, text="刷新", command=self._refresh_test_devices,
-                   width=6, bootstyle="outline").grid(row=0, column=2, sticky="w", padx=(0, 16))
-        ttk.Label(sel, text="目标地图：").grid(row=0, column=3, sticky="w")
-        self.test_map_combo = ttk.Combobox(sel, state="readonly", width=16)
-        self.test_map_combo.grid(row=0, column=4, sticky="w")
-
-        # 地图列表（小霸王 67 个点卡地图参数）
-        try:
-            from xbw_features.game_action.map_action import mapParamsListDK
-            self._test_maps = [p.area for p in mapParamsListDK]
-        except Exception:
-            self._test_maps = ["小西天", "女娲神迹", "龙窟五层", "凤巢四层"]
-        # 场景设置里配置的场景排最前（按配置顺序，去重），其余地图跟在后面
-        try:
-            scene_cfg = self.cfg.get("scene_config", []) or []
-            preferred = []
-            for r in scene_cfg:
-                s = r.get("scene")
-                if s and s not in preferred:
-                    preferred.append(s)
-            self._test_maps = preferred + [m for m in self._test_maps if m not in preferred]
-        except Exception:
-            pass
-        self.test_map_combo["values"] = self._test_maps
-        if self._test_maps:
-            self.test_map_combo.current(0)
-
-        # 三个测试按钮
-        btns = ttk.Frame(tab3)
-        btns.grid(row=1, column=0, sticky="ew", pady=(0, 10))
-        ttk.Button(btns, text="① 本地识别四小人（上传图片）", bootstyle="primary",
-                   command=self._test_four_person_image).pack(side=tk.LEFT, padx=(0, 10))
-        ttk.Button(btns, text="② 测试背包环/卡", bootstyle="success",
-                   command=self._test_backpack).pack(side=tk.LEFT, padx=(0, 10))
-        ttk.Button(btns, text="③ 测试切换地图", bootstyle="warning",
-                   command=self._test_switch_map).pack(side=tk.LEFT, padx=(0, 10))
-        ttk.Button(btns, text="④ 测试忠诚度恢复", bootstyle="info",
-                   command=self._test_loyalty_recovery).pack(side=tk.LEFT, padx=(0, 10))
-        ttk.Button(btns, text="⏹ 停止", bootstyle="danger",
-                   command=self._test_stop).pack(side=tk.LEFT)
-
-        self._test_stop_event = threading.Event()
-
-        # 图片预览区
-        preview = ttk.Labelframe(tab3, text=" 识别预览（四小人 / 背包环卡标注） ", padding=6)
-        preview.grid(row=2, column=0, sticky="nsew", pady=(0, 8))
-        preview.columnconfigure(0, weight=1)
-        preview.rowconfigure(0, weight=1)
-        self._test_photo = None
-        self.test_image_label = ttk.Label(preview, text="四小人识别/背包环卡标注会显示在这里",
-                                          anchor="center", bootstyle="secondary")
-        self.test_image_label.grid(row=0, column=0, sticky="nsew")
-
-        # 测试日志区
-        log_card = ttk.Labelframe(tab3, text=" 测试日志 ", padding=6)
-        log_card.grid(row=3, column=0, sticky="ew")
-        log_card.columnconfigure(0, weight=1)
-        self.test_log_text = tk.Text(log_card, height=6, font=("Microsoft YaHei", 9),
-                                     state=tk.DISABLED, wrap="word")
-        self.test_log_text.grid(row=0, column=0, sticky="ew")
-        tlog_sb = ttk.Scrollbar(log_card, orient=tk.VERTICAL, command=self.test_log_text.yview)
-        tlog_sb.grid(row=0, column=1, sticky="ns")
-        self.test_log_text.configure(yscrollcommand=tlog_sb.set)
-
-        # 初始化设备列表
-        self._refresh_test_devices()
-
     def _refresh_test_devices(self):
         """刷新功能测试页的设备下拉列表（显示设备名称）"""
         try:
@@ -3563,40 +3561,61 @@ class AutoFightGUI:
 
 
     def _test_loyalty_recovery(self):
-        """测试诚度恢复功能 - 手动触发当前设备的诚度恢复流程"""
-        serial = self.cfg.get("serial", "").strip()
+        """在功能测试页选择设备与场景后，独立测试忠诚度恢复。"""
+        display = self.test_device_combo.get().strip()
+        serial = self._test_display_to_serial.get(display, "").strip()
+        scene = self.test_map_combo.get().strip()
         if not serial:
-            messagebox.showwarning("提示", "请先选择并绑定一个设备")
+            messagebox.showwarning("提示", "请先在功能测试页选择设备")
+            return
+        if not scene:
+            messagebox.showwarning("提示", "请先选择忠诚恢复场景")
             return
 
         engine = self.engines.get(serial)
-        if not engine:
-            messagebox.showwarning("提示", "当前设备未启动，请先启动设备")
+        if engine and getattr(engine, "running", False):
+            messagebox.showwarning(
+                "提示",
+                f"设备 [{display}] 主流程正在运行。\n请先停止该设备，避免两个流程同时操作手机。")
             return
 
-        if not engine.running:
-            messagebox.showwarning("提示", "当前设备未运行，请先启动设备")
-            return
-
-        confirm = messagebox.askyesno("确认测试",
-            f"确定要对设备 [{serial}] 执行诚度恢复测试吗？\n\n"
-            "此操作将手动触发诚度恢复流程，可以用来验证功能是否正常工作。")
+        confirm = messagebox.askyesno(
+            "确认测试",
+            f"设备：{display}\n忠诚恢复场景：{scene}\n\n"
+            "将独立执行忠诚恢复测试，途中遇到战斗会自动逃跑。是否继续？")
         if not confirm:
             return
 
-        self._log(f"\U0001f9ea 手动触发诚度恢复测试 - 设备: {serial}")
-        self._log("=" * 50)
+        self._test_log(f"开始忠诚恢复测试 - 设备: {serial}, 场景: {scene}")
+        self._test_stop_event.clear()
 
         def _run():
+            tool = None
             try:
-                engine._do_loyalty_recovery()
-                self.root.after(0, lambda: self._log("=" * 50))
-                self.root.after(0, lambda: self._log("\u2705 诚度恢复测试完成"))
-                self.root.after(0, lambda: messagebox.showinfo("测试完成", "诚度恢复流程已执行完成！\n请查看日志确认执行结果。"))
+                from 工具 import ToolEngine
+                tool = ToolEngine(serial)
+                raw_log = tool._log
+
+                def tool_log(msg):
+                    raw_log(msg)
+                    self.root.after(0, lambda m=msg: self._test_log(m))
+
+                tool._log = tool_log
+                tool._stop_event = self._test_stop_event
+                if not tool.connect():
+                    raise RuntimeError("ADB/scrcpy 连接失败")
+                tool.cfg["map"] = scene
+                tool.loyalty_recovery()
+                self.root.after(0, lambda: self._test_log("✅ 忠诚恢复测试完成"))
+                self.root.after(0, lambda: messagebox.showinfo(
+                    "测试完成", "忠诚恢复流程已执行完成！\n请查看测试日志确认执行结果。"))
             except Exception as e:
-                self.root.after(0, lambda err=e: self._log(f"\u274c 诚度恢复测试失败: {err}"))
-                self.root.after(0, lambda: self._log("=" * 50))
-                self.root.after(0, lambda err=e: messagebox.showerror("测试失败", f"诚度恢复流程执行失败：\n{err}"))
+                self.root.after(0, lambda err=e: self._test_log(f"❌ 忠诚恢复测试失败: {err}"))
+                self.root.after(0, lambda err=e: messagebox.showerror(
+                    "测试失败", f"忠诚恢复流程执行失败：\n{err}"))
+            finally:
+                if tool:
+                    tool.disconnect()
 
         threading.Thread(target=_run, daemon=True).start()
 

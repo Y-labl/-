@@ -8,6 +8,7 @@ screenshots/*.jpg
 .env
 node_modules/
 .modlens-work/
+.dsh-vision-toolkit/
 
 # IDE
 .idea/

@@ -190,11 +190,16 @@ SCENE_RECOVERY = {
 }
 
 def _build_floor_recovery(floor_name, legs_down, legs_up, third_scene):
-    """构建五层忠诚恢复完整流程 steps（复用场景切换引擎的层间传送 + 三层输入坐标恢复）：
-    层间传送下行到三层 → 打开地图输入三层恢复点坐标 → 洞冥草恢复 →
-    层间传送上行回五层 → 吃摄妖香。"""
+    """构建四/五层忠诚恢复完整流程 steps（复用场景切换引擎的层间传送 + 三层输入坐标恢复）：
+    先用摄妖香 → 层间传送下行到三层 → 打开地图输入三层恢复点坐标 → 到达恢复点(医宝宝) →
+    层间传送上行回四/五层 → 最后用洞冥草恢复忠诚 → 交给主流程偷卡。"""
     third = SCENE_RECOVERY[third_scene]
     steps = []
+    # 0) 先吃摄妖香，避免途中遇怪
+    steps.append({"action": "click_template", "name": "道具", "threshold": 0.6, "wait": 0.3})
+    steps.append({"action": "click_template", "name": "摄妖香", "threshold": 0.5, "wait": 0.3})
+    steps.append({"action": "click_position", "x": 268, "y": 260, "wait": 0.5})
+    steps.append({"action": "click_template", "name": "关闭弹窗", "wait": 0.3})
     # 1) 层间传送下行：五层→四层→三层（场景切换引擎小地图点击+OCR验证）
     steps.append({"action": "layer_teleport", "legs": legs_down, "wait": 0.5})
     # 2) 打开地图 → 输入三层恢复点坐标
@@ -202,7 +207,7 @@ def _build_floor_recovery(floor_name, legs_down, legs_up, third_scene):
     steps.extend(third.get("coord_input", []))
     steps.append({"action": "debug_shot", "tag": "after_coord_input", "wait": 0.3})
     steps.extend(_BASE_PART2)
-    # 3) 等待到达三层恢复点 → 点击
+    # 3) 等待到达三层恢复点（医宝宝）
     if third.get("wait_target"):
         wait_step = dict(third["wait_target"])
         retry_inputs = list(third.get("coord_input", []))
@@ -213,25 +218,86 @@ def _build_floor_recovery(floor_name, legs_down, legs_up, third_scene):
             wait_step["retry_inputs"].append(
                 {"action": "click_template", "name": "关闭弹窗", "threshold": 0.5, "wait": 0.5})
         steps.append(wait_step)
-    # 4) 洞冥草恢复
-    steps.extend(_BASE_PART3)
-    # 5) 层间传送上行：三层→四层→五层
+    # 4) 层间传送上行：三层→四层→五层
     steps.append({"action": "layer_teleport", "legs": legs_up, "wait": 0.5})
-    # 6) 吃摄妖香（回五层打怪前）
-    steps.append({"action": "click_template", "name": "道具", "threshold": 0.6, "wait": 0.3})
-    steps.append({"action": "click_template", "name": "摄妖香", "threshold": 0.5, "wait": 0.3})
-    steps.append({"action": "click_position", "x": 268, "y": 260, "wait": 0.5})
-    steps.append({"action": "click_template", "name": "关闭弹窗", "wait": 0.3})
+    # 5) 回到四/五层后，最后用洞冥草恢复忠诚，交给主流程继续偷卡
+    steps.extend(_BASE_PART3)
     return steps
 
-# 五层恢复配置：层间传送下行到三层恢复 → 传送回五层 → 摄妖香
+# 龙窟五层：经龙窟六层巫医恢复，不再走老的三层洞冥草流程。
 SCENE_RECOVERY["龙窟五层"] = {
-    "steps": _build_floor_recovery(
-        "龙窟五层",
-        [["龙窟五层", "龙窟四层"], ["龙窟四层", "龙窟三层"]],
-        [["龙窟三层", "龙窟四层"], ["龙窟四层", "龙窟五层"]],
-        "龙窟三层",
-    ),
+    "steps": [
+        # 1) 吃摄妖香并打开地图
+        *_BASE_PART1,
+        # 2) 在五层地图随机点 1~3 下，走向五→六传送口
+        {
+            "action": "click_map_candidates",
+            "positions": [[269, 321], [247, 305], [278, 318]],
+            "min_clicks": 1,
+            "max_clicks": 3,
+            "interval": 0.1,
+            "wait": 0.3,
+        },
+        *_BASE_PART2,
+        # 3) 到 (50,9) 附近传送到六层；模板没识别到时点固定传送口兜底
+        {
+            "action": "wait_coord_transfer",
+            "target_map": "龙窟五层",
+            "target_x": 50,
+            "target_y": 9,
+            "tolerance": 8,
+            "timeout": 60,
+            "template": "传送",
+            "fallback": [527, 282],
+            "after_map": "龙窟六层",
+            "after_timeout": 12,
+            "wait": 0.5,
+        },
+        # 4) 六层打开地图，输入/选择巫医目标点 (41,37)
+        {"action": "click_template", "name": "打开地图", "wait": 0.5},
+        {
+            "action": "click_sequence",
+            "positions": [
+                [671, 102], [396, 260], [401, 200], [584, 318],
+                [527, 200], [401, 321], [588, 318], [737, 55],
+            ],
+            "interval": 0.1,
+            "wait": 0.3,
+        },
+        # 注意：坐标输入 click_sequence 末尾的 [737,55] 已把六层地图关掉，
+        # 这里不能再接 *_BASE_PART2(关闭弹窗)，否则会在地图已关闭后再度全屏匹配
+        # “关闭弹窗”，误命中右上角人物头像/宠物图标（曾导致点到头像）。
+        {"action": "wait_coord", "target_map": "龙窟六层", "target_x": 41, "target_y": 37,
+         "tolerance": 5, "timeout": 90, "stable_time": 1.5,
+         "clicks": [[483, 190], [663, 216], [641, 367]], "wait": 0.5},
+        # 5) 巫医恢复完成后，在六层地图随机点 1~3 下走向六→五传送口
+        {"action": "click_template", "name": "打开地图", "wait": 0.5},
+        {
+            "action": "click_map_candidates",
+            "positions": [[396, 321], [396, 309], [404, 314]],
+            "min_clicks": 1,
+            "max_clicks": 3,
+            "interval": 0.1,
+            "wait": 0.3,
+        },
+        *_BASE_PART2,
+        # 6) 传回五层；模板没识别到时点固定传送口兜底
+        {
+            "action": "wait_coord_transfer",
+            "target_map": "龙窟六层",
+            "target_x": 82,
+            "target_y": 15,
+            "tolerance": 8,
+            "timeout": 60,
+            "template": "传送",
+            "fallback": [331, 213],
+            "after_map": "龙窟五层",
+            "after_timeout": 12,
+            "wait": 0.5,
+        },
+        # 7) 回到龙五后，最后一步使用洞冥草恢复忠诚
+        *_BASE_PART3,
+    ],
 }
 SCENE_RECOVERY["凤巢五层"] = {
     "steps": _build_floor_recovery(
@@ -312,6 +378,7 @@ class ToolEngine:
             "打开地图", "地图-筛选", "关闭地图", "好友入口",
             "PK-妙手空空技能", "PK-自动按钮", "PK-取消自动战斗",
             "PK-右下取消自动战斗", "PK-逃跑", "PK-防御",
+            "传送", "巫医",
             "道具", "道具-道具栏", "洞冥草", "关闭弹窗", "关闭聊天", "关闭活动弹窗", "左下角返回",
             "菜单-指引", "摄妖香", "使用摄妖香", "wuyi", "wuyi1", "wuyi2", "wuyi3",
         ]
@@ -439,6 +506,101 @@ class ToolEngine:
                     time.sleep(s.get("interval", 0.1))
             time.sleep(wait)
         return True
+
+    def _wait_coord_transfer(self, step):
+        """等待角色到传送口附近，优先点“传送”模板，否则点兜底传送口。
+
+        返回 ok/combat/timeout；外层收到 combat 时会重走整套恢复流程。"""
+        self._init_ocr()
+        target_map = step.get("target_map", "")
+        target_x = int(step["target_x"])
+        target_y = int(step["target_y"])
+        tolerance = int(step.get("tolerance", 8))
+        timeout = float(step.get("timeout", 60))
+        template_name = step.get("template", "传送")
+        template_threshold = float(step.get("template_threshold", 0.72))
+        fallback = step.get("fallback")
+        after_map = step.get("after_map", "")
+        after_timeout = float(step.get("after_timeout", 12))
+        template_timeout = float(step.get("template_timeout", 1.0))
+        transfer_attempts = int(step.get("transfer_attempts", 2))
+        start = time.time()
+        last_combat_check_t = 0.0
+
+        self._log("等待传送口: {} ({},{}) ±{}".format(
+            target_map or "当前地图", target_x, target_y, tolerance))
+        reached = False
+        while time.time() - start < timeout:
+            if self._stop_event and self._stop_event.is_set():
+                return "combat"
+            now = time.time()
+            if now - last_combat_check_t >= 1.0:
+                if self._check_and_escape_recovery_combat():
+                    return "combat"
+                last_combat_check_t = time.time()
+
+            frame = self.get_frame()
+            if frame is None:
+                time.sleep(0.3)
+                continue
+            map_name, coord = self._ocr_coord(frame, log=False)
+            if coord and (not target_map or (map_name and target_map in map_name)):
+                if abs(coord[0] - target_x) <= tolerance and abs(coord[1] - target_y) <= tolerance:
+                    self._log("已到传送口附近: {} ({},{})".format(
+                        map_name or target_map, coord[0], coord[1]))
+                    reached = True
+                    break
+            time.sleep(0.3)
+
+        if self._stop_event and self._stop_event.is_set():
+            return "combat"
+        if not reached:
+            self._log("等待传送口超时: ({},{})".format(target_x, target_y))
+            return "timeout"
+
+        for attempt in range(1, transfer_attempts + 1):
+            # 模板优先；只在很短的窗口内等待，没出现就立即走兜底坐标。
+            tpl_end = time.time() + template_timeout
+            clicked = False
+            while time.time() < tpl_end:
+                if self._stop_event and self._stop_event.is_set():
+                    return "combat"
+                if self._check_and_escape_recovery_combat():
+                    return "combat"
+                frame = self.get_frame()
+                hit = self.find(frame, template_name, threshold=template_threshold) \
+                    if frame is not None else None
+                if hit:
+                    self._log("点击传送模板 ({},{}) 置信度 {:.0%}".format(
+                        hit[0], hit[1], hit[2]))
+                    self.tap(hit[0], hit[1])
+                    clicked = True
+                    break
+                time.sleep(0.2)
+
+            if not clicked and fallback:
+                fx, fy = fallback
+                self._log("未识别到传送模板，点击兜底传送口 ({},{})".format(fx, fy))
+                self.tap(fx, fy, offset=False)
+
+            time.sleep(0.8)
+            if not after_map:
+                return "ok"
+
+            after_end = time.time() + after_timeout
+            while time.time() < after_end:
+                if self._stop_event and self._stop_event.is_set():
+                    return "combat"
+                if self._check_and_escape_recovery_combat():
+                    return "combat"
+                frame = self.get_frame()
+                map_name, _ = self._ocr_coord(frame, log=False) if frame is not None else (None, None)
+                if map_name and after_map in map_name:
+                    self._log("已传送到 {}".format(map_name))
+                    return "ok"
+                time.sleep(0.3)
+            self._log("传送后暂未确认 {}（第 {}/{} 次）".format(after_map, attempt, transfer_attempts))
+        return "timeout"
 
     def connect(self):
 
@@ -696,35 +858,51 @@ class ToolEngine:
             return None
         return (hit[0] + x1, hit[1] + y1, hit[2])
 
-    def _find_cancel_auto_in_battle(self, frame):
-        """自动/取消自动按钮都在右下角；缩小 ROI 防止画面图标误报。"""
-        return (
-            self._find_command_in_roi(frame, "PK-取消自动战斗", 0.72,
-                                      roi=(660, 330, 800, 448))
-            or self._find_command_in_roi(frame, "PK-右下取消自动战斗", 0.72,
-                                         roi=(660, 330, 800, 448))
-        )
+    def _battle_round_visible(self, frame):
+        """OCR 顶部战斗回合标识，作为战斗状态的强判定。
+
+        实测“第X回合”固定在 800x448 横屏帧的 370-432,1-22 附近。
+        这里使用较小的稳定 ROI，避免普通界面顶部文字被 OCR 误读成回合。
+        """
+        if frame is None:
+            return False
+        try:
+            self._init_ocr()
+            h, w = frame.shape[:2]
+            x1 = max(0, int(w * 0.43))
+            x2 = min(w, int(w * 0.58))
+            y2 = min(h, 36)
+            if x2 <= x1 or y2 <= 0:
+                return False
+            crop = frame[0:y2, x1:x2]
+            if crop.size == 0:
+                return False
+            result, _ = self.ocr(crop)
+            for item in (result or []):
+                text = str(item[1]).strip()
+                if re.fullmatch(r"第\s*\d+\s*回合", text):
+                    self._last_battle_round_text = text
+                    return True
+            self._last_battle_round_text = None
+        except Exception as e:
+            self._log(f"⚠️ 战斗回合 OCR 失败: {e}")
+            self._last_battle_round_text = None
+        return False
 
     def _recovery_combat_visible(self, frame=None):
-        """用战斗专用按钮判断是否进入战斗。
-
-        不复用主循环的“好友入口消失”判断：恢复流程会主动打开地图/弹窗，
-        那些界面也会遮住好友入口，容易误报。"""
+        """只按顶部“第X回合”判断是否在战斗，避免普通界面按钮误报。"""
         f = frame if frame is not None else self.get_frame()
         if f is None:
             return False
-        return (
-            self._find_command_in_roi(f, "PK-逃跑", threshold=0.65) is not None
-            or self._find_command_in_roi(f, "PK-防御", threshold=0.70) is not None
-            or self._find_command_in_roi(f, "PK-自动按钮", threshold=0.72) is not None
-            or self._find_cancel_auto_in_battle(f) is not None
-        )
+        return self._battle_round_visible(f)
 
     def _escape_recovery_combat(self, timeout=180.0):
         """忠诚恢复途中遇到怪时只逃跑，不进入打怪流程。
 
         返回 True=已脱离战斗；False=超时（调用方应停止本轮恢复）。"""
-        self._log("⚔️ 忠诚恢复途中进入战斗，尝试逃跑...")
+        self._log("⚔️ 忠诚恢复途中确认进入战斗（{}），尝试逃跑...".format(
+            getattr(self, "_last_battle_round_text", "回合标识")
+        ))
         deadline = time.time() + timeout
         noncombat_since = None
         last_log_t = 0.0
@@ -777,13 +955,9 @@ class ToolEngine:
         return False
 
     def _check_and_escape_recovery_combat(self):
-        """两次确认战斗后处理；只要遇过战斗就要求外层重新走恢复流程。
+        """有回合标识就逃跑；没有回合标识就直接继续恢复流程。
 
         进入战斗通常会取消原寻路，所以即使逃跑成功也不应继续当前步骤。"""
-        # 两次确认可避免动画/弹窗的一帧误匹配；第二次不会耗时太久。
-        if not self._recovery_combat_visible():
-            return False
-        time.sleep(0.2)
         if not self._recovery_combat_visible():
             return False
         self._escape_recovery_combat()
@@ -795,6 +969,10 @@ class ToolEngine:
         if frame is None:
             self._log("无法获取画面帧")
             return
+
+        # 先做一次简单状态判断：战斗就先逃完；非战斗直接走恢复流程。
+        if self._recovery_combat_visible():
+            self._escape_recovery_combat()
 
         # 自动 OCR 识别当前地图
         map_name = None
@@ -930,6 +1108,31 @@ class ToolEngine:
                         self.tap(px, py)
                         time.sleep(interval)
                     time.sleep(wait)
+
+                elif action == "click_map_candidates":
+                    positions = step["positions"]
+                    min_clicks = int(step.get("min_clicks", 1))
+                    max_clicks = int(step.get("max_clicks", 3))
+                    cnt = random.randint(min_clicks, max_clicks)
+                    self._log("[{}] 地图候选点随机点击 {}/{} 次".format(i, cnt, max_clicks))
+                    for idx_c in range(cnt):
+                        px, py = random.choice(positions)
+                        self._log("[{}]   点地图 [{}/{}] ({},{})".format(
+                            i, idx_c + 1, cnt, px, py))
+                        self.tap(px, py)
+                        time.sleep(step.get("interval", 0.1))
+                    time.sleep(wait)
+
+                elif action == "wait_coord_transfer":
+                    status = self._wait_coord_transfer(step)
+                    if status == "combat":
+                        combat_interrupted = True
+                        break
+                    if status != "ok":
+                        self._log("[{}] 传送口流程失败({})".format(i, status))
+                        return
+                    time.sleep(wait)
+                    frame = self.get_frame()
 
                 elif action == "debug_shot":
                     tag = step.get("tag", "shot")

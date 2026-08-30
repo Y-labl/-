@@ -2363,6 +2363,23 @@ class AutoFightEngine:
             if cur_red:
                 bb_markers.extend(cur_red)
 
+        def _locate_marker_monster(marker):
+            """宝宝文字标记 -> 对应怪物身体坐标；黑名单模板通常命中怪物身体，
+            而宝宝标记命中名字里的“宝宝”，两者垂直距离可能超过 50px。"""
+            mx, my = marker[0], marker[1]
+            name_cx = self._scan_name_center(frame, mx, my)
+            best_monster = None
+            best_score = 999999
+            for mt in matched_targets:
+                dx = abs(mt[0] - name_cx)
+                dy = my - mt[1]
+                if 10 < dy < 100 and dx < 60:
+                    score = dx * 2 + abs(dy - 45)
+                    if score < best_score:
+                        best_score = score
+                        best_monster = (mt[0], mt[1])
+            return name_cx, best_monster
+
         # 去重
         dedup_bb = []
         if bb_markers:
@@ -2384,6 +2401,12 @@ class AutoFightEngine:
             for bb_marker in dedup_bb:
                 mx, my = bb_marker[0], bb_marker[1]
                 is_blacklisted = False
+                name_cx, marker_monster = _locate_marker_monster(bb_marker)
+                # 黑名单模板命中点可能怪物身体；宝宝标记命中点可能是名字。
+                # 两个锚点都要比对，否则会出现“黑名单配置了但仍继续捕捉”。
+                anchors = [(mx, my)]
+                if marker_monster:
+                    anchors.append(marker_monster)
 
                 # 检查是否匹配黑名单中的任一宝宝
                 for bb_name in blacklist:
@@ -2392,11 +2415,15 @@ class AutoFightEngine:
                     if hits:
                         # 检查黑名单宝宝位置是否与当前宝宝标记位置相近
                         for hx, hy, hc in hits:
-                            # 宝宝名字应该在宝宝文字标记附近（横向偏移不超过80px）
-                            if abs(hx - mx) < 80 and abs(hy - my) < 50:
-                                self._log(f"  🚫 识别到黑名单宝宝: {bb_name} 位置({hx},{hy})，跳过捕捉")
-                                is_blacklisted = True
-                                break
+                            for ax, ay in anchors:
+                                if abs(hx - ax) < 80 and abs(hy - ay) < 50:
+                                    anchor_desc = "宝宝标记" if (ax, ay) == (mx, my) else \
+                                        f"对应怪物({ax},{ay})"
+                                    self._log(
+                                        f"  🚫 识别到黑名单宝宝: {bb_name} 位置({hx},{hy})，"
+                                        f"匹配{anchor_desc}，跳过捕捉")
+                                    is_blacklisted = True
+                                    break
                         if is_blacklisted:
                             break
 
@@ -2418,19 +2445,7 @@ class AutoFightEngine:
         capture_targets = []
         for marker in dedup_bb:
             mx, my = marker[0], marker[1]
-            # 模板匹配点可能是名字的一部分（名字长时匹配点偏右），
-            # 扫描名字实际水平范围取中心：名字中心直直上去才是怪物中心
-            name_cx = self._scan_name_center(frame, mx, my)
-            best_monster = None
-            best_score = 999999
-            for mt in matched_targets:
-                dx = abs(mt[0] - name_cx)
-                dy = my - mt[1]
-                if 10 < dy < 100 and dx < 60:
-                    score = dx * 2 + abs(dy - 45)
-                    if score < best_score:
-                        best_score = score
-                        best_monster = (mt[0], mt[1])
+            name_cx, best_monster = _locate_marker_monster(marker)
             if best_monster:
                 # (点击x, 点击y, 验证标记x, 验证标记y)：点击怪物位置，验证用宝宝文字标记
                 capture_targets.append((best_monster[0], best_monster[1], name_cx, my))

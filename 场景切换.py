@@ -140,13 +140,45 @@ LEG_STEPS = {
 # NPC 对话式传送（点 NPC -> 出现确认对话框 -> 点确认 -> 等地图变化）
 # 与 LEG_NPCS 不同：确认按钮直接是"送我到XX"对话框本身（OCR 文本/模板均可点）
 LEG_NPCS2 = {
-    ("大唐境外", "小西天"): ((16, 106), "点NPC对话-快送我进去吧", "点NPC对话-快送我进去吧"),
-    ("北俱芦洲", "女娲神迹"): ((14, 156), "点NPC对话-请送我进去", "点NPC对话-请送我进去"),
+    # 第4元素（可选）：NPC 名号 OCR 关键字（用于直接定位 NPC，避免角色坐标公式在人物遮挡时出错）。
+    # 第5元素（可选）：走位目标。默认走 NPC 触发点会与 NPC 重叠、挡住名号导致点不到；
+    # 传旁侧点（如 大唐境外→小西天 的 (16,100)）可让角色停在 NPC 旁而不遮挡。
+    ("北俱芦洲", "女娲神迹"): ((14, 156), "点NPC对话-请送我进去", "点NPC对话-请送我进去", "女娲神迹"),
+    ("大唐境外", "小西天"): ((16, 106), "点NPC对话-快送我进去吧", "点NPC对话-快送我进去吧", "传说小西天", (16, 100)),
 }
 
 # NPC 传送: (起点, 终点) -> (NPC地图坐标, NPC模板, 确认按钮模板)
 LEG_NPCS = {
     ("花果山", "北俱芦洲"): ((28, 98), "点NPC重叠-花果山土地", "点NPC对话-是的我要去"),
+}
+
+# 自定义步骤式跑图：不走通用 NPC/传送模式，按实测屏幕坐标依次点击。
+# 例：大唐境外→小西天（开图→点导航点→关图→等人物到 (23,106)→点NPC→点确认→传小西天）
+CUSTOM_LEGS = {
+    ("大唐境外", "小西天"): [
+        {"action": "open_minimap", "wait": 0.5},
+        {"action": "click_sequence",
+         "positions": [(142, 137), (466, 265), (527, 265), (588, 387),
+                       (404, 262), (593, 325), (523, 328), (593, 387)],
+         "interval": 0.15, "wait": 0.4},
+        {"action": "close_minimap", "wait": 0.5},
+        {"action": "wait_coord", "target_x": 23, "target_y": 106, "tolerance": 8,
+         "timeout": 90, "wait": 0.5},
+        {"action": "click_position", "x": 282, "y": 200, "wait": 1.0},
+        {"action": "click_position", "x": 646, "y": 209, "wait": 1.2},
+        {"action": "wait_map", "keyword": "小西天", "timeout": 10, "wait": 0.5},
+    ],
+    ("小西天", "小雷音寺"): [
+        {"action": "open_minimap", "wait": 0.5},
+        {"action": "click_map_points",
+         "points": [(256, 46), (274, 46), (264, 52)],
+         "min_clicks": 1, "max_clicks": 3, "interval": 0.12, "wait": 0.4},
+        {"action": "close_map", "wait": 0.5},
+        {"action": "wait_coord", "target_x": 30, "target_y": 220, "tolerance": 10,
+         "timeout": 90, "wait": 0.5},
+        {"action": "click_transfer", "target_map": "小雷音寺", "wait": 1.0},
+        {"action": "wait_map", "keyword": "小雷音寺", "timeout": 12, "wait": 0.5},
+    ],
 }
 
 # NPC 对话确认按钮 OCR 区域（流坐标，对应设备 1419-1658,489-527）
@@ -676,27 +708,24 @@ class SceneSwitcher:
         return False
 
     def _close_minimap(self):
-        """关闭小地图：调用时地图必然刚被打开（_go_to_position 刚 _open_minimap）。
-        每轮重新识别"关闭弹窗"按钮（自动尝试新旧两套模板）并点击，点击后必须验证
-        真的关掉；未关掉则逐轮放宽阈值重识别，识别不到时点大地图已知 X 坐标兜底。
-        最多 4 轮，不做其他固定坐标盲点。"""
-        known_x = (677, 72)   # 大地图对话框右上角 X 实测位置
+        """关闭小地图：不同地图弹窗的关闭 X 位置不同（实测 大唐境外/世界地图 ≈(729,123)、朱紫国 ≈(705,63)），
+        且"关闭弹窗"模板偶会误匹配标题文字/头像。先宽 ROI 模板识别 X，命中并验证；未关掉则逐个候选
+        X 位置点击并验证，关掉即成功。最多 4 轮。"""
+        candidates = [(729, 123), (705, 63)]
         for round_, thr in enumerate([0.75, 0.72, 0.70, 0.68]):
             if not self._is_minimap_open():
                 return True
             btn = self._find_close_btn(thr)
-            if btn:
-                self._log(f"  点小地图关闭按钮 ({btn[0]}, {btn[1]}) 置信度 {btn[2]:.2f}")
-                self.tap(btn[0], btn[1])
+            clicks = [(btn[0], btn[1])] if btn else []
+            clicks += candidates
+            for cx, cy in clicks:
+                self._log(f"  尝试关闭 ({cx}, {cy})")
+                self.tap(cx, cy)
                 # 点击关闭后立即截图会拿到关闭前的旧帧/未完成动画，
                 # 之前因此误判“未关闭成功”并马上多点了一次。
                 time.sleep(0.8)
-            else:
-                self._log(f"  未识别到关闭按钮（阈值 {thr}），点已知关闭位 {known_x}")
-                self.tap(known_x[0], known_x[1])
-                time.sleep(1.0)
-            if self._minimap_closed():
-                return True
+                if self._minimap_closed():
+                    return True
             self._log(f"  小地图未关闭成功，重试（第 {round_ + 1}/4 轮）")
         self._log("  ⚠️ 小地图关闭失败，继续后续流程")
         return False
@@ -706,15 +735,15 @@ class SceneSwitcher:
         frame = self.get_frame()
         if frame is None:
             return None
-        found, r = self.find(frame, "关闭弹窗", threshold=thr, roi=(500, 20, 800, 120))
+        # 宽 ROI 覆盖不同地图弹窗的 X（大唐境外/世界地图 ≈(729,123)、朱紫国 ≈(705,63)）；
+        # 命中后仍会经 _minimap_closed 验证，误匹配标题/头像点不掉时切到候选 X 位置。
+        found, r = self.find(frame, "关闭弹窗", threshold=thr, roi=(500, 45, 800, 150))
         if found:
             return r
         return None
 
     def _minimap_closed(self):
         """小地图是否已关闭：关闭按钮消失，且筛选/前往都不在画面上。"""
-        if self._find_close_btn(0.65) is not None:
-            return False
         return not self._is_minimap_open()
 
     def _get_current_map(self, attempts=3):
@@ -827,11 +856,12 @@ class SceneSwitcher:
             self._abort_if_combat()
             frame = self.get_frame()
             if frame is not None:
-                # 左上角坐标显示区域（流坐标 y 30-62, x 55-135）
-                res, _ = self.ocr(frame[30:62, 55:135])
+                # 左上角坐标显示区域（流坐标 y0-100, x40-260；对齐 mhxy_engine.OCR_CROP，
+                # 覆盖 16:9/20:9 设备的地图名+坐标；旧区域 [30:62,55:135] 常裁掉"("导致读不到）
+                res, _ = self.ocr(frame[0:100, 40:260])
                 cur = None
                 for box, text, conf in (res or []):
-                    m = re.search(r"\((\d{1,3}),(\d{1,3})\)", str(text))
+                    m = re.search(r"[(（]\s*(\d{1,4})\s*[,，]\s*(\d{1,4})\s*[)）]", str(text))
                     if m:
                         cur = (int(m.group(1)), int(m.group(2)))
                         break
@@ -963,10 +993,10 @@ class SceneSwitcher:
         frame = self.get_frame()
         if frame is None:
             return None
-        res, _ = self.ocr(frame[30:62, 55:135])
+        res, _ = self.ocr(frame[0:100, 40:260])
         char = None
         for box, text, conf in (res or []):
-            m = re.search(r"\((\d{1,3}),(\d{1,3})\)", str(text))
+            m = re.search(r"[(（]\s*(\d{1,4})\s*[,，]\s*(\d{1,4})\s*[)）]", str(text))
             if m:
                 char = (int(m.group(1)), int(m.group(2)))
                 break
@@ -977,9 +1007,126 @@ class SceneSwitcher:
         self._log(f"  NPC 坐标计算: 角色{char} NPC{npc_xy} -> 屏幕({cx},{cy})")
         return (cx, cy)
 
+    def _close_pop(self, is_one_time=False, try_count=0):
+        """复用小西天偷卡逻辑的 close_pop：逐个关闭常见弹窗（关闭弹窗/聊天/活动弹窗/左下角返回），
+        再处理"菜单-指引"。地图 X 通常由"关闭弹窗"全图命中并关闭。"""
+        if try_count > 3:
+            return
+        try_count += 1
+        frame = self.get_frame()
+        if frame is None:
+            return
+        close_found = 0
+        for name in ["关闭弹窗", "关闭聊天", "关闭活动弹窗", "左下角返回"]:
+            found, r = self.find(frame, name)
+            if found and r:
+                self.tap(r[0] + random.randint(0, 20), r[1] + random.randint(0, 15))
+                close_found += 1
+                time.sleep(random.uniform(0.5, 0.7))
+        frame = self.get_frame()
+        if frame is None:
+            return
+        found, _ = self.find(frame, "菜单-指引")
+        if found:
+            self.tap(15, 78)
+            time.sleep(random.uniform(0.3, 0.5))
+        if not is_one_time and close_found > 0:
+            time.sleep(random.uniform(0.3, 0.5))
+            self._close_pop(is_one_time=is_one_time, try_count=try_count)
+
+    def _run_custom_leg(self, steps):
+        """执行 CUSTOM_LEGS 的自定义步骤序列。返回 True=成功到达目标，False=中途失败。"""
+        for step in steps:
+            action = step["action"]
+            wait = step.get("wait", 0.3)
+            if action == "open_minimap":
+                if not self._open_minimap():
+                    self._log("  [自定义] 打开地图失败")
+                    return False
+                time.sleep(wait)
+            elif action == "use_item":
+                item = step["item"]
+                if not self._use_bag_item(item):
+                    self._log(f"  [自定义] 使用道具失败: {item}")
+                    return False
+                time.sleep(wait)
+            elif action == "click_template":
+                name = step["name"]
+                ok = self.click_template(name, threshold=step.get("threshold", 0.75))
+                if not ok:
+                    self._log(f"  [自定义] 未找到模板 {name}")
+                    return False
+                time.sleep(wait)
+            elif action == "click_map_points":
+                points = step["points"]
+                min_c = step.get("min_clicks", 1)
+                max_c = step.get("max_clicks", 3)
+                cnt = random.randint(min_c, max_c)
+                interval = step.get("interval", 0.12)
+                self._log(f"  [自定义] 随机点地图 {cnt} 次")
+                for _ in range(cnt):
+                    px, py = random.choice(points)
+                    self.tap(px, py)
+                    time.sleep(interval)
+                time.sleep(wait)
+            elif action == "click_transfer":
+                self._click_chuan_song(target_map=step.get("target_map"))
+                time.sleep(wait)
+            elif action == "click_sequence":
+                positions = step["positions"]
+                interval = step.get("interval", 0.15)
+                self._log(f"  [自定义] 连续点击 {len(positions)} 点")
+                for px, py in positions:
+                    self.tap(px, py)
+                    time.sleep(interval)
+                time.sleep(wait)
+            elif action == "close_minimap":
+                self._close_minimap()
+                time.sleep(wait)
+            elif action == "close_map":
+                # 复用小西天偷卡逻辑关地图：找"关闭地图"模板，找不到点 (60,25)
+                frame = self.get_frame()
+                if frame is not None:
+                    found, r = self.find(frame, "关闭地图", threshold=0.5)
+                    if found and r:
+                        self._log(f"  [自定义] 点关闭地图 ({r[0]}, {r[1]}) 置信度 {r[2]:.2f}")
+                        self.tap(r[0], r[1])
+                    else:
+                        self._log("  [自定义] 未找到关闭地图，点 (60,25)")
+                        self.tap(60, 25)
+                # 复用小西天偷卡逻辑：继续关闭残留弹窗（地图 X 由"关闭弹窗"全图命中关闭）
+                self._close_pop(is_one_time=True)
+                time.sleep(wait)
+            elif action == "wait_coord":
+                self._log(f"  [自定义] 等待走到 ({step['target_x']},{step['target_y']})")
+                if not self._wait_coord_near(step["target_x"], step["target_y"],
+                                             tolerance=step.get("tolerance", 8),
+                                             timeout=step.get("timeout", 90)):
+                    self._log("  [自定义] 等待坐标超时")
+                    return False
+                time.sleep(wait)
+            elif action == "click_position":
+                self.tap(step["x"], step["y"])
+                time.sleep(wait)
+            elif action == "wait_map":
+                kw = step["keyword"]
+                got = self._wait_map_name(kw, timeout=step.get("timeout", 10))
+                if not got:
+                    self._log(f"  [自定义] 等待地图 {kw} 超时")
+                    return False
+                self._log(f"  [自定义] 已到达 {kw}（OCR: {got}）")
+                time.sleep(wait)
+            else:
+                self._log(f"  [自定义] 未知动作: {action}")
+                return False
+        return True
+
     def _walk_leg(self, source_map, target_map):
         """跨图腿：走位到传送点 → 点传送 / 点 NPC → 等地图变化。"""
         self._log(f"跑图: {source_map} -> {target_map}")
+        if (source_map, target_map) in CUSTOM_LEGS:
+            self._log("  使用自定义步骤")
+            return self._run_custom_leg(CUSTOM_LEGS[(source_map, target_map)])
         if (source_map, target_map) in LEG_STEPS:
             step = LEG_STEPS[(source_map, target_map)]
             walk_map, xy, mode = step[0], step[1], step[2]
@@ -988,8 +1135,12 @@ class SceneSwitcher:
             npc_xy = LEG_NPCS[(source_map, target_map)][0]
             walk_map, xy, mode = source_map, npc_xy, "npc"
         elif (source_map, target_map) in LEG_NPCS2:
-            npc_xy, npc_tmpl, confirm_tmpl = LEG_NPCS2[(source_map, target_map)]
-            walk_map, xy, mode = source_map, npc_xy, "npc2"
+            npc_cfg = LEG_NPCS2[(source_map, target_map)]
+            npc_xy, npc_tmpl, confirm_tmpl = npc_cfg[0], npc_cfg[1], npc_cfg[2]
+            npc_ocr_name = npc_cfg[3] if len(npc_cfg) > 3 else ""
+            # 走位点默认= NPC 触发点；若指定了第5元素（旁侧点）则走到 NPC 旁边，避免角色遮挡 NPC 名号
+            walk_xy = npc_cfg[4] if len(npc_cfg) > 4 else npc_xy
+            walk_map, xy, mode = source_map, walk_xy, "npc2"
         else:
             self._log(f"[未配置] {source_map} -> {target_map}，请补充 LEG_STEPS / LEG_NPCS / LEG_NPCS2")
             return False
@@ -1008,6 +1159,12 @@ class SceneSwitcher:
                 # 点 NPC：公式位置不可靠，用候选位置逐个点击并验证对话框是否弹出
                 npc_pos = self._get_npc_screen_pos(npc_xy)
                 candidates = []
+                if npc_ocr_name:
+                    # 优先用 NPC 名号 OCR 直接定位并点击（名号固定在 NPC 上方，命中稳定）
+                    np = self._ocr_find((0, 0, 800, 448), npc_ocr_name, timeout=2.0)
+                    if np:
+                        self._log(f"  NPC 名号(OCR): {npc_ocr_name} @ {np[:2]}")
+                        candidates.append((np[0], np[1]))
                 if npc_pos:
                     candidates.append(npc_pos)
                 candidates.append((405, 190))   # 固定位置（角色走位到NPC旁，名字牌在屏幕中上）
@@ -1095,7 +1252,9 @@ class SceneSwitcher:
                 self._log("  NPC 传送未生效，重新走位重试")
             return False
         else:
-            if not self._go_to_position(walk_map, xy[0], xy[1], wait_coord=False):
+            # chuan_song：先等角色真正走到传送点坐标，再点传送按钮，否则角色还在跑动
+            # 就点“传送”并兜底（曾在朱紫国→大唐境外落地前就点传送/兜底）。
+            if not self._go_to_position(walk_map, xy[0], xy[1], wait_coord=True):
                 self._log("  走位失败")
                 return False
             self._click_chuan_song(target_map=target_map)
@@ -1133,7 +1292,7 @@ class SceneSwitcher:
         # 文字（市场招牌/NPC名等）可能以高置信度误匹配传送模板，导致提前空点。
         # 先用左上角坐标确认到位，再等传送图标。
         gate_xy = self._map_game_xy_from_click(source_map, *label_click)
-        for retry in range(3):
+        for retry in range(5):
             # 上一轮点击可能延迟生效：先确认是否已经到达目标（≤3秒）
             got = self._wait_map_name(kw, timeout=1.0)
             if got:
@@ -1147,12 +1306,15 @@ class SceneSwitcher:
             self._close_minimap()
             if gate_xy is not None:
                 if not self._wait_coord_near(gate_xy[0], gate_xy[1], tolerance=25, timeout=90.0):
-                    self._log(f"  等待走到传送口超时，重新打开地图重试（第 {retry + 1}/3 次）")
+                    self._log(f"  等待走到传送口超时，重新打开地图重试（第 {retry + 1}/5 次）")
                     continue
-            # 已走到传送口，等传送图标出现（模板优先、区域 OCR 兜底）
-            hit = self._wait_transfer_button(timeout=3.0)
+            # 已走到传送口，等传送图标出现（模板优先、区域 OCR 兜底）。
+            # gate_xy 为 None（如龙窟二/三/四层缺 MAP_PARAMS）时无法先等坐标到位，
+            # 只能靠等传送按钮覆盖跑动，需放宽等待，否则角色尚在走路就提前报"传送图标未出现"。
+            btn_wait = TRANSFER_BTN_WAIT if gate_xy is None else 3.0
+            hit = self._wait_transfer_button(timeout=btn_wait)
             if hit is None:
-                self._log(f"  传送图标未出现，重新打开地图重试（第 {retry + 1}/3 次）")
+                self._log(f"  传送图标未出现，重新打开地图重试（第 {retry + 1}/5 次）")
                 continue
             kind, pos = hit
             if kind == "tmpl":
@@ -1174,7 +1336,7 @@ class SceneSwitcher:
                 if got:
                     self._log(f"  已到达 {target_map}（OCR: {got}）")
                     return True
-            self._log(f"  点传送后地图未变，重新打开地图重试（第 {retry + 1}/3 次）")
+            self._log(f"  点传送后地图未变，重新打开地图重试（第 {retry + 1}/5 次）")
         self._log(f"  洞穴传送失败: {source_map} -> {target_map}")
         return False
 
@@ -1263,12 +1425,17 @@ class SceneSwitcher:
             self._log(f"点击飞行目的地失败: {target}")
             return False
         time.sleep(1.5)
-        self._close_bag_if_open()
+        # 不再关背包：飞行后背包仍开着，交给调用方（switch_scene）直接用摄妖香，省去"关→再开"两步。
+        # 若调用方不用摄妖香（如子母河底 / 已在路线中途），会自行 _close_bag_if_open 兜底关闭。
 
         # 到达验证：之前点完目的地就直接返回成功，目的地按钮没点中/飞行没触发时，
         # 后续跑图会在原地图里瞎点。这里 OCR 左上角地图名确认真的到达才算成功，
         # 未到达判定飞行失败，由主循环保留切场请求稍后重试。
         arrived = self._wait_map_name(map_name, timeout=3.0)
+        if not arrived:
+            # 背包可能挡住了左上角地图名/坐标：先关背包再验证一次
+            self._close_bag_if_open()
+            arrived = self._wait_map_name(map_name, timeout=3.0)
         if not arrived:
             self._log(f"飞行后未到达 {map_name}（可能飞行未触发），判定飞行失败")
             return False
@@ -1299,7 +1466,12 @@ class SceneSwitcher:
             # 子母河底等场景不遇低级怪，无需摄妖香防怪 / 洞冥草恢复，跳过这两步
             need_buff = target_name not in NO_BUFF_SCENES
             if need_buff and start_idx == 0:
+                # _fly_to 飞行后背包保持打开，这里直接使用摄妖香（_open_bag 检测到已开会跳过），
+                # 用完 _use_bag_item 内部会关背包，省去"关→再开"。
                 self._use_bag_item("摄妖香")
+            else:
+                # 不用摄妖香（子母河底 / 已在路线中途）：确保飞行后未关的背包被关闭
+                self._close_bag_if_open()
             self._abort_if_combat(force=True)
             cur = route[start_idx]
             for i, leg in enumerate(route[start_idx + 1:], start_idx + 1):
