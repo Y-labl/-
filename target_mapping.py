@@ -71,6 +71,65 @@ SCENE_MAPPING = {
         "map_click": {"x1": 180, "y1": 220, "x2": 500, "y2": 380},
         "support_type": "support",
     },
+    # ===== 特殊场景（队伍抓特殊，参考小霸王逆向）=====
+    # 须弥东界: 真陀护法、毗舍童子、持国巡守（含变异）；妙手空空只偷 毗舍童子/变异毗舍童子。
+    "须弥东界": {
+        "tou_targets": ["PK-召唤兽-毗舍童子"],
+        "jineng_targets": ["PK-召唤兽-真陀护法", "PK-召唤兽-毗舍童子", "PK-召唤兽-持国巡守"],
+        # 跑图点击范围（800x448 流坐标）：x=239,y=36,w=209,h=370
+        "map_click": {"x1": 239, "y1": 36, "x2": 448, "y2": 406},
+        "support_type": "support",
+    },
+    # 银华境（游戏内 OCR 场景名为“银华境”，特殊面板习惯写作“银华镜”，见 SCENE_ALIASES）：
+    # 真陀护法、毗舍童子、广目巡守（含变异）；妙手空空只偷 毗舍童子/变异毗舍童子。
+    "银华境": {
+        "tou_targets": ["PK-召唤兽-毗舍童子"],
+        "jineng_targets": ["PK-召唤兽-真陀护法", "PK-召唤兽-毗舍童子", "PK-召唤兽-广目巡守"],
+        "map_click": {"x1": 180, "y1": 220, "x2": 500, "y2": 380},
+        "support_type": "support",
+    },
+    # 弥勒山: 九色鹿、翼马(一)、芙蓉仙子、涂山瞳(一~三)；妙手空空回退到全部模板。
+    "弥勒山": {
+        "tou_targets": ["PK-召唤兽-九色鹿", "PK-召唤兽-翼马", "PK-召唤兽-芙蓉仙子", "PK-召唤兽-涂山瞳"],
+        "jineng_targets": ["PK-召唤兽-九色鹿", "PK-召唤兽-翼马", "PK-召唤兽-芙蓉仙子", "PK-召唤兽-涂山瞳"],
+        "map_click": {"x1": 180, "y1": 220, "x2": 500, "y2": 380},
+        "support_type": "support",
+    },
+    # 丝绸之路: 逆向文档称不支持自动换场景（随机点地图巡逻），无固定的“放大镜”怪物表，
+    # 故偷卡/技能目标留空（引擎允许“仅捕捉模式”），队伍队长仍可按对面“宝宝”文字捕捉。
+    "丝绸之路": {
+        "tou_targets": [],
+        "jineng_targets": [],
+        "map_click": {"x1": 180, "y1": 220, "x2": 500, "y2": 380},
+        "support_type": "support",
+    },
+    # 伊阙龙门（抓特殊）：灵鹤、巡游天神(一、二)、雾中仙、多闻巡守（含变异）。
+    # 特殊高价值 = 多闻巡守（“巡守”关键字）。妙手空空目标 = 灵鹤/变异灵鹤。
+    "伊阙龙门": {
+        "tou_targets": ["PK-召唤兽-灵鹤", "PK-召唤兽-多闻巡守"],
+        "jineng_targets": ["PK-召唤兽-灵鹤", "PK-召唤兽-巡游天神", "PK-召唤兽-多闻巡守", "PK-召唤兽-雾中仙"],
+        "map_click": {"x1": 180, "y1": 220, "x2": 500, "y2": 380},
+        "support_type": "support",
+    },
+    # 无名鬼域（抓特殊）：吸血鬼、幽灵(一、二)、画魂、鬼将（含变异）。
+    # 特殊高价值 = 画魂 / 鬼将。妙手空空目标 = 幽灵/变异幽灵。
+    "无名鬼域": {
+        "tou_targets": ["PK-召唤兽-幽灵", "PK-召唤兽-画魂", "PK-召唤兽-鬼将"],
+        "jineng_targets": ["PK-召唤兽-吸血鬼", "PK-召唤兽-幽灵", "PK-召唤兽-画魂", "PK-召唤兽-鬼将"],
+        "map_click": {"x1": 180, "y1": 220, "x2": 500, "y2": 380},
+        "support_type": "support",
+    },
+    # 青丘（抓特殊）：望月蛙、月光虫、雾中仙(一)、胡不归、月魅(一~三)、花铃(一、二)、
+    # 阿宝、镜妖(一)、涂山瞳(一~三)（含变异）。
+    # 特殊高价值 = 涂山瞳。妙手空空未单列，回退全部模板。
+    "青丘": {
+        "tou_targets": ["PK-召唤兽-涂山瞳", "PK-召唤兽-雾中仙", "PK-召唤兽-镜妖"],
+        "jineng_targets": ["PK-召唤兽-涂山瞳", "PK-召唤兽-雾中仙", "PK-召唤兽-镜妖",
+                           "PK-召唤兽-望月蛙", "PK-召唤兽-月光虫", "PK-召唤兽-胡不归",
+                           "PK-召唤兽-月魅", "PK-召唤兽-花铃", "PK-召唤兽-阿宝"],
+        "map_click": {"x1": 180, "y1": 220, "x2": 500, "y2": 380},
+        "support_type": "support",
+    },
 }
 
 
@@ -83,21 +142,52 @@ RESERVED_SCENES = [
     "鬼市", "龙窟一层", "北俱芦洲", "墨家村", "天机城",
     "九黎城", "凌波城", "无底洞", "碗子山", "解阳山",
     "战神山", "女魃墓", "女儿村", "五行山", "伊阙龙门",
-    "长安酒店", "蓬莱仙岛", "丝绸之路", "万界通廊", "幻境花果山",
+    "长安酒店", "蓬莱仙岛", "万界通廊", "幻境花果山",
 ]
 
 
+# ===== 特殊抓宠场景（队伍抓特殊，与「偷卡场景」分开管理）=====
+# 这些场景走「有 特殊/变异/宝宝 → 捕捉；没有 → 挂自动击杀」，且变异识别会用
+# 放大镜变异* 称号模板。偷卡场景不在此集合，变异识别保持默认（变异蛟龙/变异地狱战神）。
+SPECIAL_CAPTURE_SCENES = [
+    "须弥东界",
+    "银华境",       # 特殊面板写“银华镜”，运行时经 SCENE_ALIASES 归一
+    "弥勒山",
+    "丝绸之路",
+    "伊阙龙门",
+    "无名鬼域",
+    "青丘",
+]
+
+
+# 游戏内场景名与特殊面板写法不一致的别名：正常化后统一返回 SCENE_MAPPING 里的规范键。
+# 例：面板下拉写“银华镜”，但 OCR/地图读取场景名为“银华境”，二者实为同一场景。
+SCENE_ALIASES = {
+    "银华镜": "银华境",
+}
+
+
+def _normalize_scene(area):
+    """把别名场景名映射到 SCENE_MAPPING 规范键；未知场景原样返回。"""
+    if not area:
+        return area
+    return SCENE_ALIASES.get(area, area)
+
+
 def get_tou_targets(area):
+    area = _normalize_scene(area)
     mapping = SCENE_MAPPING.get(area)
     return mapping["tou_targets"] if mapping else None
 
 
 def get_jineng_targets(area):
+    area = _normalize_scene(area)
     mapping = SCENE_MAPPING.get(area)
     return mapping["jineng_targets"] if mapping else None
 
 
 def get_all_monsters(area):
+    area = _normalize_scene(area)
     mapping = SCENE_MAPPING.get(area)
     if not mapping:
         return []
@@ -111,13 +201,21 @@ def get_all_monsters(area):
 
 
 def get_map_click_area(area):
+    area = _normalize_scene(area)
     mapping = SCENE_MAPPING.get(area)
     return mapping["map_click"] if mapping else {"x1": 212, "y1": 21, "x2": 475, "y2": 415}
 
 
 def is_supported_scene(area):
+    area = _normalize_scene(area)
     mapping = SCENE_MAPPING.get(area)
     return mapping is not None and mapping.get("support_type") == "support"
+
+
+def is_special_capture_scene(area):
+    """判断某场景是否为「特殊抓宠场景」。支持别名归一（银华镜→银华境）。"""
+    area = _normalize_scene(area)
+    return area in SPECIAL_CAPTURE_SCENES
 
 
 def list_supported_scenes():

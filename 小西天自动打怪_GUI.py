@@ -22,26 +22,23 @@ from mhxy_engine import (
     AutoFightEngine,
     MAP_CONFIG,
     GUI_CONFIG_FILE,
+    USER_DATA_DIR,
     list_adb_devices,
     stats_day,
     short_dev_label,
 )
 
+from special_scene_panel import SpecialScenePanel
+
 
 # 设备统计文件（按天记录，关闭程序后重启可恢复当日累计）
-STATS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs", "device_stats.txt")
-
-# 特殊场景（队伍抓特殊）队伍配置
-TEAM_CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "special_team_config.json")
-
-# 特殊场景可选场景（引擎已支持的地图）
-SPECIAL_SCENES = list(MAP_CONFIG.keys())
+STATS_FILE = os.path.join(USER_DATA_DIR, "logs", "device_stats.txt")
 
 # 设备独立配置目录
-DEVICE_CONFIG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "configs")
+DEVICE_CONFIG_DIR = os.path.join(USER_DATA_DIR, "configs")
 
 # 场景历史目录
-SCENE_HISTORY_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+SCENE_HISTORY_DIR = os.path.join(USER_DATA_DIR, "logs")
 
 
 def get_scene_history_file(serial, date=None):
@@ -261,7 +258,7 @@ class AutoFightGUI:
         self._display_to_serial = {}  # 显示文本 -> 序列号
 
         # GUI系统日志文件
-        self.gui_log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+        self.gui_log_dir = os.path.join(USER_DATA_DIR, "logs")
         self._gui_log_day_dir = None
         self.gui_log_file = self._gui_daily_log_file()
 
@@ -429,7 +426,7 @@ class AutoFightGUI:
         self.notebook.pack(fill=tk.BOTH, expand=True)
 
         # ===== Tab 4(顺序1): 特殊场景 =====
-        self._build_tab_special()
+        self._special_panel = SpecialScenePanel(self)
 
         # ===== Tab 1: 场景控制 =====
         main = ttk.Frame(self.notebook, padding=15)
@@ -591,7 +588,7 @@ class AutoFightGUI:
         # 调整 Tab 顺序：设备管理放最前，场景控制次之，功能测试最后
         # （注意：add() 对已存在的组件不会移动，必须用 insert()）
         self.notebook.insert(0, self._tab2_frame)   # 设备管理
-        self.notebook.insert(1, self._tab_special_frame)  # 特殊场景
+        self.notebook.insert(1, self._special_panel.frame)  # 特殊场景
         self.notebook.insert(2, main)               # 场景控制
         self.notebook.insert(3, self._tab3_frame)   # 功能测试
         # insert 只改顺序、不改当前选中页，需显式选中设备管理（启动默认展示）
@@ -887,317 +884,6 @@ class AutoFightGUI:
         # 初始化设备列表
         self._refresh_test_devices()
 
-    # ---------- Tab: 特殊场景（队伍抓特殊） ----------
-    def _build_tab_special(self):
-        """特殊场景 Tab：设备入队 + 场景/角色分配 + 队长一键启动队伍。
-
-        每台设备按分配的场景执行不同抓捕逻辑（引擎按 MAP_CONFIG 场景分支），
-        队长=猎术号（捕捉+妙手空空），队员=防御（等待队长抓完）。
-        """
-        tab = ttk.Frame(self.notebook, padding=15)
-        self.notebook.add(tab, text="特殊场景")
-        self._tab_special_frame = tab   # 用于调整 Tab 顺序（放在设备管理之后）
-        tab.columnconfigure(0, weight=1)
-        tab.rowconfigure(1, weight=3)   # 队伍设备列表
-        tab.rowconfigure(2, weight=2)   # 队伍日志
-
-        # ---- 顶部操作栏 ----
-        top = ttk.Frame(tab)
-        top.grid(row=0, column=0, sticky="ew", pady=(0, 10))
-        ttk.Button(top, text="刷新设备", command=self._refresh_special_devices,
-                   width=10, bootstyle="outline").pack(side=tk.LEFT, padx=(0, 8))
-        ttk.Button(top, text="全选", command=lambda: self._special_set_all(True),
-                   width=6, bootstyle="outline").pack(side=tk.LEFT, padx=(0, 4))
-        ttk.Button(top, text="全不选", command=lambda: self._special_set_all(False),
-                   width=7, bootstyle="outline").pack(side=tk.LEFT, padx=(0, 10))
-        ttk.Label(top,
-                  text="勾选设备入队，分配场景与角色；队长(猎术号)抓特殊/宝宝，队员防御。",
-                  foreground="gray", font=("Microsoft YaHei", 9)).pack(side=tk.LEFT)
-
-        right = ttk.Frame(top)
-        right.pack(side=tk.RIGHT)
-        ttk.Button(right, text="保存队伍", command=self._save_team_cfg,
-                   width=10, bootstyle="info").pack(side=tk.LEFT, padx=(0, 6))
-        ttk.Button(right, text="▶ 一键启动队伍", command=self._start_team,
-                   width=14, bootstyle="success").pack(side=tk.LEFT, padx=(0, 6))
-        ttk.Button(right, text="⏹ 停止队伍", command=self._stop_team,
-                   width=12, bootstyle="danger").pack(side=tk.LEFT)
-
-        # ---- 队伍设备列表（Canvas + Scrollbar，与设备管理页一致） ----
-        canvas_frame = ttk.Frame(tab)
-        canvas_frame.grid(row=1, column=0, sticky="nsew")
-        canvas_frame.columnconfigure(0, weight=1)
-        canvas_frame.rowconfigure(0, weight=1)
-
-        self._special_canvas = tk.Canvas(
-            canvas_frame, highlightthickness=0,
-            bg=self.root.style.lookup("TFrame", "background"))
-        self._special_scrollbar = ttk.Scrollbar(
-            canvas_frame, orient=tk.VERTICAL, command=self._special_canvas.yview)
-        self._special_list_frame = ttk.Frame(self._special_canvas)
-        self._special_list_frame.bind(
-            "<Configure>",
-            lambda e: self._special_canvas.configure(
-                scrollregion=self._special_canvas.bbox("all")))
-        self._special_canvas_win = self._special_canvas.create_window(
-            (0, 0), window=self._special_list_frame, anchor="nw")
-        self._special_canvas.bind(
-            "<Configure>",
-            lambda e: self._special_canvas.itemconfig(
-                self._special_canvas_win, width=e.width))
-        self._special_canvas.configure(yscrollcommand=self._special_scrollbar.set)
-        self._special_canvas.grid(row=0, column=0, sticky="nsew")
-        self._special_scrollbar.grid(row=0, column=1, sticky="ns")
-
-        self._special_sel_vars = {}     # serial -> BooleanVar(入队)
-        self._special_row_widgets = {}  # serial -> {scene_cb, role_cb, status_lbl}
-        self._special_scenes = {}       # serial -> 场景
-        self._special_roles = {}        # serial -> "captain"/"member"
-        self._special_ordered = []
-
-        self._lbl_team_summary = ttk.Label(
-            tab, text="队伍: 0 台设备 | 队长: 无",
-            font=("Microsoft YaHei", 10, "bold"), foreground="#0d6efd")
-        self._lbl_team_summary.grid(row=1, column=0, sticky="sw", pady=(4, 0))
-
-        # ---- 队伍日志 ----
-        log_card = ttk.Labelframe(tab, text=" 队伍日志 ", padding=8)
-        log_card.grid(row=2, column=0, sticky="nsew", pady=(8, 0))
-        log_card.columnconfigure(0, weight=1)
-        log_card.rowconfigure(0, weight=1)
-        self._special_log_text = ttk.ScrolledText(
-            log_card, height=9, font=("Microsoft YaHei", 9),
-            state=tk.DISABLED)
-        self._special_log_text.grid(row=0, column=0, sticky="nsew")
-
-        self._refresh_special_devices()
-        self._load_team_cfg()
-        self.root.after(1500, self._special_poll_status)
-
-    # ------------------------------------------------------------------
-    def _refresh_special_devices(self):
-        """刷新特殊场景队伍设备列表"""
-        for w in self._special_list_frame.winfo_children():
-            w.destroy()
-        self._special_sel_vars.clear()
-        self._special_row_widgets.clear()
-
-        devices = list_adb_devices()
-        if not devices:
-            ttk.Label(self._special_list_frame, text="未发现 ADB 设备",
-                      foreground="orange", font=("Microsoft YaHei", 10)).pack(pady=20)
-            self._special_ordered = []
-            self._update_team_summary()
-            return
-
-        ordered = [s for s in self._special_ordered if s in devices]
-        for s in devices:
-            if s not in ordered:
-                ordered.append(s)
-        self._special_ordered = ordered
-
-        # 表头
-        head = ttk.Frame(self._special_list_frame)
-        head.pack(fill=tk.X, pady=(0, 4))
-        head.columnconfigure(1, weight=2)
-        head.columnconfigure(2, weight=1)
-        head.columnconfigure(3, weight=1)
-        ttk.Label(head, text="入队", font=("Microsoft YaHei", 9, "bold")).grid(
-            row=0, column=0, padx=6)
-        ttk.Label(head, text="设备序列号", font=("Microsoft YaHei", 9, "bold")).grid(
-            row=0, column=1, sticky="w")
-        ttk.Label(head, text="场景", font=("Microsoft YaHei", 9, "bold")).grid(
-            row=0, column=2, sticky="w")
-        ttk.Label(head, text="角色", font=("Microsoft YaHei", 9, "bold")).grid(
-            row=0, column=3, sticky="w")
-        ttk.Label(head, text="状态", font=("Microsoft YaHei", 9, "bold")).grid(
-            row=0, column=4, padx=8)
-
-        for serial in ordered:
-            self._special_add_row(serial)
-        self._update_team_summary()
-
-    def _special_add_row(self, serial):
-        row = ttk.Frame(self._special_list_frame)
-        row.pack(fill=tk.X, pady=2)
-        row.columnconfigure(1, weight=2)
-        row.columnconfigure(2, weight=1)
-        row.columnconfigure(3, weight=1)
-
-        var = tk.BooleanVar(value=True)
-        self._special_sel_vars[serial] = var
-        var.trace_add("write", lambda *a: self._update_team_summary())
-        ttk.Checkbutton(row, variable=var, bootstyle="success-round-toggle").grid(
-            row=0, column=0, padx=6)
-
-        ttk.Label(row, text=short_dev_label(serial),
-                  font=("Consolas", 9)).grid(row=0, column=1, sticky="w")
-
-        scene = self._special_scenes.get(serial, SPECIAL_SCENES[0] if SPECIAL_SCENES else "小西天")
-        scene_cb = ttk.Combobox(row, values=SPECIAL_SCENES,
-                                state="readonly", width=12, bootstyle="info")
-        scene_cb.set(scene)
-        scene_cb.grid(row=0, column=2, sticky="w", padx=(0, 8))
-
-        role = self._special_roles.get(serial, "member")
-        role_cb = ttk.Combobox(row, values=["队长(猎术号-抓)", "队员(防御)"],
-                               state="readonly", width=16, bootstyle="primary")
-        role_cb.set("队长(猎术号-抓)" if role == "captain" else "队员(防御)")
-        role_cb.grid(row=0, column=3, sticky="w", padx=(0, 8))
-        role_cb.bind("<<ComboboxSelected>>", lambda e: self._update_team_summary())
-
-        status_lbl = ttk.Label(row, text="停止", foreground="gray",
-                               font=("Microsoft YaHei", 9))
-        status_lbl.grid(row=0, column=4, padx=8)
-
-        self._special_row_widgets[serial] = {
-            "scene_cb": scene_cb,
-            "role_cb": role_cb,
-            "status_lbl": status_lbl,
-        }
-
-    def _special_set_all(self, checked):
-        for var in self._special_sel_vars.values():
-            var.set(checked)
-        self._update_team_summary()
-
-    def _collect_team_members(self):
-        """读取队伍配置：[{serial, scene, is_captain}]"""
-        members = []
-        for serial in self._special_ordered:
-            var = self._special_sel_vars.get(serial)
-            if var is None or not var.get():
-                continue
-            w = self._special_row_widgets.get(serial)
-            if w is None:
-                continue
-            scene = w["scene_cb"].get() or (self._special_scenes.get(serial) or SPECIAL_SCENES[0])
-            is_captain = w["role_cb"].get().startswith("队长")
-            members.append({
-                "serial": serial,
-                "scene": scene,
-                "is_captain": is_captain,
-            })
-        return members
-
-    def _update_team_summary(self):
-        members = self._collect_team_members()
-        captain = next((m["serial"] for m in members if m["is_captain"]), None)
-        self._lbl_team_summary.configure(
-            text="队伍: %d 台设备 | 队长: %s" % (
-                len(members), short_dev_label(captain) if captain else "无"))
-
-    # ------------------------------------------------------------------
-    def _start_team(self):
-        """一键启动队伍：队长先启动（抓），队员后启动（防御）。"""
-        members = self._collect_team_members()
-        if not members:
-            messagebox.showwarning("提示", "请至少勾选一台设备加入队伍")
-            return
-        if not any(m["is_captain"] for m in members):
-            messagebox.showwarning("提示", "请将一台设备设置为队长（猎术号）")
-            return
-        self._stop_team()
-
-        ordered = sorted(members, key=lambda m: 0 if m["is_captain"] else 1)
-        for m in ordered:
-            override = {
-                "map": m["scene"],
-                "capture_bb_enabled": m["is_captain"],
-                "miaoshou_enabled": m["is_captain"],
-                # 队员：防御后自动战斗；队长：保留全局战斗模式（默认逃跑）
-                "defend_then_auto": not m["is_captain"],
-                "skill_then_auto": False,
-                "normal_then_auto": False,
-                "direct_auto": False,
-                "escape_enabled": m["is_captain"],
-                "auto_path_enabled": m["is_captain"],
-                "coord_enabled": True,
-                "check_pkg_counts": True,
-                "use_real_scene_switch": m["is_captain"],
-            }
-            self._team_log("[%s] 入队 scene=%s role=%s" % (
-                short_dev_label(m["serial"]), m["scene"],
-                "队长(抓)" if m["is_captain"] else "队员(防御)"))
-            self._start_device(m["serial"], override=override)
-        self._save_team_cfg()
-        self._team_log("▶ 队伍启动完成（%d 台）" % len(ordered))
-
-    def _stop_team(self):
-        members = self._collect_team_members()
-        if not members:
-            return
-        for m in members:
-            self._stop_device(m["serial"])
-        self._team_log("⏹ 队伍已停止（%d 台）" % len(members))
-
-    def _special_poll_status(self):
-        """定时刷新队伍设备状态"""
-        try:
-            for serial, w in self._special_row_widgets.items():
-                eng = self.engines.get(serial)
-                if eng and getattr(eng, "running", False):
-                    w["status_lbl"].configure(
-                        text="运行中", foreground="green")
-                else:
-                    w["status_lbl"].configure(
-                        text="停止", foreground="gray")
-        except Exception:
-            pass
-        try:
-            self.root.after(1500, self._special_poll_status)
-        except Exception:
-            pass
-
-    def _team_log(self, msg):
-        try:
-            self._special_log_text.configure(state=tk.NORMAL)
-            self._special_log_text.insert(tk.END, time.strftime("[%H:%M:%S] ") + msg + "\n")
-            self._special_log_text.see(tk.END)
-            self._special_log_text.configure(state=tk.DISABLED)
-        except Exception:
-            pass
-
-    # ------------------------------------------------------------------
-    def _save_team_cfg(self):
-        data = {"devices": self._collect_team_members()}
-        try:
-            with open(TEAM_CONFIG_FILE, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            self._team_log("队伍配置已保存: %s" % TEAM_CONFIG_FILE)
-        except Exception as e:
-            self._team_log("保存队伍配置失败: %s" % e)
-
-    def _load_team_cfg(self):
-        if not os.path.exists(TEAM_CONFIG_FILE):
-            return
-        try:
-            with open(TEAM_CONFIG_FILE, encoding="utf-8") as f:
-                data = json.load(f)
-            for dev in data.get("devices", []):
-                self._special_scenes[dev["serial"]] = dev.get("scene", SPECIAL_SCENES[0])
-                self._special_roles[dev["serial"]] = (
-                    "captain" if dev.get("is_captain") else "member")
-            self._apply_team_cfg_to_rows()
-            self._team_log("已加载队伍配置（%d 台）" % len(data.get("devices", [])))
-        except Exception as e:
-            self._team_log("加载队伍配置失败: %s" % e)
-
-    def _apply_team_cfg_to_rows(self):
-        """把已加载的队伍配置应用到现有行控件"""
-        for serial, w in self._special_row_widgets.items():
-            if serial in self._special_scenes:
-                try:
-                    w["scene_cb"].set(self._special_scenes[serial])
-                except Exception:
-                    pass
-            if serial in self._special_roles:
-                try:
-                    w["role_cb"].set(
-                        "队长(猎术号-抓)" if self._special_roles[serial] == "captain"
-                        else "队员(防御)")
-                except Exception:
-                    pass
     def _refresh_test_devices(self):
         """刷新功能测试页的设备下拉列表（显示设备名称）"""
         try:
@@ -1853,6 +1539,9 @@ class AutoFightGUI:
         for serial, eng in self.engines.items():
             if eng is None:
                 continue
+            # 特殊场景队伍引擎是独立项目，不写入偷偷场景的当日统计，防串数据
+            if getattr(eng, "_team_mode", False):
+                continue
             # 引擎统计日与当前不一致（跨 5:00 尚未在引擎主循环里重置）：
             # 不把昨天的计数写入新统计日文件，避免"新日期存旧数据"
             if getattr(eng, "_stats_day_key", today) != today:
@@ -1877,9 +1566,10 @@ class AutoFightGUI:
         except Exception as e:
             self._log(f"⚠️ 统计保存失败: {e}")
 
-    def _start_device(self, serial, override=None):
+    def _start_device(self, serial, override=None, team_mode=False, log_queue=None):
         """启动指定设备的引擎（使用设备独立配置或全局配置）
-        override: dict，额外覆盖配置键（特殊场景队伍模式使用）"""
+        override: dict，额外覆盖配置键（特殊场景队伍模式使用）
+        team_mode: 队伍项目独立模式，战斗/时长/环卡不从偷偷场景继承，重新累计。"""
         if serial in self.engines and self.engines[serial].running:
             self._log(f"[{serial}] 已在运行中")
             return
@@ -1906,25 +1596,35 @@ class AutoFightGUI:
         # 传递全局的设备名称配置给引擎
         device_cfg["device_names"] = self.cfg.get("device_names", {})
 
-        engine = AutoFightEngine(device_cfg, self.log_queue)
-        # 统计恢复：优先用本次运行期间的旧引擎，否则读今日统计文件（按天重置）
-        old_engine = self.engines.get(serial)
-        if old_engine is not None:
-            engine.battle_count = old_engine.battle_count
-            engine._daily_card_count = getattr(old_engine, "_daily_card_count", 0) or 0
-            engine._daily_huan_count = getattr(old_engine, "_daily_huan_count", 0) or 0
-            engine._last_loyalty_recovery = getattr(old_engine, "_last_loyalty_recovery", 0)
-            runtime = getattr(old_engine, "total_runtime", 0) or 0
-            if getattr(old_engine, "start_time", 0) > 0:
-                runtime += max(0.0, time.time() - old_engine.start_time)
-            engine.total_runtime = runtime
+        engine = AutoFightEngine(device_cfg, log_queue if log_queue is not None else self.log_queue)
+        engine._team_mode = team_mode
+        if team_mode:
+            # 队伍项目独立：战斗/时长/环卡全部从 0 重新累计，不与偷偷场景共享
+            engine.battle_count = 0
+            engine.capture_count = 0
+            engine._daily_card_count = 0
+            engine._daily_huan_count = 0
+            engine._last_loyalty_recovery = 0
+            engine.total_runtime = 0
         else:
-            stats = self._today_stats().get(serial, {})
-            engine.battle_count = stats.get("battle_count", 0)
-            engine._daily_card_count = stats.get("cards", 0) or 0
-            engine._daily_huan_count = stats.get("rings", 0) or 0
-            engine._last_loyalty_recovery = stats.get("last_loyalty", 0)
-            engine.total_runtime = stats.get("total_runtime", 0) or 0
+            # 统计恢复：优先用本次运行期间的旧引擎，否则读今日统计文件（按天重置）
+            old_engine = self.engines.get(serial)
+            if old_engine is not None:
+                engine.battle_count = old_engine.battle_count
+                engine._daily_card_count = getattr(old_engine, "_daily_card_count", 0) or 0
+                engine._daily_huan_count = getattr(old_engine, "_daily_huan_count", 0) or 0
+                engine._last_loyalty_recovery = getattr(old_engine, "_last_loyalty_recovery", 0)
+                runtime = getattr(old_engine, "total_runtime", 0) or 0
+                if getattr(old_engine, "start_time", 0) > 0:
+                    runtime += max(0.0, time.time() - old_engine.start_time)
+                engine.total_runtime = runtime
+            else:
+                stats = self._today_stats().get(serial, {})
+                engine.battle_count = stats.get("battle_count", 0)
+                engine._daily_card_count = stats.get("cards", 0) or 0
+                engine._daily_huan_count = stats.get("rings", 0) or 0
+                engine._last_loyalty_recovery = stats.get("last_loyalty", 0)
+                engine.total_runtime = stats.get("total_runtime", 0) or 0
         engine.coord_enabled = device_cfg.get("coord_enabled", True)
         self.engines[serial] = engine
         self.engine = engine
@@ -2079,7 +1779,7 @@ class AutoFightGUI:
     def _device_screenshot(self, serial):
         """为指定设备截图（始终使用ADB实时截图）"""
         import cv2
-        save_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "screenshots")
+        save_dir = os.path.join(USER_DATA_DIR, "screenshots")
         os.makedirs(save_dir, exist_ok=True)
         # 按日期自增编号: 2026_07_29_001.png
         today = datetime.now().strftime("%Y_%m_%d")
@@ -2944,7 +2644,7 @@ class AutoFightGUI:
                 return
 
             # 保存模板
-            template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config_templates")
+            template_dir = os.path.join(USER_DATA_DIR, "config_templates")
             os.makedirs(template_dir, exist_ok=True)
 
             template_file = os.path.join(template_dir, f"{name}.json")
@@ -3757,7 +3457,7 @@ class AutoFightGUI:
         # 加载模板列表
         def load_templates():
             tree.delete(*tree.get_children())
-            template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config_templates")
+            template_dir = os.path.join(USER_DATA_DIR, "config_templates")
             if not os.path.exists(template_dir):
                 return
 
@@ -3930,7 +3630,7 @@ class AutoFightGUI:
             self._sync_ui_to_cfg()
 
             # 保存模板
-            template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config_templates")
+            template_dir = os.path.join(USER_DATA_DIR, "config_templates")
             os.makedirs(template_dir, exist_ok=True)
 
             template_file = os.path.join(template_dir, f"{name}.json")
@@ -4254,4 +3954,3 @@ if __name__ == "__main__":
         sys.stderr = _io.StringIO()
     app = AutoFightGUI()
     app.run()
-

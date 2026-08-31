@@ -24,7 +24,7 @@
 
 """
 
-import os, sys, json, re, random, time, threading, queue, subprocess as sp
+import os, sys, json, re, random, time, threading, queue, subprocess as sp, shutil
 
 import base64
 
@@ -52,7 +52,49 @@ IMAGE_DIR = os.path.join(SCRIPT_DIR, "image")
 
 IMAGES_DIR = os.path.join(SCRIPT_DIR, "images")
 
-GUI_CONFIG_FILE = os.path.join(SCRIPT_DIR, "gui_config.json")
+# ======================== 用户数据目录 ========================
+# PyInstaller 打包(frozen)后，程序文件都放进 exe 专属目录，升级(重新打包)会整体替换。
+# 若配置仍写在程序目录里，每次升级都会丢配置，被迫重新配置。
+# 因此把「用户可编辑数据」固定到用户数据目录：打包运行时用 %LOCALAPPDATA%/mhxy-auto-fight，
+# 源码运行时保持项目目录不变（开发/便携行为一致）。
+
+
+def get_user_data_dir():
+    """返回持久的用户数据目录。"""
+    if getattr(sys, "frozen", False):
+        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+        return os.path.join(base, "mhxy-auto-fight")
+    return SCRIPT_DIR
+
+
+USER_DATA_DIR = get_user_data_dir()
+USER_SUBDIRS = ("configs", "logs", "config_templates", "screenshots")
+
+
+def _seed_user_cfg(name, src_path):
+    """首次使用时把默认配置拷贝进用户数据目录；已存在则保留（升级不会覆盖）。"""
+    dst = os.path.join(USER_DATA_DIR, name)
+    if os.path.exists(dst):
+        return
+    if os.path.exists(src_path):
+        shutil.copyfile(src_path, dst)
+    elif name == "gui_config.json":
+        with open(dst, "w", encoding="utf-8") as f:
+            json.dump(DEFAULT_CONFIG, f, ensure_ascii=False, indent=2)
+
+
+def ensure_user_data_dir():
+    """创建用户数据目录及子目录，并首次拷贝默认配置，避免每次升级重配。"""
+    os.makedirs(USER_DATA_DIR, exist_ok=True)
+    for sub in USER_SUBDIRS:
+        os.makedirs(os.path.join(USER_DATA_DIR, sub), exist_ok=True)
+    _seed_user_cfg("gui_config.json", os.path.join(SCRIPT_DIR, "gui_config.json"))
+    _seed_user_cfg(".env", os.path.join(SCRIPT_DIR, ".env"))
+    if getattr(sys, "frozen", False):
+        _seed_user_cfg(".env", os.path.join(os.path.dirname(os.path.abspath(sys.executable)), ".env"))
+
+
+GUI_CONFIG_FILE = os.path.join(USER_DATA_DIR, "gui_config.json")
 
 
 
@@ -164,7 +206,7 @@ for scene_name in list_supported_scenes():
 
     steal_tag = tou_targets[0].split("-")[-1] if tou_targets else ""
 
-MAP_CONFIG[scene_name] = {
+    MAP_CONFIG[scene_name] = {
 
         "map_click": get_map_click_area(scene_name),
 
@@ -185,6 +227,244 @@ MONSTER_TEMPLATE_ALIASES = {
         "放大镜变异凤凰二点卡服", "放大镜变异凤凰三点卡服",
     ],
 }
+
+
+# 特殊抓宠场景专有的放大镜称号模板别名（须弥东界/银华境/弥勒山/伊阙龙门/无名鬼域/青丘）。
+# 与 MONSTER_TEMPLATE_ALIASES（全局，如凤凰）分开：这些怪有些（灵鹤/雾中仙/镜妖/巡游天神）
+# 也是偷卡场景（小雷音寺/麒麟山/龙窟六层）的怪，若放进全局会污染偷卡场景识别，
+# 因此只在 _find_all 判定为「特殊抓宠场景」时才启用。
+SPECIAL_MONSTER_TEMPLATE_ALIASES = {
+    "PK-召唤兽-真陀护法": [
+        "放大镜真陀护法点卡服", "放大镜变异真陀护法点卡服",
+    ],
+    "PK-召唤兽-毗舍童子": [
+        "放大镜毗舍童子点卡服", "放大镜变异毗舍童子点卡服",
+    ],
+    "PK-召唤兽-持国巡守": [
+        "放大镜持国巡守点卡服", "放大镜变异持国巡守点卡服",
+    ],
+    "PK-召唤兽-广目巡守": [
+        "放大镜广目巡守点卡服", "放大镜变异广目巡守点卡服",
+    ],
+    "PK-召唤兽-九色鹿": [
+        "放大镜九色鹿点卡服",
+    ],
+    "PK-召唤兽-翼马": [
+        "放大镜翼马点卡服", "放大镜翼马一点卡服",
+    ],
+    "PK-召唤兽-芙蓉仙子": [
+        "放大镜芙蓉仙子点卡服",
+    ],
+    "PK-召唤兽-涂山瞳": [
+        "放大镜涂山瞳点卡服", "放大镜涂山瞳一点卡服",
+        "放大镜涂山瞳二点卡服", "放大镜涂山瞳三点卡服",
+    ],
+    # 伊阙龙门 / 无名鬼域 / 青丘：动态称号+放大镜形态，追加 放大镜* 提升准确率。
+    "PK-召唤兽-灵鹤": [
+        "放大镜灵鹤点卡服", "放大镜变异灵鹤点卡服",
+    ],
+    "PK-召唤兽-巡游天神": [
+        "放大镜巡游天神点卡服", "放大镜巡游天神一点卡服",
+        "放大镜巡游天神二点卡服", "放大镜变异巡游天神点卡服",
+    ],
+    "PK-召唤兽-多闻巡守": [
+        "放大镜多闻巡守点卡服", "放大镜变异多闻巡守点卡服",
+    ],
+    "PK-召唤兽-雾中仙": [
+        "放大镜雾中仙点卡服", "放大镜雾中仙一点卡服", "放大镜变异雾中仙点卡服",
+    ],
+    "PK-召唤兽-吸血鬼": [
+        "放大镜吸血鬼点卡服", "放大镜变异吸血鬼点卡服",
+    ],
+    "PK-召唤兽-幽灵": [
+        "放大镜幽灵点卡服", "放大镜幽灵一点卡服", "放大镜幽灵二点卡服",
+        "放大镜变异幽灵点卡服",
+    ],
+    "PK-召唤兽-画魂": [
+        "放大镜画魂点卡服", "放大镜变异画魂点卡服",
+    ],
+    "PK-召唤兽-鬼将": [
+        "放大镜鬼将点卡服", "放大镜变异鬼将点卡服",
+    ],
+    # 青丘：望月蛙/月光虫/胡不归/月魅/花铃/阿宝 无 PK-召唤兽-* body 模板，
+    # 只有放大镜称号模板，作为别名参与识别。
+    "PK-召唤兽-望月蛙": ["放大镜望月蛙点卡服"],
+    "PK-召唤兽-月光虫": ["放大镜月光虫点卡服"],
+    "PK-召唤兽-胡不归": ["放大镜胡不归点卡服"],
+    "PK-召唤兽-月魅": [
+        "放大镜月魅点卡服", "放大镜月魅一点卡服", "放大镜月魅二点卡服", "放大镜月魅三点卡服",
+    ],
+    "PK-召唤兽-花铃": [
+        "放大镜花铃点卡服", "放大镜花铃一点卡服", "放大镜花铃二点卡服",
+    ],
+    "PK-召唤兽-阿宝": ["放大镜阿宝点卡服"],
+    "PK-召唤兽-镜妖": [
+        "放大镜镜妖点卡服", "放大镜镜妖一点卡服", "放大镜变异镜妖点卡服", "放大镜变异镜妖一点卡服",
+    ],
+}
+
+
+# ===== 场景怪物 → 放大镜变异称号模板 的集中映射 =====
+# 供 scene_mutant_templates 使用：无论偷卡场景还是特殊抓宠场景，只要该怪有变异形态，
+# 战斗里就优先识别它并捕捉。命名为完整的“放大镜变异XXX点卡服”模板名，
+# 识别时直接 _find_all(frame, 模板名)，不经过 MONSTER_TEMPLATE_ALIASES 普通怪别名展开，
+# 因此不会影响偷卡场景原本对 PK-召唤兽-* 普通怪的识别。
+VARIANT_TEMPLATE_MAP = {
+    # 龙窟五层
+    "PK-召唤兽-蛟龙": ["放大镜变异蛟龙点卡服", "放大镜变异蛟龙一点卡服",
+                       "放大镜变异蛟龙二点卡服", "放大镜变异蛟龙三点卡服"],
+    "PK-召唤兽-地狱战神": ["放大镜变异地狱战神点卡服", "放大镜变异地狱战神一点卡服",
+                           "放大镜变异地狱战神二点卡服", "放大镜变异地狱战神三点卡服"],
+    # 龙窟六层
+    "PK-召唤兽-巡游天神": ["放大镜变异巡游天神点卡服"],
+    # 凤巢
+    "PK-召唤兽-凤凰": ["放大镜变异凤凰点卡服", "放大镜变异凤凰一点卡服",
+                       "放大镜变异凤凰二点卡服", "放大镜变异凤凰三点卡服"],
+    "PK-召唤兽-天将": ["放大镜变异天将点卡服", "放大镜变异天将一点卡服"],
+    # 小西天
+    "PK-召唤兽-炎魔神": ["放大镜变异炎魔神点卡服", "放大镜变异炎魔神一点卡服"],
+    "PK-召唤兽-金饶僧": ["放大镜变异金饶僧点卡服"],
+    "PK-召唤兽-噬天虎": ["放大镜变异噬天虎点卡服"],
+    "PK-召唤兽-夜罗刹": ["放大镜变异夜罗刹点卡服", "放大镜变异夜罗刹一点卡服"],
+    # 小雷音寺
+    "PK-召唤兽-灵鹤": ["放大镜变异灵鹤点卡服"],
+    "PK-召唤兽-雾中仙": ["放大镜变异雾中仙点卡服"],
+    # 麒麟山
+    "PK-召唤兽-镜妖": ["放大镜变异镜妖点卡服", "放大镜变异镜妖一点卡服"],
+    "PK-召唤兽-百足将军": ["放大镜变异百足将军点卡服"],
+    # 子母河底
+    "PK-召唤兽-鲛人": ["放大镜变异鲛人点卡服"],
+    "PK-召唤兽-碧水夜叉": ["放大镜变异碧水夜叉点卡服", "放大镜变异碧水夜叉一点卡服",
+                           "放大镜变异碧水夜叉二点卡服", "放大镜变异碧水夜叉三点卡服",
+                           "放大镜变异碧水夜叉四点卡服"],
+    # 女娲神迹
+    "PK-召唤兽-灵符女娲": ["放大镜变异灵符女娲点卡服"],
+    "PK-召唤兽-律法女娲": ["放大镜变异律法女娲点卡服"],
+    # 须弥东界 / 银华境
+    "PK-召唤兽-毗舍童子": ["放大镜变异毗舍童子点卡服"],
+    "PK-召唤兽-真陀护法": ["放大镜变异真陀护法点卡服"],
+    "PK-召唤兽-持国巡守": ["放大镜变异持国巡守点卡服"],
+    "PK-召唤兽-广目巡守": ["放大镜变异广目巡守点卡服"],
+    # 伊阙龙门 / 无名鬼域 / 青丘
+    "PK-召唤兽-多闻巡守": ["放大镜变异多闻巡守点卡服"],
+    "PK-召唤兽-画魂": ["放大镜变异画魂点卡服"],
+    "PK-召唤兽-鬼将": ["放大镜变异鬼将点卡服"],
+    "PK-召唤兽-吸血鬼": ["放大镜变异吸血鬼点卡服"],
+    "PK-召唤兽-幽灵": ["放大镜变异幽灵点卡服"],
+}
+
+
+# ===== 高价值特殊怪判定 =====
+# 识别到这些怪（含变异）时发邮件通知。按逆向文档 isTeShuZHS 关键字：
+# 巡守(持国巡守/广目巡守/多闻巡守) / 画魂 / 鬼将 / 夜罗刹 / 大力金刚 / 涂山瞳。
+SPECIAL_MONSTER_KEYWORDS = [
+    "持国巡守", "广目巡守", "多闻巡守",   # 巡守一族（最高价值）
+    "画魂", "鬼将",                      # 无名鬼域特殊
+    "夜罗刹", "大力金刚",                # 小西天/小雷音寺特殊
+    "涂山瞳",                            # 弥勒山/青丘特殊
+]
+
+
+def _monster_name_from_template(tmpl):
+    """从模板名里解析出怪物名：去掉 PK-召唤兽-/放大镜/变异/点卡服 等前后缀。
+    例: '放大镜变异持国巡守点卡服' -> '持国巡守'。"""
+    name = str(tmpl)
+    for prefix in ("PK-召唤兽-", "放大镜变异", "放大镜", "放大镜变异"):
+        name = name.replace(prefix, "")
+    for suffix in ("点卡服", "畅玩服", "异类下", "异类", "人形", "下", "一", "二", "三", "四", "五", "六", "七", "八"):
+        name = name.replace(suffix, "")
+    return name.strip()
+
+
+def is_high_value_monster(tmpl):
+    """判断模板名是否命中高价值特殊怪。tmpl 是场景变异识别用的模板名。"""
+    return any(k in tmpl for k in SPECIAL_MONSTER_KEYWORDS)
+
+
+def _send_mail_worker(cfg, subject, body, image_path):
+    """SMTP 发邮件（线程内执行，不阻塞捕捉流程）。失败仅返回错误文本，不抛异常。"""
+    try:
+        import smtplib
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+        from email.mime.image import MIMEImage
+        from email.header import Header
+
+        smtp = cfg.get("special_mail_smtp", "smtp.qq.com")
+        port = int(cfg.get("special_mail_port", 465) or 465)
+        sender = cfg.get("special_mail_sender", "")
+        pwd = cfg.get("special_mail_sender_pwd", "")
+        recipients = cfg.get("special_mail_recipients", []) or []
+        if not sender or not pwd or not recipients:
+            return "邮件未配置（缺发件账号/授权码/收件人），跳过"
+
+        # QQ SMTP 要求 From 为标准 RFC5322 头（纯邮箱地址或 "名字 <邮箱>"），
+        # 不能对纯 ASCII 邮箱做 MIME 编码，否则会被 550 拒绝。
+        msg = MIMEMultipart()
+        msg["From"] = sender
+        msg["To"] = ", ".join(recipients)
+        msg["Subject"] = Header(subject, "utf-8").encode()
+        msg.attach(MIMEText(body, "plain", "utf-8"))
+
+        if image_path and os.path.exists(image_path):
+            with open(image_path, "rb") as f:
+                img = MIMEImage(f.read())
+            img.add_header("Content-Disposition", "attachment",
+                           filename=os.path.basename(image_path))
+            msg.attach(img)
+
+        server = smtplib.SMTP_SSL(smtp, port, timeout=15)
+        try:
+            server.login(sender, pwd)
+            server.sendmail(sender, recipients, msg.as_string())
+        finally:
+            try:
+                server.quit()
+            except Exception:
+                pass
+        return "sent"
+    except Exception as e:
+        return "发送失败: " + str(e)
+
+
+def scene_mutant_templates(map_name):
+    """返回当前场景的变异识别模板名列表。
+
+    所有场景（偷卡场景 + 特殊抓宠场景）都一样：先把当前场景登记的怪物模板列出，
+    再从 VARIANT_TEMPLATE_MAP 查出这些怪各自的 放大镜变异* 称号模板，拼成变异识别列表。
+    默认固定带上 变异蛟龙/变异地狱战神（龙窟五层既有逻辑，其余场景无对应怪时匹配不到，
+    不影响），保证旧行为不被破坏。
+
+    这样偷卡场景（龙窟/凤巢/小西天/小雷音寺/麒麟山/子母河底/女娲神迹）也会优先识别
+    各自怪物的变异并捕捉；特殊抓宠场景同样受益。识别走独立模板名，不经过
+    MONSTER_TEMPLATE_ALIASES 普通怪别名展开，故不污染 PK-召唤兽-* 普通怪识别。
+    """
+    base = ["PK-召唤兽-变异蛟龙", "PK-召唤兽-变异地狱战神"]
+    seen = set(base)
+    result = list(base)
+    if not map_name:
+        return result
+    norm = _norm_map_scene(map_name)
+    from target_mapping import SCENE_MAPPING as _SM
+    cfg = _SM.get(norm)
+    if not cfg:
+        return result
+    monsters = cfg.get("tou_targets", []) + cfg.get("jineng_targets", [])
+    for m in monsters:
+        for alias in VARIANT_TEMPLATE_MAP.get(m, []):
+            if alias.startswith("放大镜变异") and alias not in seen:
+                seen.add(alias)
+                result.append(alias)
+    return result
+
+
+def _norm_map_scene(map_name):
+    # 场景别名归一（银华镜 -> 银华境），避免“银华镜”场景查不到 SCENE_MAPPING。
+    try:
+        from target_mapping import SCENE_ALIASES as _SA
+        return _SA.get(map_name, map_name)
+    except Exception:
+        return map_name
 
 
 
@@ -437,6 +717,9 @@ FOUR_PERSON_ROI = {
 
 
 
+ensure_user_data_dir()
+
+
 def is_hp_pixel(b, g, r):
 
     """判断是否为血量像素（红色）"""
@@ -615,6 +898,17 @@ DEFAULT_CONFIG = {
 
     "capture_bb_enabled": False,
 
+    # ===== 高价值特殊怪邮件通知 ====
+    # 识别到高价值特殊怪（持国巡守/广目巡守/涂山瞳/多闻巡守/画魂/鬼将/夜罗刹/大力金刚）
+    # 时截图并通过 SMTP 发邮件。发件账号需配置 QQ 邮箱 + SMTP 授权码（QQ 邮箱设置-账户-开启SMTP
+    # 后生成的授权码，非 QQ 登录密码）。未配置授权码时仅在日志提示，不阻塞捕捉。
+    "special_mail_enabled": True,
+    "special_mail_smtp": "smtp.qq.com",
+    "special_mail_port": 465,
+    "special_mail_sender": "597626026@qq.com",
+    "special_mail_sender_pwd": "",   # QQ SMTP 授权码
+    "special_mail_recipients": ["597626026@qq.com", "1106793947@qq.com"],
+
 }
 
 
@@ -637,6 +931,43 @@ _item_hotkey_map = {
 
 
 
+def _env_mail_config():
+    """从项目根 .env 读取高价值特殊怪邮件通知参数（大小写不敏感，忽略注释/空白）。
+    返回 {special_mail_*: 值} 字典；读不到或解析失败返回 {}。"""
+    try:
+        env_path = os.path.join(USER_DATA_DIR, ".env")
+        if not os.path.exists(env_path):
+            env_path = os.path.join(SCRIPT_DIR, ".env")
+            if not os.path.exists(env_path) and getattr(sys, "frozen", False):
+                env_path = os.path.join(os.path.dirname(os.path.abspath(sys.executable)), ".env")
+        if not os.path.exists(env_path):
+            return {}
+        data = {}
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                k = k.strip().upper()
+                v = v.strip().strip('"').strip("'")
+                data[k] = v
+        def _get(name, default=""):
+            return data.get(name, default)
+        recipients_raw = _get("SPECIAL_MAIL_RECIPIENTS", "")
+        recipients = [r.strip() for r in recipients_raw.split(",") if r.strip()]
+        return {
+            "special_mail_enabled": True,
+            "special_mail_smtp": _get("SPECIAL_MAIL_SMTP", "smtp.qq.com"),
+            "special_mail_port": int(_get("SPECIAL_MAIL_PORT", "465") or 465),
+            "special_mail_sender": _get("SPECIAL_MAIL_SENDER", ""),
+            "special_mail_sender_pwd": _get("SPECIAL_MAIL_SENDER_PWD", ""),
+            "special_mail_recipients": recipients,
+        }
+    except Exception:
+        return {}
+
+
 def load_config():
 
     if os.path.exists(GUI_CONFIG_FILE):
@@ -647,9 +978,21 @@ def load_config():
 
                 cfg = json.load(f)
 
+            # 优先用 GUI 文件里的邮件的键（若用户已手动覆盖）；否则回落到 .env，再回落 DEFAULT。
+            # 用「先填 DEFAULT，再填 .env，最后用 GUI 覆盖」保证优先级：gui_config > .env > DEFAULT。
+            env_mail = _env_mail_config()
+            gui_has_mail = {k: cfg[k] for k in env_mail if k in cfg}
             for k, v in DEFAULT_CONFIG.items():
 
                 cfg.setdefault(k, v)
+
+            for k, v in env_mail.items():
+
+                cfg[k] = v          # .env 覆盖 DEFAULT（授权码在 .env）
+
+            for k, v in gui_has_mail.items():
+
+                cfg[k] = v          # GUI 覆盖 .env（用户手动值优先）
 
             # 确保 four_person_roi 每个键都存在
 
@@ -665,7 +1008,10 @@ def load_config():
 
             pass
 
-    return dict(DEFAULT_CONFIG)
+    cfg = dict(DEFAULT_CONFIG)
+    for k, v in _env_mail_config().items():
+        cfg[k] = v
+    return cfg
 
 
 
@@ -788,7 +1134,7 @@ class AutoFightEngine:
 
         # 日志文件路径
         import os
-        self.log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+        self.log_dir = os.path.join(USER_DATA_DIR, "logs")
         self._log_day_dir = None
         self.log_file = self._daily_log_file()
 
@@ -877,6 +1223,7 @@ class AutoFightEngine:
         self.coord_enabled = True
 
         self.battle_count = 0
+        self.capture_count = 0       # 特殊/宝宝捕捉次数（用于特殊场景总计）
 
         self._loyalty_recovery_requested = False   # 战斗中识别不到防御（可能忠诚度问题），战后执行恢复
 
@@ -2125,13 +2472,16 @@ class AutoFightEngine:
     def _wait_for_skill(self, timeout=10.0):
 
         start = time.time()
+        # 特殊场景（miaoshou_enabled=False）没有妙手空空技能图标，改用"自动按钮"
+        # 出现判定轮到操作；偷卡场景保持原有妙手空空图标判定。
+        special_mode = not self.cfg.get("miaoshou_enabled", True)
         # 连续非战斗/截图失败容忍窗口：点空后取消技能选择等瞬间画面可能短暂识别不到
         # 战斗，若第一帧就返回 None，调用方会跳过击杀直接点自动（表现为"点空后没有击杀"）。
         _non_pk_since = None
         _non_pk_grace = 1.5
 
-        # use cached skill position from detection phase
-        if self.last_skill is not None:
+        # 偷卡场景：优先用检测阶段缓存的技能坐标，避免重复取帧验证
+        if not special_mode and self.last_skill is not None:
             frame = self.get_frame()
             if frame is not None:
                 ms = self.find(frame, "PK-妙手空空技能", threshold=0.60)
@@ -2161,8 +2511,15 @@ class AutoFightEngine:
             _non_pk_since = None  # 恢复战斗帧：清零连续非战斗计时
             self.check_hp_mp_battle(frame)
 
-            ms = self.find(frame, "PK-妙手空空技能", threshold=0.60)
+            if special_mode:
+                # 特殊场景：自动按钮出现 = 轮到操作；没出现 = 还在等待/敌方回合
+                if self.find(frame, "PK-自动按钮", threshold=0.70) is None:
+                    time.sleep(0.3)
+                    continue
+                self.last_skill = (0, 0, 0.0)
+                return (0, 0, 0.0)
 
+            ms = self.find(frame, "PK-妙手空空技能", threshold=0.60)
             if ms:
 
                 self.last_skill = ms
@@ -2282,13 +2639,63 @@ class AutoFightEngine:
 
 
 
+    def _notify_special_mail(self, frame, monster_name):
+        """识别到高价值特殊怪：保存截图，并开独立线程发邮件（不阻塞捕捉流程）。
+        每只特殊怪在每场战斗只通知一次（用 _special_mail_notified 去重）。
+        monster_name 用于邮件标题；frame 为当前战斗帧，可能为 None。"""
+        try:
+            if not self.cfg.get("special_mail_enabled", True):
+                return
+            # 去重：同一特殊怪在当前引擎生命周期只发一次
+            if not getattr(self, "_special_mail_notified", None):
+                self._special_mail_notified = set()
+            if monster_name in self._special_mail_notified:
+                return
+            self._special_mail_notified.add(monster_name)
+
+            # 保存截图到 screenshots/special/
+            image_path = None
+            if frame is not None:
+                try:
+                    shot_dir = os.path.join(USER_DATA_DIR, "screenshots", "special")
+                    os.makedirs(shot_dir, exist_ok=True)
+                    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    image_path = os.path.join(shot_dir, f"special_{monster_name}_{ts}.png")
+                    cv2.imwrite(image_path, frame)
+                    self._log(f"  📸 高价值特殊怪截图已保存: {image_path}")
+                except Exception as _e:
+                    self._log(f"  ⚠️ 特殊怪截图失败: {_e}")
+
+            sender = self.cfg.get("special_mail_sender", "")
+            pwd = self.cfg.get("special_mail_sender_pwd", "")
+            recipients = self.cfg.get("special_mail_recipients", []) or []
+            if not sender or not pwd or not recipients:
+                self._log("  📧 识别到高价值特殊怪，但邮件未配置（缺发件账号/授权码），跳过发送")
+                return
+
+            subject = f"遇到高价值特殊怪：{monster_name}"
+            body = (f"设备: {self.cfg.get('serial', '')}\n"
+                    f"场景: {self.last_map_name or self.cfg.get('map', '')}\n"
+                    f"时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                    f"特殊怪: {monster_name}\n")
+            # 独立线程发送，不阻塞捕捉主流程
+            t = threading.Thread(
+                target=_send_mail_worker,
+                args=(dict(self.cfg), subject, body, image_path),
+                daemon=True,
+            )
+            t.start()
+            self._log(f"  📧 已触发 {monster_name} 邮件通知（独立线程发送）")
+        except Exception as e:
+            self._log(f"  ⚠️ 特殊怪邮件通知异常: {e}")
+
     def _save_detection_debug(self, frame, name, targets):
 
         """保存怪物检测标注截图用于调试"""
 
         try:
 
-            debug_dir = os.path.join(SCRIPT_DIR, "screenshots")
+            debug_dir = os.path.join(USER_DATA_DIR, "screenshots")
 
             os.makedirs(debug_dir, exist_ok=True)
 
@@ -2359,13 +2766,19 @@ class AutoFightEngine:
         #    普通怪物重叠（变异怪与普通怪不同位置，重叠即普通怪的误匹配）。
         normal_pts = [(p[0], p[1]) for p in matched_targets]
         mutant_pts = []
-        for tmpl in ("PK-召唤兽-变异蛟龙", "PK-召唤兽-变异地狱战神"):
+        # 变异识别模板：默认 变异蛟龙/变异地狱战神，特殊场景追加 放大镜变异* 模板。
+        map_name_for_mutant = self.last_map_name or self.cfg.get("map", "")
+        for tmpl in scene_mutant_templates(map_name_for_mutant):
             hits = self._find_all(frame, tmpl, threshold=0.80, roi=COMBAT_ROI)
             for hx, hy, hc in hits:
                 # 变异位置与任意普通怪重叠（距离<25px）→ 判为普通怪的误匹配
                 if any(abs(hx-nx)**2 + abs(hy-ny)**2 < 625 for nx, ny in normal_pts):
                     self._log(f"  ⚠️ 变异模板与普通怪重叠 ({hx},{hy}) conf={hc:.2f}，忽略")
                     continue
+                # 高价值特殊怪（持国巡守/广目巡守/涂山瞳/多闻巡守/画魂/鬼将/夜罗刹/大力金刚）
+                # 命中即截图+独立线程发邮件（去重，不阻塞捕捉）。
+                if is_high_value_monster(tmpl):
+                    self._notify_special_mail(frame, _monster_name_from_template(tmpl))
                 mutant_pts.append((hx, hy, hc))
         dedup_m = []
         for t in sorted(mutant_pts, key=lambda x: x[2], reverse=True):
@@ -2514,6 +2927,28 @@ class AutoFightEngine:
 
 
 
+    def _has_capturable_target(self):
+        """当前战斗帧是否仍存在可抓目标（变异 / 对面宝宝 / 高价值特殊怪）。
+        特殊抓宠场景用：只要场上还有目标就一直抓、人物不攻击、宝宝防御，
+        直到目标全部消失才放行攻击。返回 True 表示仍有要抓的怪。"""
+        try:
+            frame = self.get_frame()
+            if frame is None:
+                return False
+            map_name = self.last_map_name or self.cfg.get("map", "")
+            # 1) 变异 / 高价值特殊（放大镜变异称号模板）
+            for tmpl in scene_mutant_templates(map_name):
+                if self._find_all(frame, tmpl, threshold=0.80, roi=COMBAT_ROI):
+                    return True
+            # 2) 对面宝宝文字（蓝/红）
+            for tmpl in ("PK-对面宝宝文字蓝色", "PK-对面宝宝文字红色"):
+                if self._find_all(frame, tmpl, threshold=0.80, roi=COMBAT_ROI):
+                    return True
+            return False
+        except Exception:
+            return False
+
+
     def _run_capture_loop(self, capture_targets, max_rounds=None):
         """捕捉循环：每回合点捕捉按钮(539,403) + 点目标 + 点防御，最多 max_rounds 回合（默认8）。
         每回合重新检测变异/对面宝宝标记是否还在。
@@ -2534,8 +2969,9 @@ class AutoFightEngine:
             frame_check = self.get_frame()
             current_bb = []
             if frame_check is not None:
-                for tmpl in ("PK-召唤兽-变异蛟龙", "PK-召唤兽-变异地狱战神",
-                             "PK-对面宝宝文字蓝色", "PK-对面宝宝文字红色"):
+                _mut_tmpls = scene_mutant_templates(
+                    self.last_map_name or self.cfg.get("map", ""))
+                for tmpl in _mut_tmpls + ["PK-对面宝宝文字蓝色", "PK-对面宝宝文字红色"]:
                     # 变异模板阈值 0.80（同 _try_capture_bb，0.70 会误匹配普通怪）
                     hits = self._find_all(frame_check, tmpl, threshold=0.80, roi=COMBAT_ROI)
                     current_bb.extend(hits)
@@ -2561,6 +2997,7 @@ class AutoFightEngine:
                 self.tap(st[0], st[1])  # 点击目标
                 self._log(f"  🎣 第{cap_round+1}回合 捕捉 ({st[0]},{st[1]})")
                 captured_count += 1
+                self.capture_count += 1
                 # 捕捉后点击防御按钮
                 defend_status = self._tap_defend(log_label="捕捉后防御", timeout=2.5, require_skill_hidden=True)
                 if defend_status == "missing":
@@ -2623,6 +3060,9 @@ class AutoFightEngine:
         self._steal_targets = []
         self._matched_targets = []
         self._matched_names = []
+        # 本场战斗已识别到妙手空空技能图标：到战斗结束为止不再做四小人识别
+        # （战斗中操作画面易被误判为四小人弹窗，白耗图灵额度）
+        self._four_person_locked = False
         self._all_monsters = []
         self._tou_targets = []
 
@@ -2645,13 +3085,18 @@ class AutoFightEngine:
         返回 True 可继续（有偷卡计划），False 表示战斗结束/已逃跑/无需偷窃。"""
         from target_mapping import get_tou_targets as _get_tou, get_all_monsters as _get_all
         map_name = self.last_map_name or self.cfg.get("map", "小西天")
-        self._tou_targets = _get_tou(map_name)
+        self._tou_targets = _get_tou(map_name) or []
         self._all_monsters = _get_all(map_name) or []
-        if not self._all_monsters:
+        # 特殊场景(须弥东界/银华镜/弥勒山/丝绸之路 等)不在 SCENE_MAPPING，
+        # _all_monsters 为空；但捕捉走模板(变异/宝宝)，队长开启捕捉时应继续进入捕捉流程。
+        capture_on = self.cfg.get("capture_bb_enabled", False)
+        if not self._all_monsters and not capture_on:
             self._log(f"  ⚠️ 场景 {map_name} 无怪物配置")
             self._try_escape()
             self._wait_combat_end()
             return False
+        if not self._all_monsters:
+            self._log(f"  🎣 场景 {map_name} 无怪物配置，仅捕捉模式")
 
         frame = self.get_frame()
         if frame is None or not self.is_in_pk(frame):
@@ -2721,6 +3166,22 @@ class AutoFightEngine:
             if not any(abs(t[0]-d[0])**2+abs(t[1]-d[1])**2 < 625 for d in dedup):
                 dedup.append(t)
         return dedup
+
+    def _close_combat_popup_local(self):
+        """战斗中本地关闭四小人弹窗（仅本地 CNN，不调用图灵云，不耗额度）。
+        返回 True=已点击关闭。"""
+        try:
+            from xbw_features import findFourPersonDetectArea, cnnUtil
+            left, top, w, h = findFourPersonDetectArea(self.serial)
+            if left != 0:
+                handled = cnnUtil.findFourPersonLocal(self.serial, left, top, w, h)
+            else:
+                handled = cnnUtil.findFourPersonLocal(self.serial)
+            self._log("  ✅ 本地关闭战斗弹窗成功" if handled else "  ⚠️ 本地未点掉战斗弹窗")
+            return handled
+        except Exception as e:
+            self._log(f"  ⚠️ 本地关闭战斗弹窗异常: {e}")
+            return False
 
     def _do_one_steal(self, frame, ms, i):
         """执行一次妙手空空：点技能 -> 点怪物 -> 点宝宝防御。
@@ -2871,6 +3332,15 @@ class AutoFightEngine:
             else:
                 self._log("  ✅ 防御点击完成，3秒内未再出现（本回合操作完成）")
         if defend_status == "missing":
+            # 弹窗（四小人等）可能遮挡宝宝面板导致找不到防御按钮：
+            # 先本地关闭弹窗（不耗图灵额度），再重试一次宝宝防御
+            _f_pop = self.get_frame()
+            if _f_pop is not None and self._is_show_four_person(_f_pop):
+                self._log("  👥 宝宝防御按钮未出现，检测到弹窗遮挡，关闭弹窗后重试")
+                self._close_combat_popup_local()
+                time.sleep(0.5)
+                defend_status = self._tap_defend(log_label="宝宝", timeout=3.0, require_skill_hidden=True)
+        if defend_status == "missing":
             self._wait_for_skill(timeout=15.0)
             _point_empty = False
             _still_near = False
@@ -2919,6 +3389,7 @@ class AutoFightEngine:
             if self._escape_if_low_hp():
                 return
             self._undo_misoperation()
+            self._special_fight_start = time.time()
 
         non_pk_since = None          # 战斗结束多帧容错
         last_hp_check = 0.0
@@ -2935,6 +3406,7 @@ class AutoFightEngine:
                     non_pk_since = time.time()
                 elif time.time() - non_pk_since >= 2.5:
                     self._log("  🏁 战斗结束")
+                    self._four_person_locked = False
                     return
                 time.sleep(0.1)
                 continue
@@ -2946,21 +3418,62 @@ class AutoFightEngine:
                 last_hp_check = now
                 self.check_hp_mp_battle(frame)
 
-            # === 核心：实时识别妙手空空技能图标（= 轮到玩家操作） ===
-            ms = self.find(frame, "PK-妙手空空技能", threshold=0.60)
-
-            if ms is None:
-                # 妙手空空图标漏识别时，用"捕捉"按钮兜底判断是否轮到操作。
-                # 捕捉按钮每回合轮到人物操作时都显示，且只有人物有、召唤兽没有 → 无歧义。
-                if self.find(frame, "PK-捕捉", threshold=0.70) is None:
+            # === 核心：实时识别"轮到玩家操作" ===
+            # 偷卡场景：识别妙手空空技能图标（=轮到操作）。特殊场景不走妙手空空，
+            # 没有该技能图标，改用"捕捉"按钮判定（轮到玩家操作时右下角"捕捉"按钮一定
+            # 可见可点；未轮到操作时按钮变灰、模板匹配不到）。
+            if self.cfg.get("miaoshou_enabled", True):
+                ms = self.find(frame, "PK-妙手空空技能", threshold=0.60)
+                if ms is not None and not getattr(self, "_four_person_locked", False):
+                    self._four_person_locked = True
+                    self._log("  🔒 已识别到妙手空空技能，本场战斗不再进行四小人识别")
+                if ms is None:
+                    # 妙手空空图标漏识别时，用"捕捉"按钮兜底判断是否轮到操作。
+                    if self.find(frame, "PK-捕捉", threshold=0.70) is None:
+                        time.sleep(0.1)
+                        continue
+                    if self.last_skill is not None:
+                        ms = self.last_skill
+                    else:
+                        ms = (708, 97, 0.0)
+                        self._log("  ⚠️ 妙手空空图标漏识别，无缓存坐标，用固定坐标(708,97)")
+            else:
+                # 特殊场景：判定"轮到玩家操作"用多个操作按钮（自动/捕捉/防御/逃跑）任一命中。
+                # 单靠自动按钮在实时流可能漏检（压缩/动画），多按钮 OR 提高命中。
+                # 命中后记录自动按钮位置（用于点自动），失败则回退固定坐标 (764,406)。
+                auto_pos = None
+                for _btn in ("PK-自动按钮", "PK-捕捉", "PK-防御", "PK-逃跑"):
+                    _hit = self.find(frame, _btn, threshold=0.50)
+                    if _hit:
+                        auto_pos = (764, 406)   # 自动按钮固定参考坐标（右下角）
+                        self._log("  🎮 特殊场景轮到: {} 命中（战斗{:.1f}s）".format(
+                            _btn, time.time() - getattr(self, "_special_fight_start", time.time())))
+                        break
+                if auto_pos is None:
+                    if int(time.time() // 10) != getattr(self, "_special_dbg_t", -1):
+                        self._special_dbg_t = int(time.time() // 10)
+                        self._log("  ⏳ 特殊场景等待轮到操作（操作栏未命中），仍在战斗")
+                    if (time.time() - getattr(self, "_special_fight_start", time.time())) < 12.0:
+                        time.sleep(0.1)
+                        continue
+                    self._log("  ⏱️ 特殊场景等待超时(12s)，默认轮到操作继续")
+                    auto_pos = (764, 406)
+                    time.sleep(0.1)
+                self._special_auto_pos = auto_pos
+                # 立马判定：无特殊/宝宝就直接点自动（第一回合就能挂机，不等 entry/post）
+                if getattr(self, "_auto_battle_on", False):
+                    # 已挂自动：不再重复点自动，直接等战斗结束
+                    self._combat_phase = "wait_end"
                     time.sleep(0.1)
                     continue
-                # 轮到操作了，但技能图标没识别到：用缓存/固定坐标兜底
-                if self.last_skill is not None:
-                    ms = self.last_skill
-                else:
-                    ms = (708, 97, 0.0)
-                    self._log("  ⚠️ 妙手空空图标漏识别，无缓存坐标，用固定坐标(708,97)")
+                if self.cfg.get("capture_bb_enabled", False) and not self._has_capturable_target():
+                    self.tap(auto_pos[0], auto_pos[1])
+                    self._log("  ⚡ 特殊场景无宝宝/特殊，立即点自动挂机")
+                    self._auto_battle_on = True
+                    self._combat_phase = "wait_end"
+                    time.sleep(0.2)
+                    continue
+                ms = (0, 0, 0.0)   # 占位，走下方捕捉/攻击流程
 
             # 已轮到玩家操作
             self.last_skill = ms
@@ -2995,6 +3508,25 @@ class AutoFightEngine:
             if phase == "post":
                 if self._auto_battle_on:
                     self._combat_phase = "wait_end"
+                elif not self.cfg.get("miaoshou_enabled", True):
+                    # 特殊场景：首回合 _combat_enter 已尝试捕捉。若确认对面无宝宝/特殊，
+                    # 直接点自动挂机击杀；若还有目标则继续捕捉/攻击流程。
+                    _has_tgt = self._has_capturable_target()
+                    self._log("  🔍 特殊场景 post: 有可抓目标={} 战斗={:.1f}s".format(
+                        _has_tgt, time.time() - getattr(self, "_special_fight_start", time.time())))
+                    if _has_tgt:
+                        self._post_steal_action(skip_wait=not bool(self._plan),
+                                                matched_targets=self._matched_targets)
+                    else:
+                        # 点自动：优先用本轮识别到的位置，兜底固定坐标(764,406)
+                        _auto_pos = getattr(self, "_special_auto_pos", None)
+                        if not _auto_pos:
+                            _hit = self.find(frame, "PK-自动按钮", threshold=0.50)
+                            _auto_pos = (_hit[0], _hit[1]) if _hit else (764, 406)
+                        self.tap(_auto_pos[0], _auto_pos[1])
+                        self._log("  ⚡ 特殊场景无宝宝/特殊，直接点自动挂机")
+                        self._auto_battle_on = True
+                        self._combat_phase = "wait_end"
                 else:
                     # 未挂自动（怪物未检测到/逃跑失败）：本回合再次尝试击杀/逃跑
                     self._post_steal_action(skip_wait=not bool(self._plan), matched_targets=self._matched_targets)
@@ -3691,12 +4223,20 @@ class AutoFightEngine:
                 if not self._check_in_combat():
                     self._log("  🏁 捕捉后战斗已结束")
                     return
+            # 特殊抓宠场景：只要场上还有可抓目标（特殊/变异/宝宝）就继续抓，
+            # 人物不攻击、宝宝防御（后续回合 _battle_loop 会再次进入 post 继续抓）。
+            # 直到目标全部消失才放行下方攻击分支。偷卡场景（非特殊抓宠）不受影响。
+            if self._is_special_capture_now() and self._has_capturable_target():
+                self._log("  🎣 场上仍有可抓的特殊/宝宝，人物继续抓、宝宝防御（不攻击）")
+                self._tap_defend(log_label="等待捕捉", timeout=2.5, require_skill_hidden=False)
+                return
 
         if mode_skill:
 
-            # 点选技能后自动战斗: 点法术技能(713,145) -> 点怪物 -> 点自动
-
-            sx, sy = 713, 145  # 法术技能坐标
+            # 点选技能后自动战斗: 点法术技能 -> 点怪物 -> 点自动
+            # 技能坐标从配置读取（默认 713,145，偷卡场景；特殊场景队长可覆盖为 711,95）
+            sx = int(self.cfg.get("skill_x", 713) or 713)
+            sy = int(self.cfg.get("skill_y", 145) or 145)
 
             if skip_wait:
 
@@ -4228,7 +4768,9 @@ class AutoFightEngine:
 
         # 执行击杀操作：点技能(713,145) → 点怪物(人物) → 点怪物(宝宝)
 
-        self.tap(713, 145)
+        # 技能坐标从配置读取（默认 713,145，偷卡场景；特殊场景队长可覆盖为 711,95）
+        self.tap(int(self.cfg.get("skill_x", 713) or 713),
+                 int(self.cfg.get("skill_y", 145) or 145))
 
         time.sleep(0.8)
 
@@ -4278,7 +4820,7 @@ class AutoFightEngine:
 
             from PIL import Image, ImageDraw, ImageFont
 
-            debug_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug_combat")
+            debug_dir = os.path.join(USER_DATA_DIR, "debug_combat")
 
             os.makedirs(debug_dir, exist_ok=True)
 
@@ -4368,10 +4910,27 @@ class AutoFightEngine:
 
 
 
+    def _is_special_capture_now(self):
+        """当前是否处于「特殊抓宠场景」？用于按场景开关放大镜称号别名。"""
+        try:
+            from target_mapping import is_special_capture_scene as _is_special
+            map_name = self.last_map_name or self.cfg.get("map", "")
+            return bool(map_name) and _is_special(map_name)
+        except Exception:
+            return False
+
     def _find_all(self, frame, name, threshold=0.81, roi=None):
 
         # 别名合并：动态/多态怪物（如凤凰）用多帧模板一起识别，提升漏检率。
-        aliases = MONSTER_TEMPLATE_ALIASES.get(name)
+        # 全局别名（凤凰等）始终启用；特殊抓宠场景额外启用 放大镜* 称号别名，
+        # 避免灵鹤/雾中仙/镜妖/巡游天神等怪（偷卡场景也用）被放大镜别名污染。
+        # 注意：所有名字（含别名）都直接走 _find_all_single 做模板匹配，
+        # 不能递归调用 _find_all —— 循环里包含 name 本身，递归会无限自调用
+        # 导致栈溢出崩溃（Fatal Python error: Cannot recover from stack overflow）。
+        aliases = list(MONSTER_TEMPLATE_ALIASES.get(name) or [])
+
+        if self._is_special_capture_now():
+            aliases += SPECIAL_MONSTER_TEMPLATE_ALIASES.get(name, [])
 
         if aliases:
 
@@ -4387,7 +4946,7 @@ class AutoFightEngine:
 
                     continue
 
-                results.extend(self._find_all(frame, nm, threshold, roi))
+                results.extend(self._find_all_single(frame, nm, threshold, roi))
 
             dedup = []
 
@@ -4399,6 +4958,11 @@ class AutoFightEngine:
 
             return dedup
 
+
+        return self._find_all_single(frame, name, threshold, roi)
+
+    def _find_all_single(self, frame, name, threshold=0.81, roi=None):
+        """单模板匹配（无别名展开）。_find_all 的底层实现。"""
 
         tmpl = self.templates.get(name)
 
@@ -4751,6 +5315,9 @@ class AutoFightEngine:
         """
 
         try:
+            if getattr(self, "_four_person_locked", False):
+                # 本场已识别到妙手空空技能：战斗结束前不再识别（防误判、省图灵额度）
+                return False
             if not self._is_show_four_person(frame):
                 return False
 
@@ -5112,7 +5679,7 @@ class AutoFightEngine:
 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255), 1)
 
-            dd = os.path.join(SCRIPT_DIR, "screenshots")
+            dd = os.path.join(USER_DATA_DIR, "screenshots")
 
             os.makedirs(dd, exist_ok=True)
 
@@ -5831,6 +6398,7 @@ class AutoFightEngine:
                     self._reset_battle_state()
 
                     self._battle_loop()
+                    self._four_person_locked = False  # 兜底：异常退出战斗也解除四小人锁定
 
                     time.sleep(0.15)
 

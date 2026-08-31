@@ -4,7 +4,22 @@
 主程序导入 mhxy_engine（cv2/numpy 等）需要约 2 秒，期间显示启动画面避免"看起来没反应"。
 用法：pythonw launcher.py  （由 run.bat 调用）
 """
+import os
 import sys
+
+# 捕获原生层/CPython 致命错误：把 C 层 fd 1/2 重定向到文件。
+# pythonw 下 CPython 遇到 "Fatal Python error"（GIL/线程致命错误）会直接
+# fprintf(stderr) + abort()，不经过 sys.stderr，不重定向就什么都看不到。
+try:
+    _log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+    os.makedirs(_log_dir, exist_ok=True)
+    _err = open(os.path.join(_log_dir, "stderr.log"), "ab", buffering=0)
+    os.dup2(_err.fileno(), 2)   # C 层 stderr
+    os.dup2(_err.fileno(), 1)   # C 层 stdout
+    _err.write(f"\n===== 启动 {__import__('time').strftime('%Y-%m-%d %H:%M:%S')} pid={os.getpid()} =====\n".encode("utf-8"))
+except Exception:
+    pass
+
 import tkinter as tk
 
 # pythonw 下没有控制台，print 会崩，替换为可忽略对象
