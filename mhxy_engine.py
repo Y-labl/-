@@ -1198,6 +1198,7 @@ class AutoFightEngine:
         self._four_person_locked = False  # 首次识别到妙手空空后，整个自动打怪会话锁定四小人识别
         self._steal_operating = False     # 妙手空空操作进行中（点技能→点怪→点防御），期间不做四小人识别
         self._battle_grace_until = 0.0    # 战斗结束宽限窗截止时间（此窗口内主循环不做四小人检测）
+        self._fp_tuling_pending_t = 0.0   # 四小人图灵兜底等待窗起点（本地失败后弹窗持续8s才上图灵）
         self._last_ocr_texts = None      # 最近一次巡逻 OCR 原始文字（四小人 OCR 强信号用）
         self._tuling_fail_streak = 0     # 图灵云连续失败次数（用于冷却节流）
         self._tuling_cooldown_until = 0  # 图灵云冷却截止时间戳（余额不足等持续失败时暂停调用）
@@ -6038,10 +6039,38 @@ class AutoFightEngine:
 
 
 
-    def _handle_four_person(self):
+    def _handle_four_person(self, strong=False):
 
         """四小人处理：优先本地 ONNX（小霸王合并功能），失败降级图灵云API。
-        调用方（主循环）已确认四小人界面。"""
+        调用方（主循环）已确认四小人界面。
+        strong=True 为主循环 OCR 强信号（巡逻 OCR 读到"请选择"等弹窗文案），
+        确认真弹窗，图灵兜底不走等待窗口。"""
+
+        # === 弹窗持续确认窗口：本地处理失败后不立即上图灵 ===
+        # 战斗切入动画帧（无血蓝无头像+怪物sprite被CNN认成"人"，置信度可达1.00）
+        # 会在进场前 5-10s 骗过预筛和 CNN（用户复现 22:13:50：CNN点2次→传图灵→
+        # API判定"无关键要素"）。这类过渡帧在战斗开始后被 _battle_loop 接管主循环，
+        # 本块不会再运行；真弹窗则会一直存在等玩家点击。故首次本地失败后等 8s，
+        # 弹窗仍持续存在才值得上图灵。
+        _now = time.time()
+        _pending = getattr(self, "_fp_tuling_pending_t", 0.0)
+        _go_tuling = False
+        if _pending:
+            if _now - _pending > 60.0:
+                # 陈旧等待窗（如战斗接管后一直没再触发四小人）：当作新事件重走本地识别
+                self._fp_tuling_pending_t = 0.0
+                _pending = 0.0
+            elif _now - _pending < 8.0 and not strong:
+                if not self._is_show_four_person():
+                    self._fp_tuling_pending_t = 0.0
+                    self._log("  ⏭️ 疑似弹窗已消失（过渡帧/战斗已接管），撤销图灵兜底")
+                    return
+                self._log("  ⏳ 本地未点掉四小人，等弹窗持续存在确认后再调图灵（防战斗切入帧误传）")
+                return
+            else:
+                # 等满 8s 仍存在 / OCR强信号 → 真弹窗；本地已证明点不掉，直接走图灵
+                self._fp_tuling_pending_t = 0.0
+                _go_tuling = True
 
         if not self._xbw_wired and not self._is_show_four_person():
 
@@ -6049,7 +6078,7 @@ class AutoFightEngine:
 
             return
 
-        if self.cfg.get("use_local_four_person", True):
+        if self.cfg.get("use_local_four_person", True) and not _go_tuling:
             try:
                 from xbw_features import findFourPersonDetectArea, cnnUtil
                 left, top, w, h = findFourPersonDetectArea(self.serial)
@@ -6069,26 +6098,29 @@ class AutoFightEngine:
                 if _fp_prob < 0.3:
                     self._log(f"  ⏭️ 本地四小人置信度 {_fp_prob:.2f} < 0.3，判定非弹窗（过渡帧），不调图灵")
                     return
-                # （2026-09-01 用户要求去掉"槽位校验"：真四小人弹窗不再因4槽不全有内容被误判跳过，
-                # 本地没点掉直接走下方图灵兜底；过渡帧误判消耗的图灵额度由 _tuling_fail_streak 冷却兜底）
-                # 本地 0.8 阈值没点掉：若图灵处于冷却（余额不足等），降阈值再试一次，
-                # 仍不行则跳过本次（不点图灵），避免反复请求 + 死循环
-                if self._tuling_unavailable():
-                    self._log("  ⚠️ 图灵冷却中，本地降阈值(0.5)重试")
-                    try:
-                        if left != 0:
-                            handled = cnnUtil.findFourPersonLocal(self.serial, left, top, w, h, conf_threshold=0.5)
-                        else:
-                            handled = cnnUtil.findFourPersonLocal(self.serial, conf_threshold=0.5)
-                    except Exception:
-                        handled = False
-                    if handled:
-                        return
-                    self._log("  ⏭️ 图灵冷却中，跳过本次四小人处理")
+                # 本地置信度足够但没点掉（CNN 选错槽位等）：非 OCR 强信号时先进入
+                # 持续确认等待（见函数开头），8s 后弹窗仍在才上图灵
+                if not strong:
+                    self._fp_tuling_pending_t = time.time()
+                    self._log("  ⏳ 本地四小人识别未生效，8s 后弹窗仍存在才调图灵云（防战斗切入帧误传）")
                     return
-                self._log("  ⚠️ 本地四小人识别未生效，按 8.5 前方式调用图灵云")
+                self._log("  ⚠️ 本地四小人识别未生效（OCR强信号），按 8.5 前方式调用图灵云")
             except Exception as e:
                 self._log(f"  ⚠️ 本地四小人识别异常({e})，按 8.5 前方式调用图灵云")
+
+        # 图灵冷却中（余额不足等连续失败）：本地降阈值(0.5)重试一次，仍不行跳过，
+        # 不反复请求（防死循环）
+        if self._tuling_unavailable():
+            self._log("  ⚠️ 图灵冷却中，本地降阈值(0.5)重试")
+            try:
+                from xbw_features import cnnUtil
+                handled = cnnUtil.findFourPersonLocal(self.serial, conf_threshold=0.5)
+            except Exception:
+                handled = False
+            if handled:
+                return
+            self._log("  ⏭️ 图灵冷却中，跳过本次四小人处理")
+            return
 
         # 8.5 前图灵处理方式：全分辨率截图 + 固定 ROI + 坐标换算 + tap
         self._log("  👅 检测到四小人界面，按 8.5 前方式调用图灵云识别...")
@@ -7130,7 +7162,7 @@ class AutoFightEngine:
                     self._log(f"[{loop}] 👥 检测到四小人界面" +
                               ("（OCR 信号）" if _ocr_four_signal else ""))
 
-                    self._handle_four_person()
+                    self._handle_four_person(strong=_ocr_four_signal)
 
                     time.sleep(random.uniform(0.2, 0.5))
 
