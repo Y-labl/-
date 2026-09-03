@@ -122,6 +122,9 @@ LEG_STEPS = {
     ("龙窟二层", "龙窟三层"): ("龙窟二层", (146, 336), "cave", (303, 374)),
     ("龙窟三层", "龙窟四层"): ("龙窟三层", (583, 282), "cave", (618, 249)),
     ("龙窟四层", "龙窟五层"): ("龙窟四层", (526, 224), "cave", (465, 184)),
+    # 龙窟五层↔六层（坐标来自忠诚度恢复 SCENE_RECOVERY["龙窟五层"]，传送光圈兜底流坐标）
+    ("龙窟五层", "龙窟六层"): ("龙窟五层", (269, 321), "cave", (527, 282)),
+    ("龙窟六层", "龙窟五层"): ("龙窟六层", (396, 321), "cave", (331, 213)),
     ("凤巢一层", "凤巢二层"): ("凤巢一层", (281, 321), "cave"),
     ("凤巢二层", "凤巢三层"): ("凤巢二层", (548, 185), "cave"),
     ("凤巢三层", "凤巢四层"): ("凤巢三层", (543, 322), "cave"),
@@ -1469,8 +1472,13 @@ class SceneSwitcher:
             return False
         self._log("点击飞行符")
         if not self.click_template("飞行符"):
-            self._log("点击飞行符失败")
-            return False
+            # 刚点道具开背包时物品栏可能没渲染好/开错了页签 → 重新确认背包打开再找一次
+            self._log("  飞行符未匹配到，重新确认背包打开并重试")
+            if self._open_bag() and self.click_template("飞行符"):
+                pass
+            else:
+                self._log("点击飞行符失败")
+                return False
         self._log("点击使用")
         if not self.click_template("使用"):
             self._log("点击使用失败")
@@ -1497,7 +1505,7 @@ class SceneSwitcher:
         self._log(f"已确认到达 {map_name}")
         return True
 
-    def switch_scene(self, target_name):
+    def switch_scene(self, target_name, cur_map_hint=None):
         route = resolve_route(target_name)
         if route is not None and len(route) >= 2:
             self._log(f"路线: {target_name} = {' -> '.join(route)}")
@@ -1505,12 +1513,28 @@ class SceneSwitcher:
 
             # 检测当前场景：已在路线中就从当前位置继续（不重复飞行/跑图）
             cur_map = self._get_current_map()
+            if cur_map is None:
+                # 引擎已知当前场景（OCR 已探测）时，用它兜底，避免"就近走直接腿"因
+                # 重新 OCR 失败（返回 None）而走整条傲来路线（如龙窟六层→龙窟五层）。
+                cur_map = cur_map_hint
             start_idx = self._scene_in_route(cur_map, route)
             if start_idx > 0:
                 self._log(f"  当前位于 {cur_map}（{route[start_idx]}），从该处继续")
             elif start_idx == 0:
                 self._log(f"  已在 {route[0]}，跳过飞行")
             else:
+                # 当前场景不在目标路线内：若和目标是同洞窟相邻层（LEG_STEPS 有直接腿），
+                # 就近走一段即可，不必飞回傲来重跑整条路线（如龙窟六层→龙窟五层）。
+                direct = LEG_STEPS.get((cur_map, target_name))
+                if direct:
+                    self._log(f"  当前 {cur_map}，与目标 {target_name} 相邻，就近走直接腿，不飞回起点")
+                    self._abort_if_combat(force=True)
+                    if not self._walk_leg(cur_map, target_name):
+                        self._log(f"  就近走腿失败: {cur_map} -> {target_name}")
+                        return False
+                    self._abort_if_combat(force=True)
+                    self._log(f"场景切换完成: {target_name}")
+                    return True
                 self._log(f"  当前 {cur_map or '未知场景'}，飞行到起点 {route[0]}")
                 if not self._fly_to(route[0]):
                     self._log(f"飞行到起点失败: {route[0]}")
@@ -1518,14 +1542,16 @@ class SceneSwitcher:
                 start_idx = 0
 
             self._abort_if_combat(force=True)
-            # 子母河底等场景不遇低级怪，无需摄妖香防怪 / 洞冥草恢复，跳过这两步
+            # 子母河底等场景不遇低级怪，无需摄妖香防怪 / 洞冥草恢复，跳过这两步。
+            # 其他场景：不管从起点跑还是中途续跑，跑图前统一吃摄妖香
+            # （香生效时重复吃无副作用；中途续跑不吃会裸奔遇怪）。
             need_buff = target_name not in NO_BUFF_SCENES
-            if need_buff and start_idx == 0:
+            if need_buff:
                 # _fly_to 飞行后背包保持打开，这里直接使用摄妖香（_open_bag 检测到已开会跳过），
                 # 用完 _use_bag_item 内部会关背包，省去"关→再开"。
                 self._use_bag_item("摄妖香")
             else:
-                # 不用摄妖香（子母河底 / 已在路线中途）：确保飞行后未关的背包被关闭
+                # 不用摄妖香（子母河底）：确保飞行后未关的背包被关闭
                 self._close_bag_if_open()
             self._abort_if_combat(force=True)
             cur = route[start_idx]

@@ -76,8 +76,8 @@ class SpecialScenePanel:
         gui.notebook.add(tab, text="特殊场景")
         self.frame = tab
         tab.columnconfigure(0, weight=1)
-        tab.rowconfigure(1, weight=3)
-        tab.rowconfigure(2, weight=2)
+        tab.rowconfigure(1, weight=1)     # 队伍表格区吃掉所有多余高度
+        tab.rowconfigure(2, weight=0)     # 日志区固定高度，不再挤占表格
 
         # ---- 顶部操作栏：刷新/全选/全不选 + 场景下拉 + 保存/启动/停止 ----
         top = ttk.Frame(tab)
@@ -113,10 +113,15 @@ class SpecialScenePanel:
         log_card = ttk.Labelframe(tab, text=" 队伍日志 ", padding=8)
         log_card.grid(row=2, column=0, sticky="nsew", pady=(8, 0))
         log_card.columnconfigure(0, weight=1)
-        log_card.rowconfigure(0, weight=1)
+        log_card.rowconfigure(1, weight=1)
+        # 总计固定在日志上方（不随日志滚动；跟随当前选中队伍，切 Tab 时刷新）
+        self._log_total_lbl = ttk.Label(log_card, text="本队已抓特殊: 0 只",
+                                        font=("Microsoft YaHei", 9, "bold"),
+                                        foreground="#198754")
+        self._log_total_lbl.grid(row=0, column=0, sticky="w", pady=(0, 4))
         self._team_log_text = ttk.ScrolledText(log_card, height=9,
                                                font=("Microsoft YaHei", 9), state=tk.DISABLED)
-        self._team_log_text.grid(row=0, column=0, sticky="nsew")
+        self._team_log_text.grid(row=1, column=0, sticky="nsew")
 
         # 先恢复已保存的队伍配置（device_order / team_of / roles），再刷新设备，
         # 这样 refresh_devices 会保留已保存的队伍归属，只补充当前在线新设备。
@@ -129,6 +134,11 @@ class SpecialScenePanel:
             self._cur_team = self._team_notebook.index("current")
         except Exception:
             self._cur_team = 0
+        # 切队伍 Tab 时同步日志上方固定的总计
+        try:
+            self.refresh_stats()
+        except Exception:
+            pass
 
     def _sync_cur_team(self):
         """同步 _cur_team 为当前实际选中的 Tab。
@@ -278,8 +288,38 @@ class SpecialScenePanel:
         frame.rowconfigure(0, weight=1)
 
         cell_bg = self.gui.root.style.lookup("TFrame", "background")
-        table = tk.Frame(frame, bg=cell_bg)
-        table.grid(row=0, column=0, sticky="nsew", padx=4, pady=4)
+
+        # 表格放进 Canvas：窗口拉宽时列跟随拉伸，设备多时纵向滚动
+        canvas = tk.Canvas(frame, highlightthickness=0, bg=cell_bg)
+        vsb = ttk.Scrollbar(frame, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=vsb.set)
+        canvas.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        table = tk.Frame(canvas, bg=cell_bg)
+        _tbl_id = canvas.create_window((0, 0), window=table, anchor="nw")
+        table.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        # 窗口变宽时让内部表格同宽（列才有拉伸空间）
+        canvas.bind(
+            "<Configure>",
+            lambda e: canvas.itemconfigure(_tbl_id, width=e.width))
+        # 鼠标滚轮滚动表格（Windows：MouseWheel）。不用 bind_all，避免干扰其他面板
+        def _on_wheel(e):
+            canvas.yview_scroll(int(-1 * (e.delta / 120)), "units")
+        self._wheel_canvas = canvas
+        self._wheel_handler = _on_wheel
+        self._bind_wheel(canvas)
+        self._bind_wheel(table)
+
+        # 列权重：文本列跟随窗口拉伸，开关/按钮列固定
+        _col_weights = [0, 2, 2, 2, 1, 1, 1, 0, 0]
+        for _ci, _w in enumerate(_col_weights):
+            if _w:
+                table.columnconfigure(_ci, weight=_w, uniform="teamcol")
+            else:
+                table.columnconfigure(_ci, weight=0)
+
         heads = [("入队", 0), ("设备名称", 10), ("设备序列号", 18),
                  ("角色", 16), ("状态", 6), ("战斗", 4), ("时长", 6), ("操作", 8)]
         for ci, (txt, wd) in enumerate(heads):
@@ -293,11 +333,15 @@ class SpecialScenePanel:
         total_lbl = ttk.Label(frame, text="本队已抓特殊: 0 只",
                               font=("Microsoft YaHei", 9, "bold"), foreground="#198754")
         total_lbl.grid(row=2, column=0, sticky="w", pady=(2, 4))
-        team = {"idx": idx, "frame": frame, "table": table,
+        team = {"idx": idx, "frame": frame, "table": table, "canvas": canvas,
                 "sel_vars": {}, "row_widgets": {}, "summary": summary, "total": total_lbl}
         for ri, serial in enumerate(serials, 1):
             self._add_row(table, ri, serial, team)
         self._teams.append(team)
+
+    def _bind_wheel(self, widget):
+        """给控件绑定表格滚轮事件（多行设备时滚动查看）"""
+        widget.bind("<MouseWheel>", lambda e: self._wheel_handler(e))
 
     def _add_row(self, table, row_idx, serial, team):
         cell_bg = self.gui.root.style.lookup("TFrame", "background")
@@ -308,7 +352,8 @@ class SpecialScenePanel:
             row=row_idx, column=0, pady=4)
 
         dev_names = self.gui.cfg.get("device_names", {})
-        dev_name = dev_names.get(serial, short_dev_label(serial))
+        # 未设置自定义名称的新设备显示完整序列号，避免只看到缩写（如 JUBNU(912)）
+        dev_name = dev_names.get(serial) or serial
         name_lbl = tk.Label(table, text=dev_name, font=("Microsoft YaHei", 9), bg=cell_bg,
                             bd=0, padx=4, pady=6, width=10, anchor="w")
         name_lbl.grid(row=row_idx, column=1, sticky="ew")
@@ -342,6 +387,10 @@ class SpecialScenePanel:
         ttk.Button(table, text="📸", width=4, bootstyle="secondary",
                    command=lambda s=serial: self.capture_device(s)).grid(
             row=row_idx, column=8, padx=4, pady=4)
+
+        # 行内所有控件都响应滚轮（鼠标在行上也能滚动表格）
+        for _w in table.grid_slaves(row=row_idx):
+            self._bind_wheel(_w)
 
         team["row_widgets"][serial] = {"role_cb": role_cb, "status_lbl": status_lbl,
                                        "bc_lbl": bc_lbl, "dur_lbl": dur_lbl}
@@ -398,6 +447,15 @@ class SpecialScenePanel:
                 if eng and getattr(eng, "_team_mode", False):
                     total += getattr(eng, "capture_count", 0) or 0
             team["total"].configure(text="本队已抓特殊: {} 只".format(total))
+        # 日志上方固定总计：跟随当前选中队伍
+        if self._teams:
+            _cur = min(self._cur_team, len(self._teams) - 1)
+            _t = 0
+            for serial in self._teams[_cur]["row_widgets"]:
+                eng = self.gui.engines.get(serial)
+                if eng and getattr(eng, "_team_mode", False):
+                    _t += getattr(eng, "capture_count", 0) or 0
+            self._log_total_lbl.configure(text="本队已抓特殊: {} 只".format(_t))
 
     # ------------------------------------------------------------------
     def set_all(self, checked):
@@ -497,25 +555,30 @@ class SpecialScenePanel:
             # 关闭 escape_enabled，否则 _post_steal_action 第一层就逃跑，不会击杀。
             # 只有队长跑图（巡逻遇怪）；队员不跑图。
             o.update({"auto_path_enabled": True})
-            # 没有特殊/宝宝时：点技能(711,95) → 点怪物 → 点自动；战斗结束取消自动+酒肆恢复血蓝
-            # （取消自动与血蓝恢复在 post_combat 通用逻辑，对所有战斗生效，无需额外配置）。
+            # 没有特殊/宝宝时：第1回合点法术(710,100) → 点怪物 → 同回合点自动
+            # （2026-08-27 用户要求参考偷偷场景击杀流程；原"第2回合再挂自动"已改同回合）
+            # 战斗结束取消自动+酒肆恢复血蓝（取消自动与血蓝恢复在 post_combat 通用逻辑，对所有战斗生效）。
             o.update({"capture_bb_enabled": True, "miaoshou_enabled": False,
-                      "skill_x": 711, "skill_y": 95,
+                      "skill_x": 710, "skill_y": 100,
+                      "auto_next_round": True,
                       "skill_then_auto": True, "normal_then_auto": False,
                       "defend_then_auto": False,
                       "escape_enabled": False, "use_real_scene_switch": True})
         elif role == "attack":
             o.update({"capture_bb_enabled": False, "miaoshou_enabled": False,
                       "defend_then_auto": False, "normal_then_auto": True,
+                      "auto_next_round": True,
                       "escape_enabled": False, "use_real_scene_switch": False})
         elif role == "attack_capture":
-            # 队员也参与捕捉：有 特殊/变异/宝宝 → 捕捉；没有 → 普通攻击后挂自动击杀。
+            # 队员也参与捕捉：有 特殊/变异/宝宝 → 捕捉；没有 → 第1回合点法术，第2回合挂自动。
             o.update({"capture_bb_enabled": True, "miaoshou_enabled": False,
                       "defend_then_auto": False, "normal_then_auto": True,
+                      "auto_next_round": True,
                       "escape_enabled": False, "use_real_scene_switch": False})
         else:  # defend
             o.update({"capture_bb_enabled": False, "miaoshou_enabled": False,
                       "defend_then_auto": True, "normal_then_auto": False,
+                      "auto_next_round": True,
                       "escape_enabled": False, "use_real_scene_switch": False})
         return o
 

@@ -135,6 +135,8 @@ class CNNUtil(object):
         # 2) 多候选 ROI 打分（与测试页 best_four_person_roi 一致：默认 + 在/请区域 + y 扫描）
         best_roi, best_index, best_prob, _ = self.best_four_person_roi(
             frame, det_roi[0], det_roi[1], det_roi[2], det_roi[3])
+        # 记录本次最高置信度，供调用方判断是否值得调图灵（低分=预筛误判）
+        self.last_four_person_prob = best_prob if best_roi is not None else 0.0
         if best_roi is None:
             orderLog(deviceId, "本地识别四小人：候选 ROI 均无效，交给图灵验证")
             return False
@@ -142,6 +144,24 @@ class CNNUtil(object):
         # 先保存原图（含 _is_show_four_person 误判的普通画面），便于排查
         _ts = time.strftime("%Y%m%d%H%M%S")
         cv_save_img(f"{logTmpPath()}/{_ts}_{deviceId}_FourPerson.png", frame)
+        # 逐槽位 CNN 打分：真·四小人弹窗 4 个槽位都有人，各槽概率都高；
+        # 误判帧（战斗结束动画等）只有个别槽位偶然高分。记录下来供
+        # 调用方判断"4 槽都有内容"才值得调图灵验证。
+        try:
+            slot_probs = []
+            for i in range(4):
+                itemLeft = left + 90 * i
+                itemRoi = frame[top:top + height, itemLeft:itemLeft + 90]
+                if itemRoi.shape != (height, 90, 3):
+                    slot_probs.append(0.0)
+                    continue
+                slot_probs.append(float(self.detector.predict_img(itemRoi)))
+            self.last_four_person_slot_probs = slot_probs
+            orderLog(deviceId, "四小人逐槽置信度: " + ", ".join(
+                f"槽{i}={p:.2f}" for i, p in enumerate(slot_probs)))
+        except Exception as e:
+            self.last_four_person_slot_probs = None
+            orderLog(deviceId, f"逐槽打分异常({e})")
         # 置信度门槛：CNN 没认出弹窗（如 _is_show_four_person 误判的普通画面）
         # 绝不点击，避免连续点错被系统强制掉线；交给 8.5 前图灵验证
         thr = conf_threshold if conf_threshold is not None else CONF_THRESHOLD

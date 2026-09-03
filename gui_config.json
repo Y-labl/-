@@ -120,7 +120,9 @@
     "WEENU18806160281": "兰时霜叶",
     "JUBNU18930138252": "暮雪朝霞",
     "WEENU18720159489": "白榆风雪",
-    "WEENU18917107778": "柒墨独夜"
+    "WEENU18917107778": "柒墨独夜",
+    "JUBNU18813107912": "测试机器",
+    "JUBNU18728128405": "0о逍遥魔医о0"
   },
   "capture_bb_enabled": true,
   "capture_bb_blacklist": {
@@ -138,12 +140,12 @@
     "WEENU19314102545",
     "WEENU18810135788",
     "WEENU18904103110",
-    "JUBNU18728128405",
-    "JUBNU18813107912",
     "WEENU18806160281",
     "WEENU18720159489",
     "WEENU18917107778",
-    "JUBNU18930138252"
+    "JUBNU18930138252",
+    "JUBNU18728128405",
+    "JUBNU18813107912"
   ],
   "use_local_four_person": true,
   "check_pkg_counts": true,

@@ -2,25 +2,25 @@
   "scene_config": [
     {
       "enabled": true,
-      "scene": "龙窟五层",
-      "rings": "得3个环",
-      "cards": "得2张卡片",
+      "scene": "凤巢四层",
+      "rings": "得4个环",
+      "cards": "无要求",
       "time": "满180分钟",
       "after": "后换场景"
     },
     {
       "enabled": true,
       "scene": "子母河底",
-      "rings": "得3个环",
-      "cards": "得2张卡片",
+      "rings": "得4个环",
+      "cards": "无要求",
       "time": "满180分钟",
       "after": "后换场景"
     },
     {
       "enabled": true,
-      "scene": "凤巢四层",
-      "rings": "得3个环",
-      "cards": "得2张卡片",
+      "scene": "龙窟五层",
+      "rings": "得4个环",
+      "cards": "无要求",
       "time": "满180分钟",
       "after": "后换场景"
     },

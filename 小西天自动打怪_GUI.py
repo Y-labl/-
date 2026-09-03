@@ -725,7 +725,7 @@ class AutoFightGUI:
         log_card = ttk.Labelframe(tab2, text=" 运行日志 & 实时数据 ", padding=10)
         log_card.grid(row=2, column=0, sticky="nsew", pady=(10, 0))
         log_card.columnconfigure(0, weight=1)
-        log_card.rowconfigure(1, weight=1)
+        log_card.rowconfigure(2, weight=1)
 
         # 实时数据显示行（含日志筛选，位于气血/魔法等数据最前面）
         data_frame = ttk.Frame(log_card)
@@ -766,6 +766,24 @@ class AutoFightGUI:
                                     font=("Microsoft YaHei", 11, "bold"), foreground="#198754")
         self.time_display.pack(side=tk.LEFT)
 
+        # 总计行（固定在日志上方，不随日志滚动；所有设备当日累计卡片/环/时长）
+        total_bar = ttk.Frame(log_card)
+        total_bar.grid(row=1, column=0, sticky="ew", pady=(0, 4))
+        ttk.Label(total_bar, text="总计", font=("Microsoft YaHei", 9, "bold"),
+                  foreground="#495057").pack(side=tk.LEFT, padx=(0, 10))
+        self._log_total_card = ttk.Label(total_bar, text="卡片 0",
+                                         font=("Microsoft YaHei", 9, "bold"), foreground="#198754")
+        self._log_total_card.pack(side=tk.LEFT, padx=(0, 16))
+        self._log_total_huan = ttk.Label(total_bar, text="环 0",
+                                         font=("Microsoft YaHei", 9, "bold"), foreground="#dc3545")
+        self._log_total_huan.pack(side=tk.LEFT, padx=(0, 16))
+        self._log_total_dur = ttk.Label(total_bar, text="时长 00:00",
+                                        font=("Microsoft YaHei", 9, "bold"), foreground="#0d6efd")
+        self._log_total_dur.pack(side=tk.LEFT)
+        self._log_total_widgets = {"card": self._log_total_card,
+                                   "huan": self._log_total_huan,
+                                   "dur": self._log_total_dur}
+
         # 存储所有日志（用于筛选）
         self.all_logs = []  # 格式: [(device_id, timestamp, message), ...]
 
@@ -773,7 +791,7 @@ class AutoFightGUI:
         self.log_text = ttk.ScrolledText(
             log_card, height=8, font=("Microsoft YaHei", 9),
             bg="#ffffff", fg="#333333", insertbackground="#333333")
-        self.log_text.grid(row=1, column=0, sticky="nsew")
+        self.log_text.grid(row=2, column=0, sticky="nsew")
         self.log_text.configure(state=tk.DISABLED)
         # 滚轮翻看历史：向上滚暂停自动滚动，滚回底部自动恢复
         self.log_text.bind("<MouseWheel>", self._on_log_scroll)
@@ -782,7 +800,7 @@ class AutoFightGUI:
 
         # 日志工具条（独立一行，避免被实时数据行挤压）
         tool_bar = ttk.Frame(log_card)
-        tool_bar.grid(row=2, column=0, sticky="ew", pady=(6, 0))
+        tool_bar.grid(row=3, column=0, sticky="ew", pady=(6, 0))
         self.log_follow = tk.BooleanVar(value=True)   # 自动滚动跟随最新日志
         ttk.Checkbutton(tool_bar, text="自动滚动", variable=self.log_follow,
                         bootstyle="success-round-toggle").pack(side=tk.LEFT)
@@ -2876,6 +2894,13 @@ class AutoFightGUI:
                         if "dur" in self._total_widgets:
                             self._total_widgets["dur"].configure(
                                 text=fmt_duration_hm(self._compute_total_runtime()))
+                    # 同步更新日志上方固定的总计行（不随日志滚动）
+                    if getattr(self, "_log_total_widgets", None):
+                        tc, th = self._compute_total_counts()
+                        self._log_total_widgets["card"].configure(text="卡片 {}".format(tc))
+                        self._log_total_widgets["huan"].configure(text="环 {}".format(th))
+                        self._log_total_widgets["dur"].configure(
+                            text="时长 {}".format(fmt_duration_hm(self._compute_total_runtime())))
         except queue.Empty:
             pass
         # 定期把当日累计写盘（异常退出最多丢失60秒增量）

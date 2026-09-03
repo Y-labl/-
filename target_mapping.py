@@ -29,7 +29,7 @@ SCENE_MAPPING = {
     "凤巢四层": {
         "tou_targets": ["PK-召唤兽-凤凰", "PK-召唤兽-天将", "PK-召唤兽-金翼"],
         "jineng_targets": ["PK-召唤兽-天将", "PK-召唤兽-金翼", "PK-召唤兽-凤凰"],
-        "map_click": {"x1": 180, "y1": 220, "x2": 500, "y2": 380},
+        "map_click": {"x1": 128, "y1": 100, "x2": 562, "y2": 342},
         "support_type": "support",
     },
     "凤巢五层": {
@@ -204,6 +204,30 @@ def get_map_click_area(area):
     area = _normalize_scene(area)
     mapping = SCENE_MAPPING.get(area)
     return mapping["map_click"] if mapping else {"x1": 212, "y1": 21, "x2": 475, "y2": 415}
+
+
+# 特殊场景「点法术后点杀目标」：没有特殊/变异/宝宝时，点法术(710,100)后点击的普通怪。
+# 排除各场景的特殊/高价值怪（有特殊/宝宝时走捕捉不会进这条路径；排除是防误点）。
+PRE_AUTO_TARGETS = {
+    "须弥东界": ["PK-召唤兽-毗舍童子", "PK-召唤兽-真陀护法"],   # 排除 持国巡守
+    "银华境": ["PK-召唤兽-毗舍童子", "PK-召唤兽-真陀护法"],     # 排除 广目巡守
+    "弥勒山": ["PK-召唤兽-九色鹿", "PK-召唤兽-翼马",
+              "PK-召唤兽-芙蓉仙子", "PK-召唤兽-涂山瞳"],
+    # 丝绸之路无固定怪物表：不配置，引擎回退到 get_all_monsters/宽松检测
+    "伊阙龙门": ["PK-召唤兽-灵鹤", "PK-召唤兽-巡游天神",
+                "PK-召唤兽-雾中仙"],                            # 排除 多闻巡守
+    "无名鬼域": ["PK-召唤兽-吸血鬼", "PK-召唤兽-幽灵"],         # 排除 画魂/鬼将
+    "青丘": ["PK-召唤兽-雾中仙", "PK-召唤兽-镜妖", "PK-召唤兽-望月蛙",
+            "PK-召唤兽-月光虫", "PK-召唤兽-胡不归", "PK-召唤兽-月魅",
+            "PK-召唤兽-花铃", "PK-召唤兽-阿宝"],                # 排除 涂山瞳
+}
+
+
+def get_pre_auto_targets(area):
+    """特殊场景点法术后的点杀目标（排除高价值特殊怪）；未配置的场景回退全部怪物。"""
+    area = _normalize_scene(area)
+    targets = PRE_AUTO_TARGETS.get(area)
+    return list(targets) if targets else get_all_monsters(area)
 
 
 def is_supported_scene(area):

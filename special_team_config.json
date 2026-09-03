@@ -1,0 +1,93 @@
+{
+  "scene": "须弥东界",
+  "teams": {
+    "0": [
+      {
+        "serial": "WEENU18A18102828",
+        "scene": "须弥东界",
+        "role": "captain"
+      },
+      {
+        "serial": "WEENU18A15102480",
+        "scene": "须弥东界",
+        "role": "attack_capture"
+      },
+      {
+        "serial": "WEENU19314102545",
+        "scene": "须弥东界",
+        "role": "attack_capture"
+      },
+      {
+        "serial": "WEENU18810135788",
+        "scene": "须弥东界",
+        "role": "attack_capture"
+      },
+      {
+        "serial": "WEENU18904103110",
+        "scene": "须弥东界",
+        "role": "attack_capture"
+      }
+    ],
+    "1": [
+      {
+        "serial": "WEENU18917107778",
+        "scene": "须弥东界",
+        "role": "defend"
+      },
+      {
+        "serial": "WEENU18720159489",
+        "scene": "须弥东界",
+        "role": "defend"
+      },
+      {
+        "serial": "JUBNU18930138252",
+        "scene": "须弥东界",
+        "role": "defend"
+      },
+      {
+        "serial": "WEENU18806160281",
+        "scene": "须弥东界",
+        "role": "defend"
+      },
+      {
+        "serial": "JUBNU18728128405",
+        "scene": "须弥东界",
+        "role": "defend"
+      }
+    ],
+    "2": [
+      {
+        "serial": "JUBNU18813107912",
+        "scene": "须弥东界",
+        "role": "captain"
+      }
+    ],
+    "3": []
+  },
+  "device_order": [
+    "WEENU18A18102828",
+    "WEENU18A15102480",
+    "WEENU19314102545",
+    "WEENU18810135788",
+    "WEENU18917107778",
+    "WEENU18720159489",
+    "JUBNU18930138252",
+    "WEENU18806160281",
+    "WEENU18904103110",
+    "JUBNU18728128405",
+    "JUBNU18813107912"
+  ],
+  "team_of": {
+    "WEENU18A18102828": 0,
+    "WEENU19314102545": 0,
+    "WEENU18810135788": 0,
+    "WEENU18904103110": 0,
+    "WEENU18720159489": 1,
+    "WEENU18917107778": 1,
+    "JUBNU18930138252": 1,
+    "WEENU18806160281": 1,
+    "WEENU18A15102480": 0,
+    "JUBNU18728128405": 1,
+    "JUBNU18813107912": 2
+  }
+}
