@@ -66,6 +66,10 @@ class CNNUtil(object):
             if best_score is None or b_prob > best_score[0]:
                 best_score = (b_prob, b_idx, (l, t, w, h))
                 best_indexProbs = indexProbs
+            # 极高置信度早退：≥0.98 已确定是真弹窗（误判帧各槽概率都低），
+            # 继续扫完 8-9 个 y 偏移候选只是多耗 ~1s（每候选 4 次 CNN 推理）
+            if b_prob >= 0.98:
+                break
         if best_score is None:
             return None, None, None, None
         best_prob, best_index, best_roi = best_score
@@ -176,7 +180,9 @@ class CNNUtil(object):
             clickPoint = QPoint(left + 90 * best_index + 45, top + int(height * ratio))
             click(deviceId, clickPoint)
             orderLog(deviceId, f"本地识别四小人目标：槽{best_index} ,置信度 {best_prob:.4f}, ROI({left},{top},{width},{height}), 点击坐标 {clickPoint}")
-            time.sleep(random.uniform(1, 1.5))
+            # 点对时弹窗 <0.3s 即关；原 1-1.5s 固定等待把"检测→点掉"拖到 8s+（用户复现
+            # 十几秒才点掉），收紧到 0.5-0.8s 仍留足流帧延迟余量
+            time.sleep(random.uniform(0.5, 0.8))
             # 点击后验证：四小人界面还在才继续下一次/图灵兜底
             still = False
             try:

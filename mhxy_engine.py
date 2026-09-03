@@ -116,6 +116,13 @@ COORD_STOP_TIMEOUT = 3.0  # 坐标停止超过1秒触发跑图
 
 COMBAT_ROI = {"x": 90, "y": 60, "w": 375, "h": 278}  # 战斗怪物检测区域
 
+# 战斗固定 UI 槽位 ROI（坐标为日志实测：技能图标 3805 次点击全在 (708,97)，
+# 防御按钮 5190 次在 (708,402)，捕捉 (538,401)/逃跑 (592,402)/自动按钮 (764,406)，
+# 没带宝宝标记 (626,24)）。战斗热路径逐帧轮询必须用 ROI 限定：
+# find()/match_template 是 14尺度×2方法全图匹配，单次实测 ~1.3s，逐帧用会拖垮整个流程。
+SKILL_SLOT_ROI = {"x": 560, "y": 0, "w": 240, "h": 160}   # 顶部：妙手空空技能槽(708,97) + 宝宝槽(626,24)
+ACTIONBAR_ROI = {"x": 470, "y": 360, "w": 330, "h": 88}   # 底部操作栏：捕捉/逃跑/保护/防御/自动
+
 # 怪物名字文字中心到怪物身体中心的垂直偏移（800x448 流坐标）。名字渲染在怪物下方，
 # 身体中心在名字中心直上方约 55px；用于第4回合击杀/激活技能时点击落到怪物身体，
 # 避免点到名字文字（点名字无效，实测截图复现：点到"地狱战神·护佑"名字）。
@@ -1189,6 +1196,8 @@ class AutoFightEngine:
         self._nav_pending = None          # 启动导航未成功时的目标场景（到位前不跑图）
         self._last_4p_check_t = 0.0      # 战斗中四小人判定节流
         self._four_person_locked = False  # 首次识别到妙手空空后，整个自动打怪会话锁定四小人识别
+        self._steal_operating = False     # 妙手空空操作进行中（点技能→点怪→点防御），期间不做四小人识别
+        self._battle_grace_until = 0.0    # 战斗结束宽限窗截止时间（此窗口内主循环不做四小人检测）
         self._last_ocr_texts = None      # 最近一次巡逻 OCR 原始文字（四小人 OCR 强信号用）
         self._tuling_fail_streak = 0     # 图灵云连续失败次数（用于冷却节流）
         self._tuling_cooldown_until = 0  # 图灵云冷却截止时间戳（余额不足等持续失败时暂停调用）
@@ -1863,6 +1872,17 @@ class AutoFightEngine:
 
         return match_template(frame, tmpl, threshold) if tmpl is not None else None
 
+    def _find_quick(self, frame, name, threshold=0.60, roi=None):
+        """战斗热路径快速查找：ROI 裁剪 + 3尺度×1方法匹配（毫秒级），
+        坐标已加回 ROI 偏移，与 find() 返回语义一致。
+        find()/match_template 为 14尺度×2方法全图匹配（单次 ~1.3s），
+        逐帧轮询固定 UI 槽位（技能图标/操作栏按钮）必须用本方法。"""
+        try:
+            hits = self._find_all(frame, name, threshold=threshold, roi=roi)
+        except Exception:
+            return None
+        return max(hits, key=lambda h: h[2]) if hits else None
+
 
 
     def is_map_open(self, frame):
@@ -1903,9 +1923,19 @@ class AutoFightEngine:
 
             bb_tmpl = self.templates.get("没带宝宝")
 
-            if bb_tmpl is not None and match_template(frame, bb_tmpl, 0.75):
+            if bb_tmpl is not None:
 
-                no_bb = True
+                if self._combat_phase is not None:
+
+                    # 战斗会话中宝宝槽位固定在顶部 (626,24)：ROI 快查毫秒级。
+
+                    # 全图 match_template 单次 ~1.3s，战斗循环每 2s 的 HP 检查会被拖慢
+
+                    no_bb = bool(self._find_all(frame, "没带宝宝", threshold=0.75, roi=SKILL_SLOT_ROI))
+
+                elif match_template(frame, bb_tmpl, 0.75):
+
+                    no_bb = True
 
 
 
@@ -2632,11 +2662,11 @@ class AutoFightEngine:
 
             frame = self.get_frame()
 
-            defend = self.find(frame, "PK-防御") if frame is not None else None
+            defend = self._find_quick(frame, "PK-防御", threshold=0.75, roi=ACTIONBAR_ROI) if frame is not None else None
 
             if defend is not None and require_skill_hidden:
 
-                if self.find(frame, "PK-妙手空空技能", threshold=0.60) is not None:
+                if self._find_quick(frame, "PK-妙手空空技能", threshold=0.60, roi=SKILL_SLOT_ROI) is not None:
 
                     if not _char_bar_warned:
 
@@ -2660,7 +2690,7 @@ class AutoFightEngine:
 
                 frame2 = self.get_frame()
 
-                if frame2 is not None and self.find(frame2, "PK-防御") is None:
+                if frame2 is not None and self._find_quick(frame2, "PK-防御", threshold=0.75, roi=ACTIONBAR_ROI) is None:
 
                     self._log(f"  ✅ {log_label}防御点击成功，按钮已消失")
 
@@ -3190,6 +3220,7 @@ class AutoFightEngine:
         self._battle_defend_ok = False
         self._steal_targets_gone = False
         self._four_person_locked = False   # 每场战斗开始重置：本场识别到妙手空空则本场锁定四小人
+        self._steal_operating = False      # 每场重置：妙手空空操作进行中标志
         self._auto_battle_on = False
         self._combat_phase = "entry"
         self._plan = []
@@ -3211,7 +3242,11 @@ class AutoFightEngine:
         try:
             _f_undo = self.get_frame()
             if _f_undo is not None:
-                _undo_btn = self.find(_f_undo, "PK-撤销战斗操作", threshold=0.7)
+                # 阈值 0.85：全图 find 的 CCORR 方法在战斗场景会给出 0.7~0.78 的
+                # 假命中（历史日志 326 次撤销点击全是误点，位置散乱如 (104,428)/
+                # (210,310)——误点中怪物会打开选目标界面盖住技能栏，整场空转 20s+，
+                # 用户复现 21:44:54 场）。真按钮模板匹配 0.95+，0.85 只挡误匹配。
+                _undo_btn = self.find(_f_undo, "PK-撤销战斗操作", threshold=0.85)
                 if _undo_btn and _undo_btn[1] >= 250:
                     self.tap(_undo_btn[0], _undo_btn[1])
                     self._log(f"  ↩️ 检测到误操作指令，撤销战斗操作 ({_undo_btn[0]},{_undo_btn[1]})")
@@ -3219,7 +3254,7 @@ class AutoFightEngine:
         except Exception as e:
             self._log(f"  ⚠️ 撤销战斗操作处理异常: {e}")
 
-    def _combat_enter(self):
+    def _combat_enter(self, frame=None):
         """第一回合：只识别偷卡目标和宝宝（不识别所有怪物）。
         有宝宝先捕捉，没有则看偷卡目标：有就偷，没有就逃跑。
         返回 True 可继续（有偷卡计划），False 表示战斗结束/已逃跑/无需偷窃。"""
@@ -3238,8 +3273,11 @@ class AutoFightEngine:
         if not self._all_monsters:
             self._log(f"  🎣 场景 {map_name} 无怪物配置，仅捕捉模式")
 
-        frame = self.get_frame()
-        if frame is None or not self.is_in_pk(frame):
+        # 复用调用方(_battle_loop)刚验证过战斗态的当前帧；原图这里重新取帧 +
+        # is_in_pk 判定（两次全图模板匹配 ~2.6s）纯属重复，白白吃掉进场预算
+        if frame is None:
+            frame = self.get_frame()
+        if frame is None:
             return False
 
         # 第一回合只识别偷卡目标（不识别所有怪物）
@@ -3265,8 +3303,13 @@ class AutoFightEngine:
         self._matched_targets = steal_targets   # 作为宝宝捕捉的怪物位置参考
         self._matched_names = []
 
-        # 有宝宝先捕捉（宝宝非偷卡目标时，点击位置回退名字上方估算）
-        captured_bb, capture_rounds = self._try_capture_bb(frame, steal_targets, max_rounds=3, scan_retries=1)
+        # 有宝宝先捕捉（宝宝非偷卡目标时，点击位置回退名字上方估算）。
+        # 捕捉关闭时整个变异/宝宝文字扫描都跳过（多模板 COMBAT_ROI 扫描 ~0.3-0.8s，
+        # 且 _try_capture_bb 内部在开关关闭时最终也返回 False，扫了白扫）
+        if self.cfg.get("capture_bb_enabled", False):
+            captured_bb, capture_rounds = self._try_capture_bb(frame, steal_targets, max_rounds=3, scan_retries=1)
+        else:
+            captured_bb, capture_rounds = False, 0
         if captured_bb:
             self._log(f"  🎣 第一回合已执行捕捉 {capture_rounds} 次，继续执行妙手空空逻辑")
             if not self._check_in_combat():
@@ -3437,44 +3480,54 @@ class AutoFightEngine:
                         return "ended"
                     return "reround"   # 捕捉占用本回合，下回合再偷
 
-        # 点技能前用当前帧刷新目标坐标：每回合都刷，确保点技能瞬间用的是最新位置
+        # 点技能前用当前帧刷新目标坐标：第1回合跳过——entry 阶段进场预扫/现扫
+        # 用的就是最近一帧（坐标就是最新的），再截帧重扫只在 entry→steal 之间
+        # 白耗 ~0.1-0.3s。第2/3回合每回合都刷，确保点技能瞬间用的是最新位置
+        # （怪物会移动/被挡，旧坐标会点空）。
         _fresh = None
-        f_pre = self.get_frame()
-        if f_pre is not None:
-            _cand = []
-            for _ct in tou_targets:
-                for _c in self._find_all(f_pre, _ct, threshold=0.80, roi=COMBAT_ROI):
-                    _cand.append(_c)
-            if _cand:
-                _cand.sort(key=lambda c: (c[0]-tx)**2 + (c[1]-ty)**2)
-                _fresh = _cand[0]
-        if _fresh is not None:
-            self._log(f"  🔄 点技能前刷新目标: 缓存({tx},{ty}) -> 最新({_fresh[0]},{_fresh[1]}) conf={_fresh[2]:.2f}")
-            tx, ty = int(_fresh[0]), int(_fresh[1])
+        if i > 0:
+            f_pre = self.get_frame()
+            if f_pre is not None:
+                _cand = []
+                for _ct in tou_targets:
+                    for _c in self._find_all(f_pre, _ct, threshold=0.80, roi=COMBAT_ROI):
+                        _cand.append(_c)
+                if _cand:
+                    _cand.sort(key=lambda c: (c[0]-tx)**2 + (c[1]-ty)**2)
+                    _fresh = _cand[0]
+            if _fresh is not None:
+                self._log(f"  🔄 点技能前刷新目标: 缓存({tx},{ty}) -> 最新({_fresh[0]},{_fresh[1]}) conf={_fresh[2]:.2f}")
+                tx, ty = int(_fresh[0]), int(_fresh[1])
 
         # 每轮偷窃前检查血量：低于阈值立即逃跑
         if self._escape_if_low_hp():
             return "ended"
 
         self._log(f"  🎯 第{i+1}次 妙手空空 -> 点技能({cx_ms},{cy_ms}) -> 点怪物({tx},{ty}) conf={conf:.2f}")
+        self._steal_operating = True   # 进入操作序列（点技能→点怪→点防御），屏蔽四小人识别
         self.tap(cx_ms, cy_ms)
         self._last_steal_skill_time = time.time()
 
         # 点技能后等选目标界面出现即点怪（坐标用点技能前刷新过的最新值；对齐 08-08 时序。
         # 不再做点技能后多帧重试——那会把出手拖慢 1 秒以上，用户反馈进场操作变慢、没之前快）
-        time.sleep(random.uniform(0.1, 0.3))
+        time.sleep(random.uniform(0.08, 0.2))
         self.tap(tx, ty)
 
         # 妙手空空操作是否已提交：技能图标消失 = 已提交，宝宝面板才会出现。
         # 若技能图标还在（点怪点空/未提交），此时是"人物操作页"，防御按钮是人物防御，
         # 绝不能算宝宝参战（否则把人物点成防御、还误判宝宝在参战 → 该恢复忠诚却不恢复）。
-        if not self._wait_skill_gone(timeout=3.0, min_wait=0.1):
+        # light=True：图标在固定槽位 ROI 查（毫秒级），单次轮询省 ~4s 的全图匹配
+        if not self._wait_skill_gone(timeout=3.0, min_wait=0.1, light=True):
             self._log("  ⚠️ 点怪后技能图标未消失（点空/未提交），不计宝宝防御，直接转击杀")
             self._steal_targets_gone = True
+            self._steal_operating = False
             return "targets_gone"
 
         _defend_wait = 1.5 if self.has_no_bb else 2.5
-        defend_status = self._tap_defend(log_label="宝宝", timeout=_defend_wait, require_skill_hidden=True)
+        # check_wait 0.5→0.3：防御按钮消失验证帧已是 ROI 快查（毫秒级），
+        # 0.5s 的固定等待占掉操作序列 2s 预算的四分之一
+        defend_status = self._tap_defend(log_label="宝宝", timeout=_defend_wait,
+                                         check_wait=0.3, require_skill_hidden=True)
         if defend_status is True:
             # 8.9 版点防御成功后直接算完成；这里曾加 3 秒复查"确认按钮不再出现"，
             # 但 _tap_defend 返回 True 已含"点击后按钮消失"验证，复查在成功路径上
@@ -3486,7 +3539,7 @@ class AutoFightEngine:
             _gone_frames = 0
             while time.time() < _c_end:
                 f_c = self.get_frame()
-                if f_c is not None and self.find(f_c, "PK-防御") is not None:
+                if f_c is not None and self._find_quick(f_c, "PK-防御", threshold=0.75, roi=ACTIONBAR_ROI) is not None:
                     _defend_back = True
                     break
                 _gone_frames += 1
@@ -3495,7 +3548,8 @@ class AutoFightEngine:
                 time.sleep(0.1)
             if _defend_back:
                 self._log("  ⚠️ 防御点击后按钮再次出现，重新点击")
-                defend_status = self._tap_defend(log_label="宝宝", timeout=3.0, require_skill_hidden=True)
+                defend_status = self._tap_defend(log_label="宝宝", timeout=3.0,
+                                                 check_wait=0.3, require_skill_hidden=True)
             else:
                 self._log("  ✅ 防御点击完成（本回合操作完成）")
         if defend_status == "missing":
@@ -3506,6 +3560,7 @@ class AutoFightEngine:
             # 没血蓝+没头像，会被 _is_show_four_person 误判成四小人（用户截图复现）；
             # 本场已识别到妙手空空即不回退关弹窗，该间隙只等防御，不当四小人处理。
             if (_f_pop is not None and not getattr(self, "_four_person_locked", False)
+                    and not getattr(self, "_steal_operating", False)
                     and self._is_show_four_person(_f_pop)):
                 self._log("  👥 宝宝防御按钮未出现，检测到弹窗遮挡，关闭弹窗后重试")
                 self._close_combat_popup_local()
@@ -3533,6 +3588,7 @@ class AutoFightEngine:
             if _point_empty:
                 self._log("  🎯 点怪后目标已不在（点空/目标逃跑），直接转击杀分支")
                 self._steal_targets_gone = True
+                self._steal_operating = False
                 return "targets_gone"
             if self.has_no_bb:
                 self._log("  ⚠️ 未识别到宝宝防御按钮（画面判定未带宝宝），跳过")
@@ -3544,178 +3600,207 @@ class AutoFightEngine:
             self._defend_miss_streak = 0
             self._battle_defend_attempted = True
             self._battle_defend_ok = True
-        time.sleep(0.2)
+        time.sleep(0.1)
         clicked.append((tx, ty))
+        self._steal_operating = False   # 操作序列完成
         return "ok"
 
     def _battle_loop(self):
         """从进入战斗到战斗结束的常驻实时循环：
-        每帧实时识别妙手空空技能图标，识别到（=轮到玩家操作）就立即执行，直到战斗结束才返回。"""
+        每帧实时识别妙手空空技能图标，识别到（=轮到玩家操作）就立即执行，直到战斗结束才返回。
+
+        热路径全部走固定槽位 ROI 快查（技能图标/操作栏按钮，毫秒级）：
+        find() 全图 14尺度×2方法匹配单次 ~1.3s，等待轮询一轮串 3-4 次会把
+        "技能图标已出现"的发现延迟到 5s+，这正是进战斗后操作慢的主因。"""
         self._log("⚔️ 开始战斗流程（实时识别）")
         if self._combat_phase is None:
             self._reset_battle_state()
 
-        # 首次进入：低血量先跑、撤销误操作
-        if self._combat_phase == "entry":
-            if self._escape_if_low_hp():
-                return
-            self._undo_misoperation()
-            self._special_fight_start = time.time()
-
-        non_pk_since = None          # 战斗结束多帧容错
-        last_hp_check = 0.0
-
-        while self.running:
-            frame = self.get_frame()
-            if frame is None:
-                time.sleep(0.05)
-                continue
-
-            # === 战斗结束判定：连续约2.5s非战斗才判结束（抗特效/动画遮挡误判） ===
-            if not self._in_battle(frame):
-                if non_pk_since is None:
-                    non_pk_since = time.time()
-                elif time.time() - non_pk_since >= 2.5:
-                    self._log("  🏁 战斗结束")
-                    self._four_person_locked = False   # 本场结束解锁，间隙可识别/点掉奖励弹窗
+        try:
+            # 首次进入：低血量先跑、撤销误操作
+            if self._combat_phase == "entry":
+                if self._escape_if_low_hp():
                     return
-                time.sleep(0.1)
-                continue
-            non_pk_since = None
+                self._undo_misoperation()
+                self._special_fight_start = time.time()
 
-            # 战斗中 HP/MP 补给（节流）
-            now = time.time()
-            if now - last_hp_check >= 2.0:
-                last_hp_check = now
-                self.check_hp_mp_battle(frame)
+            non_pk_since = None          # 战斗结束多帧容错
+            last_hp_check = 0.0
+            entry_pre_t = 0.0            # 进场预扫节流
+            inbattle_last = True         # 战斗存在性慢查缓存结论
+            inbattle_chk_t = 0.0         # 上次慢查时间
 
-            # === 核心：实时识别"轮到玩家操作" ===
-            # 偷卡场景：识别妙手空空技能图标（=轮到操作）。特殊场景不走妙手空空，
-            # 没有该技能图标，改用"捕捉"按钮判定（轮到玩家操作时右下角"捕捉"按钮一定
-            # 可见可点；未轮到操作时按钮变灰、模板匹配不到）。
-            if self.cfg.get("miaoshou_enabled", True):
-                ms = self.find(frame, "PK-妙手空空技能", threshold=0.60)
-                if ms is not None and not getattr(self, "_four_person_locked", False):
-                    self._four_person_locked = True
-                    self._log("  🔒 已识别到妙手空空技能，本场战斗不再进行四小人识别")
-                if ms is None:
-                    # 进场等待玩家回合期间预扫偷卡目标：怪物名字通常先于/同时于
-                    # 技能栏渲染，等图标的时间用来扫目标，图标一出现直接出手
-                    # （与第2/3回合一样"倒计时内完成操作"）。
-                    if self._combat_phase == "entry":
-                        try:
-                            _pre = self._detect_steal_targets(frame)
-                            if _pre:
-                                self._entry_prefetch = _pre
-                        except Exception:
-                            pass
-                    # 妙手空空图标漏识别时，用"捕捉"按钮兜底判断是否轮到操作。
-                    if self.find(frame, "PK-捕捉", threshold=0.70) is None:
-                        time.sleep(0.1)
-                        continue
-                    if self.last_skill is not None:
-                        ms = self.last_skill
-                    else:
-                        ms = (708, 97, 0.0)
-                        self._log("  ⚠️ 妙手空空图标漏识别，无缓存坐标，用固定坐标(708,97)")
-            else:
-                # 特殊场景：判定"轮到玩家操作"用多个操作按钮（自动/捕捉/防御/逃跑）任一命中。
-                # 单靠自动按钮在实时流可能漏检（压缩/动画），多按钮 OR 提高命中。
-                # 命中后记录自动按钮位置（用于点自动），失败则回退固定坐标 (764,406)。
+            while self.running:
+                frame = self.get_frame()
+                if frame is None:
+                    time.sleep(0.05)
+                    continue
+                now = time.time()
+
+                # === 核心：实时识别"轮到玩家操作"（固定槽位 ROI 快查） ===
+                # 偷卡场景：技能图标固定槽位 (708,97)。特殊场景不走妙手空空，
+                # 用"自动/捕捉/防御/逃跑"按钮任一命中判定（未轮到操作时按钮变灰匹配不到）。
+                ms = None
                 auto_pos = None
-                # 已挂自动（wait_end）后操作栏仍会反复命中，只识别不打印，避免日志刷屏
                 _quiet = getattr(self, "_auto_battle_on", False)
-                for _btn in ("PK-自动按钮", "PK-捕捉", "PK-防御", "PK-逃跑"):
-                    _hit = self.find(frame, _btn, threshold=0.50)
-                    if _hit:
-                        auto_pos = (764, 406)   # 自动按钮固定参考坐标（右下角）
-                        if not _quiet:
-                            self._log("  🎮 特殊场景轮到: {} 命中（战斗{:.1f}s）".format(
-                                _btn, time.time() - getattr(self, "_special_fight_start", time.time())))
-                        break
-                if auto_pos is None:
-                    if not _quiet and int(time.time() // 10) != getattr(self, "_special_dbg_t", -1):
-                        self._special_dbg_t = int(time.time() // 10)
-                        self._log("  ⏳ 特殊场景等待轮到操作（操作栏未命中），仍在战斗")
-                    if (time.time() - getattr(self, "_special_fight_start", time.time())) < 12.0:
+                if self.cfg.get("miaoshou_enabled", True):
+                    ms = self._find_quick(frame, "PK-妙手空空技能", threshold=0.60, roi=SKILL_SLOT_ROI)
+                    if ms is not None and not getattr(self, "_four_person_locked", False):
+                        self._four_person_locked = True
+                        self._log("  🔒 已识别到妙手空空技能，本场战斗不再进行四小人识别")
+                else:
+                    for _btn in ("PK-自动按钮", "PK-捕捉", "PK-防御", "PK-逃跑"):
+                        _hit = self._find_quick(frame, _btn, threshold=0.50, roi=ACTIONBAR_ROI)
+                        if _hit:
+                            auto_pos = (764, 406)   # 自动按钮固定参考坐标（右下角）
+                            if not _quiet:
+                                self._log("  🎮 特殊场景轮到: {} 命中（战斗{:.1f}s）".format(
+                                    _btn, now - getattr(self, "_special_fight_start", now)))
+                            break
+
+                # === 战斗存在性判定 + 结束判定（连续约2.5s非战斗才判结束，抗特效遮挡误判） ===
+                # 快路径：固定槽位任一可见（技能图标/操作栏按钮）= 战斗中。
+                # 都不可见（敌方回合操作栏消失属正常）才跑慢速 _in_battle 确认
+                # （is_in_pk 两次全图匹配 + 可能 OCR，~2.6s/次），节流 1.2s、其余帧沿用上次结论。
+                _fast_pk = (ms is not None or auto_pos is not None
+                            or self._find_quick(frame, "PK-捕捉", threshold=0.62, roi=ACTIONBAR_ROI) is not None)
+                if _fast_pk:
+                    inbattle_last = True
+                    inbattle_chk_t = now
+                elif now - inbattle_chk_t >= 1.2:
+                    inbattle_chk_t = now
+                    inbattle_last = self._in_battle(frame)
+                if not inbattle_last:
+                    if non_pk_since is None:
+                        non_pk_since = now
+                    elif now - non_pk_since >= 2.5:
+                        self._log("  🏁 战斗结束")
+                        self._four_person_locked = False   # 本场结束解锁，间隙可识别/点掉奖励弹窗
+                        return
+                    time.sleep(0.1)
+                    continue
+                non_pk_since = None
+
+                # 战斗中 HP/MP 补给（节流）
+                if now - last_hp_check >= 2.0:
+                    last_hp_check = now
+                    self.check_hp_mp_battle(frame)
+
+                if self.cfg.get("miaoshou_enabled", True):
+                    if ms is None:
+                        # 进场等待玩家回合期间预扫偷卡目标（0.5s 节流）：怪物名字通常
+                        # 先于/同时于技能栏渲染，等图标的时间用来扫目标，图标一出现直接出手
+                        if self._combat_phase == "entry" and now - entry_pre_t >= 0.5:
+                            entry_pre_t = now
+                            try:
+                                _pre = self._detect_steal_targets(frame)
+                                if _pre:
+                                    self._entry_prefetch = _pre
+                            except Exception:
+                                pass
+                        # 妙手空空图标漏识别时，用"捕捉"按钮兜底判断是否轮到操作。
+                        if self._find_quick(frame, "PK-捕捉", threshold=0.70, roi=ACTIONBAR_ROI) is None:
+                            time.sleep(0.1)
+                            continue
+                        if self.last_skill is not None:
+                            ms = self.last_skill
+                        else:
+                            ms = (708, 97, 0.0)
+                            self._log("  ⚠️ 妙手空空图标漏识别，无缓存坐标，用固定坐标(708,97)")
+                else:
+                    if auto_pos is None:
+                        if not _quiet and int(now // 10) != getattr(self, "_special_dbg_t", -1):
+                            self._special_dbg_t = int(now // 10)
+                            self._log("  ⏳ 特殊场景等待轮到操作（操作栏未命中），仍在战斗")
+                        if (now - getattr(self, "_special_fight_start", now)) < 12.0:
+                            time.sleep(0.1)
+                            continue
+                        self._log("  ⏱️ 特殊场景等待超时(12s)，默认轮到操作继续")
+                        auto_pos = (764, 406)
+                        time.sleep(0.1)
+                    self._special_auto_pos = auto_pos
+                    # 立马判定：无特殊/宝宝就直接点自动（第一回合就能挂机，不等 entry/post）
+                    if getattr(self, "_auto_battle_on", False):
+                        # 已挂自动：不再重复点自动，直接等战斗结束
+                        self._combat_phase = "wait_end"
                         time.sleep(0.1)
                         continue
-                    self._log("  ⏱️ 特殊场景等待超时(12s)，默认轮到操作继续")
-                    auto_pos = (764, 406)
-                    time.sleep(0.1)
-                self._special_auto_pos = auto_pos
-                # 立马判定：无特殊/宝宝就直接点自动（第一回合就能挂机，不等 entry/post）
-                if getattr(self, "_auto_battle_on", False):
-                    # 已挂自动：不再重复点自动，直接等战斗结束
-                    self._combat_phase = "wait_end"
-                    time.sleep(0.1)
-                    continue
-                if self.cfg.get("capture_bb_enabled", False) and not self._has_capturable_target():
-                    if self._special_fast_auto(frame):
-                        self._combat_phase = "wait_end"
-                    time.sleep(0.2)
-                    continue
-                ms = (0, 0, 0.0)   # 占位，走下方捕捉/攻击流程
-
-            # 已轮到玩家操作
-            self.last_skill = ms
-
-            phase = self._combat_phase
-            if phase == "entry":
-                if not self._combat_enter():
-                    return
-                self._combat_phase = "steal" if (self._plan and self.cfg.get("miaoshou_enabled", True)) else "post"
-                time.sleep(0.1)
-                continue
-
-            phase = self._combat_phase
-            if phase == "steal":
-                if self._plan_idx < len(self._plan):
-                    st = self._do_one_steal(frame, ms, self._plan_idx)
-                    if st == "ended":
-                        return
-                    if st == "targets_gone":
-                        self._steal_targets_gone = True
-                        self._combat_phase = "post"
-                    elif st == "reround":
-                        pass  # 捕捉占用了本回合，下回合再偷
-                    else:
-                        self._plan_idx += 1
-                    time.sleep(0.2)
-                    continue
-                else:
-                    self._combat_phase = "post"
-
-            phase = self._combat_phase
-            if phase == "post":
-                if self._auto_battle_on:
-                    self._combat_phase = "wait_end"
-                elif not self.cfg.get("miaoshou_enabled", True):
-                    # 特殊场景：首回合 _combat_enter 已尝试捕捉。若确认对面无宝宝/特殊，
-                    # 直接点自动挂机击杀；若还有目标则继续捕捉/攻击流程。
-                    _has_tgt = self._has_capturable_target()
-                    self._log("  🔍 特殊场景 post: 有可抓目标={} 战斗={:.1f}s".format(
-                        _has_tgt, time.time() - getattr(self, "_special_fight_start", time.time())))
-                    if _has_tgt:
-                        self._post_steal_action(skip_wait=not bool(self._plan),
-                                                matched_targets=self._matched_targets)
-                    else:
+                    if self.cfg.get("capture_bb_enabled", False) and not self._has_capturable_target():
                         if self._special_fast_auto(frame):
                             self._combat_phase = "wait_end"
-                else:
-                    # 未挂自动（怪物未检测到/逃跑失败）：本回合再次尝试击杀/逃跑
-                    self._post_steal_action(skip_wait=not bool(self._plan), matched_targets=self._matched_targets)
-                time.sleep(0.2)
-                continue
+                        time.sleep(0.2)
+                        continue
+                    ms = (0, 0, 0.0)   # 占位，走下方捕捉/攻击流程
 
-            if phase == "wait_end":
-                # 已挂自动/已逃跑：继续实时识别直到战斗结束
-                time.sleep(0.1)
-                continue
+                # 已轮到玩家操作
+                self.last_skill = ms
 
-            time.sleep(0.05)
+                phase = self._combat_phase
+                if phase == "entry":
+                    # 复用当前帧（刚确认轮到操作且帧是最新取的），省一次取帧+
+                    # is_in_pk 全图判定（~2.6s）；返回后不 sleep 直接进 steal
+                    if not self._combat_enter(frame):
+                        return
+                    self._combat_phase = "steal" if (self._plan and self.cfg.get("miaoshou_enabled", True)) else "post"
+                    continue
 
-        return
+                phase = self._combat_phase
+                if phase == "steal":
+                    if self._plan_idx < len(self._plan):
+                        st = self._do_one_steal(frame, ms, self._plan_idx)
+                        self._steal_operating = False   # 安全兜底：确保操作标志在返回后一定清除
+                        if st == "ended":
+                            return
+                        if st == "targets_gone":
+                            self._steal_targets_gone = True
+                            self._combat_phase = "post"
+                        elif st == "reround":
+                            pass  # 捕捉占用了本回合，下回合再偷
+                        else:
+                            self._plan_idx += 1
+                        time.sleep(0.2)
+                        continue
+                    else:
+                        self._combat_phase = "post"
+
+                phase = self._combat_phase
+                if phase == "post":
+                    if self._auto_battle_on:
+                        self._combat_phase = "wait_end"
+                    elif not self.cfg.get("miaoshou_enabled", True):
+                        # 特殊场景：首回合 _combat_enter 已尝试捕捉。若确认对面无宝宝/特殊，
+                        # 直接点自动挂机击杀；若还有目标则继续捕捉/攻击流程。
+                        _has_tgt = self._has_capturable_target()
+                        self._log("  🔍 特殊场景 post: 有可抓目标={} 战斗={:.1f}s".format(
+                            _has_tgt, now - getattr(self, "_special_fight_start", now)))
+                        if _has_tgt:
+                            self._post_steal_action(skip_wait=not bool(self._plan),
+                                                    matched_targets=self._matched_targets)
+                        else:
+                            if self._special_fast_auto(frame):
+                                self._combat_phase = "wait_end"
+                    else:
+                        # 未挂自动（怪物未检测到/逃跑失败）：本回合再次尝试击杀/逃跑
+                        self._post_steal_action(skip_wait=not bool(self._plan), matched_targets=self._matched_targets)
+                    time.sleep(0.2)
+                    continue
+
+                if phase == "wait_end":
+                    # 已挂自动/已逃跑：继续实时识别直到战斗结束
+                    time.sleep(0.1)
+                    continue
+
+                time.sleep(0.05)
+        finally:
+            # 清理战斗会话标记：detect_hp_mp_bb 用它区分"战斗中(没带宝宝走顶部槽位 ROI)"
+            # 与非战斗全图匹配；残留旧值会让下一场/巡逻期的宝宝判定用错 ROI
+            self._combat_phase = None
+            # 战斗结束宽限窗：_battle_loop 刚返回时的结算/过渡帧没血蓝没头像，会被
+            # 四小人预筛误命中。只挡最前面的过渡爆发期（日志实测战斗后 4-9s 内帧
+            # 仍偏战斗态），取 3s；再往后由 _handle_four_person 里的本地 CNN 置信度
+            # 守门（战斗帧 CNN 置信度 ~0.0-0.3，真弹窗 0.8-1.0），不会误调图灵。
+            # 真弹窗会一直等玩家点击，最多晚 3s 处理，不受影响。
+            self._battle_grace_until = time.time() + 3.0
 
     def do_combat(self):
 
@@ -3736,7 +3821,7 @@ class AutoFightEngine:
         try:
             _f_undo = self.get_frame()
             if _f_undo is not None:
-                _undo_btn = self.find(_f_undo, "PK-撤销战斗操作", threshold=0.7)
+                _undo_btn = self.find(_f_undo, "PK-撤销战斗操作", threshold=0.85)
                 # 撤销按钮应在下方操作区（误匹配到顶部 HUD 时忽略，避免白点一下）
                 if _undo_btn and _undo_btn[1] >= 250:
                     self.tap(_undo_btn[0], _undo_btn[1])
@@ -5117,10 +5202,13 @@ class AutoFightEngine:
 
 
 
-    def _wait_skill_gone(self, timeout=10.0, min_wait=1.5):
+    def _wait_skill_gone(self, timeout=10.0, min_wait=1.5, light=False):
 
         """等待妙手空空技能按钮消失（=本回合操作已提交/轮到敌人），战斗结束也算完成。
 
+        light=True 快速模式：只查技能图标固定槽位 ROI（毫秒级），跳过 is_in_pk
+        的两次全图模板匹配（~2.6s/次）——妙手空空操作序列（点技能→点怪→点防御）
+        的 2 秒预算内必须用它；图标消失即指令已提交，战斗结束图标同样不在。
         返回 True=操作已提交或战斗结束，False=超时仍未消失。"""
 
         start = time.time()
@@ -5139,13 +5227,21 @@ class AutoFightEngine:
 
                 continue
 
-            if not self.is_in_pk(frame):
+            if light:
 
-                return True
+                if self._find_quick(frame, "PK-妙手空空技能", threshold=0.60, roi=SKILL_SLOT_ROI) is None:
 
-            if self.find(frame, "PK-妙手空空技能", threshold=0.60) is None:
+                    return True
 
-                return True   # 技能图标已消失：指令已提交，无需等满 min_wait
+            else:
+
+                if not self.is_in_pk(frame):
+
+                    return True
+
+                if self.find(frame, "PK-妙手空空技能", threshold=0.60) is None:
+
+                    return True   # 技能图标已消失：指令已提交，无需等满 min_wait
 
             time.sleep(0.1)
 
@@ -5163,13 +5259,21 @@ class AutoFightEngine:
 
                 continue
 
-            if not self.is_in_pk(frame):
+            if light:
 
-                return True
+                if self._find_quick(frame, "PK-妙手空空技能", threshold=0.60, roi=SKILL_SLOT_ROI) is None:
 
-            if self.find(frame, "PK-妙手空空技能", threshold=0.60) is None:
+                    return True
 
-                return True
+            else:
+
+                if not self.is_in_pk(frame):
+
+                    return True
+
+                if self.find(frame, "PK-妙手空空技能", threshold=0.60) is None:
+
+                    return True
 
             time.sleep(0.2)
 
@@ -5956,6 +6060,14 @@ class AutoFightEngine:
                     self._log("  ⚠️ 本地未找到“在/请”识别区域，回退默认区域识别")
                     handled = cnnUtil.findFourPersonLocal(self.serial)
                 if handled:
+                    return
+                # 本地 CNN 置信度守门：战斗结束/巡逻过渡帧骗过像素预筛（没血蓝+没头像），
+                # 但 CNN 打分能分清——真四小人弹窗各槽置信度 0.8~1.0（日志实测），
+                # 战斗画面/普通场景 ~0.0-0.3。低置信度说明不是弹窗，不调图灵不耗额度，
+                # 直接跳过等下一轮预筛（瞬态帧自己会消失）。
+                _fp_prob = getattr(cnnUtil, "last_four_person_prob", 0.0)
+                if _fp_prob < 0.3:
+                    self._log(f"  ⏭️ 本地四小人置信度 {_fp_prob:.2f} < 0.3，判定非弹窗（过渡帧），不调图灵")
                     return
                 # （2026-09-01 用户要求去掉"槽位校验"：真四小人弹窗不再因4槽不全有内容被误判跳过，
                 # 本地没点掉直接走下方图灵兜底；过渡帧误判消耗的图灵额度由 _tuling_fail_streak 冷却兜底）
@@ -6983,11 +7095,18 @@ class AutoFightEngine:
                 # 锁门禁：本场战斗已识别到妙手空空技能（_four_person_locked=True）时，
                 # 到战斗结束不再触发四小人——即使战斗画面因 is_in_pk 判定间隙/异常
                 # 出现在主循环（图灵明细里大量"战斗中的怪物截图"就是漏掉了这道门禁）。
+                # 战斗结束宽限窗：_battle_loop 刚返回（或误判提前返回）后的结算/过渡帧
+                # 没血蓝没头像，会被预筛当四小人——宽限期内不检测。
+                # _steal_operating：点技能→点怪→点防御操作序列进行中，同样不检测。
+                # 便宜条件（锁/节流/宽限/前台/操作中）放在前面：_is_show_four_person
+                # 要取 3 帧（间隔 0.2s）逐帧扫血蓝+头像，不能每个循环都白跑一遍
                 _locked = bool(getattr(self, "_four_person_locked", False))
-                if ((_ocr_four_signal or self._is_show_four_person(frame))
-                        and not _locked
+                if (not _locked
+                        and not getattr(self, "_steal_operating", False)
+                        and time.time() > getattr(self, "_battle_grace_until", 0.0)
                         and (time.time() - self._last_4p_check_t) > 2.0
-                        and self._is_game_foreground()):
+                        and self._is_game_foreground()
+                        and (_ocr_four_signal or self._is_show_four_person(frame))):
                     if _ocr_four_signal:
                         # 弹窗文案"请选择"是强特征（走路/战斗画面不会有），立即处理
                         _handle_4p = True
@@ -6995,9 +7114,10 @@ class AutoFightEngine:
                         # 预筛路径：多帧复查，防"战斗进场/画面切换瞬态帧"误判——
                         # 进场动画帧血蓝未渲染、战斗按钮未渲染会通过预筛（用户截图复现：
                         # 把战斗画面当四小人反复截图识别）。战斗进场动画 <1s 就结束，
-                        # 1s 后复查，瞬态帧已稳定为战斗画面（按钮渲染/血蓝出现→预筛不过）
-                        # 不处理；真弹窗持续存在（等玩家点击）复查仍通过。
-                        time.sleep(1.0)
+                        # 复查等待 1.0→0.6s（预筛本身已是 3 帧连续确认，加上本块
+                        # 前的取帧间隔，总跨度仍 >1s），瞬态帧已稳定为战斗画面
+                        # （按钮渲染/血蓝出现→预筛不过）不处理；真弹窗持续存在复查仍通过。
+                        time.sleep(0.6)
                         f2 = self.get_frame()
                         if f2 is not None and self._is_show_four_person(f2):
                             _handle_4p = True
