@@ -160,6 +160,27 @@ SPECIAL_CAPTURE_SCENES = [
 ]
 
 
+# ===== 特殊场景「必抓特殊怪」=====
+# 这些怪一命中（身体模板或放大镜称号，普通/变异形态都算）就直接进捕捉循环，
+# 并让 _has_capturable_target 返回真：全队停手（人物捕捉、宝宝防御），抓到或战斗
+# 结束为止。此前它们只在 SPECIAL_MONSTER_KEYWORDS 里触发邮件通知，捕捉通道认不出，
+# 结果弥勒山/青丘的涂山瞳被 _special_fast_auto 挂自动打死。
+# 丝绸之路无固定怪物表，故无必抓特殊怪。
+SPECIAL_CAPTURE_TARGETS = {
+    "须弥东界": ["PK-召唤兽-持国巡守"],
+    "银华境": ["PK-召唤兽-广目巡守"],
+    "弥勒山": ["PK-召唤兽-涂山瞳"],
+    "伊阙龙门": ["PK-召唤兽-多闻巡守"],
+    "无名鬼域": ["PK-召唤兽-画魂", "PK-召唤兽-鬼将"],
+    "青丘": ["PK-召唤兽-涂山瞳"],
+}
+
+
+def get_special_capture_targets(area):
+    """当前场景必须捕捉的特殊怪模板名；非特殊抓宠场景返回空列表。"""
+    return list(SPECIAL_CAPTURE_TARGETS.get(_normalize_scene(area), []))
+
+
 # 游戏内场景名与特殊面板写法不一致的别名：正常化后统一返回 SCENE_MAPPING 里的规范键。
 # 例：面板下拉写“银华镜”，但 OCR/地图读取场景名为“银华境”，二者实为同一场景。
 SCENE_ALIASES = {
@@ -212,7 +233,7 @@ PRE_AUTO_TARGETS = {
     "须弥东界": ["PK-召唤兽-毗舍童子", "PK-召唤兽-真陀护法"],   # 排除 持国巡守
     "银华境": ["PK-召唤兽-毗舍童子", "PK-召唤兽-真陀护法"],     # 排除 广目巡守
     "弥勒山": ["PK-召唤兽-九色鹿", "PK-召唤兽-翼马",
-              "PK-召唤兽-芙蓉仙子", "PK-召唤兽-涂山瞳"],
+              "PK-召唤兽-芙蓉仙子"],                            # 排除 涂山瞳
     # 丝绸之路无固定怪物表：不配置，引擎回退到 get_all_monsters/宽松检测
     "伊阙龙门": ["PK-召唤兽-灵鹤", "PK-召唤兽-巡游天神",
                 "PK-召唤兽-雾中仙"],                            # 排除 多闻巡守
@@ -224,10 +245,11 @@ PRE_AUTO_TARGETS = {
 
 
 def get_pre_auto_targets(area):
-    """特殊场景点法术后的点杀目标（排除高价值特殊怪）；未配置的场景回退全部怪物。"""
+    """特殊场景点法术后的点杀目标；必抓特殊怪一律剔除，未配置的场景回退全部怪物。"""
     area = _normalize_scene(area)
-    targets = PRE_AUTO_TARGETS.get(area)
-    return list(targets) if targets else get_all_monsters(area)
+    exclude = set(SPECIAL_CAPTURE_TARGETS.get(area, []))
+    targets = PRE_AUTO_TARGETS.get(area) or get_all_monsters(area)
+    return [t for t in targets if t not in exclude]
 
 
 def is_supported_scene(area):

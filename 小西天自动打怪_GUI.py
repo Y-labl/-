@@ -340,7 +340,7 @@ class AutoFightGUI:
         # 保存到文件和缓存
         save_device_config(serial, current_ui_config)
         self._device_configs[serial] = current_ui_config
-        self._log(f"[{serial}] 已保存设备独立配置")
+        self._log(f"[{self._dev_label(serial)}] 已保存设备独立配置")
 
     def _sync_ui_to_config_obj(self, config_obj):
         """将UI设置同步到配置对象"""
@@ -725,7 +725,7 @@ class AutoFightGUI:
         log_card = ttk.Labelframe(tab2, text=" 运行日志 & 实时数据 ", padding=10)
         log_card.grid(row=2, column=0, sticky="nsew", pady=(10, 0))
         log_card.columnconfigure(0, weight=1)
-        log_card.rowconfigure(2, weight=1)
+        log_card.rowconfigure(1, weight=1)
 
         # 实时数据显示行（含日志筛选，位于气血/魔法等数据最前面）
         data_frame = ttk.Frame(log_card)
@@ -766,24 +766,6 @@ class AutoFightGUI:
                                     font=("Microsoft YaHei", 11, "bold"), foreground="#198754")
         self.time_display.pack(side=tk.LEFT)
 
-        # 总计行（固定在日志上方，不随日志滚动；所有设备当日累计卡片/环/时长）
-        total_bar = ttk.Frame(log_card)
-        total_bar.grid(row=1, column=0, sticky="ew", pady=(0, 4))
-        ttk.Label(total_bar, text="总计", font=("Microsoft YaHei", 9, "bold"),
-                  foreground="#495057").pack(side=tk.LEFT, padx=(0, 10))
-        self._log_total_card = ttk.Label(total_bar, text="卡片 0",
-                                         font=("Microsoft YaHei", 9, "bold"), foreground="#198754")
-        self._log_total_card.pack(side=tk.LEFT, padx=(0, 16))
-        self._log_total_huan = ttk.Label(total_bar, text="环 0",
-                                         font=("Microsoft YaHei", 9, "bold"), foreground="#dc3545")
-        self._log_total_huan.pack(side=tk.LEFT, padx=(0, 16))
-        self._log_total_dur = ttk.Label(total_bar, text="时长 00:00",
-                                        font=("Microsoft YaHei", 9, "bold"), foreground="#0d6efd")
-        self._log_total_dur.pack(side=tk.LEFT)
-        self._log_total_widgets = {"card": self._log_total_card,
-                                   "huan": self._log_total_huan,
-                                   "dur": self._log_total_dur}
-
         # 存储所有日志（用于筛选）
         self.all_logs = []  # 格式: [(device_id, timestamp, message), ...]
 
@@ -791,19 +773,36 @@ class AutoFightGUI:
         self.log_text = ttk.ScrolledText(
             log_card, height=8, font=("Microsoft YaHei", 9),
             bg="#ffffff", fg="#333333", insertbackground="#333333")
-        self.log_text.grid(row=2, column=0, sticky="nsew")
+        self.log_text.grid(row=1, column=0, sticky="nsew")
         self.log_text.configure(state=tk.DISABLED)
         # 滚轮翻看历史：向上滚暂停自动滚动，滚回底部自动恢复
         self.log_text.bind("<MouseWheel>", self._on_log_scroll)
         self.log_text.bind("<Button-4>", self._on_log_scroll)   # Linux 上滚
         self.log_text.bind("<Button-5>", self._on_log_scroll)   # Linux 下滚
 
-        # 日志工具条（独立一行，避免被实时数据行挤压）
+        # 日志工具条（独立一行，避免被实时数据行挤压）+ 总计（自动滚动后面，
+        # 不单独占行；所有设备当日累计卡片/环/时长，12 号加粗保证可读）
         tool_bar = ttk.Frame(log_card)
-        tool_bar.grid(row=3, column=0, sticky="ew", pady=(6, 0))
+        tool_bar.grid(row=2, column=0, sticky="ew", pady=(6, 0))
         self.log_follow = tk.BooleanVar(value=True)   # 自动滚动跟随最新日志
         ttk.Checkbutton(tool_bar, text="自动滚动", variable=self.log_follow,
                         bootstyle="success-round-toggle").pack(side=tk.LEFT)
+        total_bar = ttk.Frame(tool_bar)
+        total_bar.pack(side=tk.LEFT, padx=(18, 0))
+        ttk.Label(total_bar, text="📊 总计", font=("Microsoft YaHei", 12, "bold"),
+                  foreground="#495057").pack(side=tk.LEFT, padx=(0, 14))
+        self._log_total_card = ttk.Label(total_bar, text="卡片 0",
+                                         font=("Microsoft YaHei", 12, "bold"), foreground="#198754")
+        self._log_total_card.pack(side=tk.LEFT, padx=(0, 22))
+        self._log_total_huan = ttk.Label(total_bar, text="环 0",
+                                         font=("Microsoft YaHei", 12, "bold"), foreground="#dc3545")
+        self._log_total_huan.pack(side=tk.LEFT, padx=(0, 22))
+        self._log_total_dur = ttk.Label(total_bar, text="时长 00:00",
+                                        font=("Microsoft YaHei", 12, "bold"), foreground="#0d6efd")
+        self._log_total_dur.pack(side=tk.LEFT)
+        self._log_total_widgets = {"card": self._log_total_card,
+                                   "huan": self._log_total_huan,
+                                   "dur": self._log_total_dur}
         ttk.Button(tool_bar, text="清空日志", command=self._clear_log,
                    bootstyle="outline", width=8).pack(side=tk.RIGHT)
 
@@ -1584,12 +1583,20 @@ class AutoFightGUI:
         except Exception as e:
             self._log(f"⚠️ 统计保存失败: {e}")
 
+    def _dev_label(self, serial):
+        """设备日志标识：与引擎 _log 的 device_id 解析完全一致
+        （配置的设备名优先，否则 short_dev_label 简写）。
+        GUI 自身日志（启动/停止/配置提示等）必须用本方法打标，
+        否则同一设备会在日志筛选下拉里出现 设备名+设备号 两个重复项。"""
+        names = self.cfg.get("device_names", {}) or {}
+        return names.get(serial, "") or short_dev_label(serial)
+
     def _start_device(self, serial, override=None, team_mode=False, log_queue=None):
         """启动指定设备的引擎（使用设备独立配置或全局配置）
         override: dict，额外覆盖配置键（特殊场景队伍模式使用）
         team_mode: 队伍项目独立模式，战斗/时长/环卡不从偷偷场景继承，重新累计。"""
         if serial in self.engines and self.engines[serial].running:
-            self._log(f"[{serial}] 已在运行中")
+            self._log(f"[{self._dev_label(serial)}] 已在运行中")
             return
 
         # 获取设备的有效配置
@@ -1607,9 +1614,9 @@ class AutoFightGUI:
         # 检查是否有独立配置
         has_custom_config = self._device_configs.get(serial) is not None
         if has_custom_config:
-            self._log(f"[{serial}] 使用设备独立配置")
+            self._log(f"[{self._dev_label(serial)}] 使用设备独立配置")
         else:
-            self._log(f"[{serial}] 使用全局配置")
+            self._log(f"[{self._dev_label(serial)}] 使用全局配置")
 
         # 传递全局的设备名称配置给引擎
         device_cfg["device_names"] = self.cfg.get("device_names", {})
@@ -1653,7 +1660,7 @@ class AutoFightGUI:
         # 引擎启动后延迟更新按钮状态
         self.root.after(500, self._update_tab1_buttons)
         self.root.after(500, lambda: self._update_device_row_buttons(serial))
-        self._log(f"[{serial}] ▶ 引擎启动")
+        self._log(f"[{self._dev_label(serial)}] ▶ 引擎启动")
 
     def _stop_device(self, serial):
         """停止指定设备的引擎（与场景控制页「停止」一致）"""
@@ -1665,7 +1672,7 @@ class AutoFightGUI:
         self._update_device_row_buttons(serial)
         self.root.after(500, self._update_tab1_buttons)
         self.root.after(500, lambda: self._update_device_row_buttons(serial))
-        self._log(f"[{serial}] ⏹ 正在停止...")
+        self._log(f"[{self._dev_label(serial)}] ⏹ 正在停止...")
         self._save_device_stats()
 
     def _selected_serials(self):
@@ -1815,7 +1822,7 @@ class AutoFightGUI:
             result = sp.run([ADB_EXE, "-s", serial, "exec-out", "screencap", "-p"],
                            capture_output=True, timeout=10, creationflags=sp.CREATE_NO_WINDOW)
             if result.returncode != 0 or len(result.stdout) < 100:
-                self._log(f"[{serial}] ❌ ADB截图失败")
+                self._log(f"[{self._dev_label(serial)}] ❌ ADB截图失败")
                 return
             import cv2 as _cv2
             import numpy as _np
@@ -1823,13 +1830,13 @@ class AutoFightGUI:
             if _raw is not None:
                 _small = _cv2.resize(_raw, (800, 448))
                 _cv2.imwrite(filepath, _small)
-                self._log(f"[{serial}] 📸 ADB截图已保存: {filepath} (800x448)")
+                self._log(f"[{self._dev_label(serial)}] 📸 ADB截图已保存: {filepath} (800x448)")
             else:
                 with open(filepath, "wb") as f:
                     f.write(result.stdout)
-                self._log(f"[{serial}] 📸 截图已保存: {filepath} (原始分辨率)")
+                self._log(f"[{self._dev_label(serial)}] 📸 截图已保存: {filepath} (原始分辨率)")
         except Exception as e:
-            self._log(f"[{serial}] ❌ 截图异常: {e}")
+            self._log(f"[{self._dev_label(serial)}] ❌ 截图异常: {e}")
 
     def _rename_device(self, serial, label_widget=None):
         dev_names = self.cfg.get("device_names", {})
@@ -2337,7 +2344,7 @@ class AutoFightGUI:
                     engine._scene_history = []
                     engine._save_scene_history()
 
-                self._log(f"[{serial}] 已清除 {cleared_count} 个历史文件")
+                self._log(f"[{self._dev_label(serial)}] 已清除 {cleared_count} 个历史文件")
                 messagebox.showinfo("完成", f"已清除 {cleeled_count} 个历史文件")
 
                 # 刷新详情弹窗
@@ -2507,7 +2514,7 @@ class AutoFightGUI:
                 if os.path.exists(device_file):
                     os.remove(device_file)
                 self._device_configs[serial] = None
-                self._log(f"[{serial}] 已清除独立配置，将使用全局配置")
+                self._log(f"[{self._dev_label(serial)}] 已清除独立配置，将使用全局配置")
                 dialog.destroy()
                 self._refresh_device_tab()
             except Exception as e:
@@ -2589,7 +2596,7 @@ class AutoFightGUI:
                 for serial in selected:
                     save_device_config(serial, source_cfg)
                     self._device_configs[serial] = source_cfg
-                    self._log(f"[{serial}] 已复制配置")
+                    self._log(f"[{self._dev_label(serial)}] 已复制配置")
                 self._log(f"✅ 配置已复制到 {len(selected)} 台设备")
                 dlg.destroy()
                 self._refresh_device_tab()
@@ -2894,7 +2901,7 @@ class AutoFightGUI:
                         if "dur" in self._total_widgets:
                             self._total_widgets["dur"].configure(
                                 text=fmt_duration_hm(self._compute_total_runtime()))
-                    # 同步更新日志上方固定的总计行（不随日志滚动）
+                    # 同步更新日志下方固定的总计行（不随日志滚动）
                     if getattr(self, "_log_total_widgets", None):
                         tc, th = self._compute_total_counts()
                         self._log_total_widgets["card"].configure(text="卡片 {}".format(tc))
@@ -2983,15 +2990,19 @@ class AutoFightGUI:
                 device_id = match.group(1)
 
         # 如果没有设备ID，默认为系统消息
-
         if not device_id:
 
             device_id = "系统"
 
+        # 标识归一：历史/外部代码可能以 [设备号serial] 打标，而引擎日志用 设备名；
+        # 命中 device_names 配置的 serial 统一替换为设备名，保证筛选下拉里
+        # 同一设备不会同时出现 设备名 和 设备号 两个选项
+        dev_names = self.cfg.get("device_names", {}) or {}
+        if device_id in dev_names:
+            device_id = dev_names[device_id]
+
         # 存储日志
-
         timestamp = datetime.now()
-
         self.all_logs.append((device_id, timestamp, msg))
 
         # 根据筛选条件决定是否显示
@@ -3381,9 +3392,9 @@ class AutoFightGUI:
         self._device_configs[serial] = base
         engine = self.engines.get(serial)
         if engine is not None and engine.running:
-            self._log(f"[{serial}] ✅ 设备场景配置已保存（当前引擎正在运行，将在下次启动时生效）")
+            self._log(f"[{self._dev_label(serial)}] ✅ 设备场景配置已保存（当前引擎正在运行，将在下次启动时生效）")
         else:
-            self._log(f"[{serial}] ✅ 设备场景配置已保存，启动时将使用独立配置")
+            self._log(f"[{self._dev_label(serial)}] ✅ 设备场景配置已保存，启动时将使用独立配置")
         # 重建详情弹窗刷新来源提示与场景摘要，并刷新设备管理页（🔧 标识）
         parent_dlg.destroy()
         self._refresh_device_tab()
@@ -3586,7 +3597,7 @@ class AutoFightGUI:
             config = template.get("config", {})
             save_device_config(serial, config)
             self._device_configs[serial] = config
-            self._log(f"[{serial}] 已应用模板: {template.get('name', '未知')}")
+            self._log(f"[{self._dev_label(serial)}] 已应用模板: {template.get('name', '未知')}")
             return True
 
         except Exception as e:
